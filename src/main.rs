@@ -1,11 +1,11 @@
 use annoy_rs::*;
-use arroy::{Arroy, DistanceType};
+use arroy::{ArroyReader, DistanceType};
 
 fn main() {
     let dimensions = 40;
     let distance_type = DistanceType::Angular;
     let tree = std::fs::read("test.tree").unwrap();
-    let arroy = Arroy::new(&tree[..], dimensions, distance_type);
+    let arroy = ArroyReader::new(&tree[..], dimensions, distance_type);
 
     // dbg!(&arroy);
     let v = arroy.item_vector(0).unwrap();
