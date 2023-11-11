@@ -1,5 +1,5 @@
 use annoy_rs::*;
-use arroy::{DistanceType, HeedReader};
+use arroy::{ArroyReader, DistanceType, HeedReader};
 use heed::EnvOpenOptions;
 
 const TWENTY_HUNDRED_MIB: usize = 200 * 1024 * 1024;
@@ -26,21 +26,26 @@ fn main() -> heed::Result<()> {
     let results = arroy.nns_by_item(&rtxn, 0, 3, None)?.unwrap();
     println!("{v:?}");
 
-    let index = AnnoyIndex::load(40, "test.tree", IndexType::Angular).unwrap();
-    // dbg!(&index);
-    let v0 = index.get_item_vector(0);
-    let results0 = index.get_nearest_to_item(0, 3, -1, true);
-    println!("{v0:?}");
+    let arroy = ArroyReader::new(&tree[..], dimensions, distance_type);
+    // dbg!(&arroy);
+    let classic_v = arroy.item_vector(0).unwrap();
+    let classic_results = arroy.nns_by_item(0, 3, None).unwrap();
 
-    assert_eq!(v, v0);
+    // let index = AnnoyIndex::load(40, "test.tree", IndexType::Angular).unwrap();
+    // // dbg!(&index);
+    // let v0 = index.get_item_vector(0);
+    // let results0 = index.get_nearest_to_item(0, 3, -1, true);
+    // println!("{v0:?}");
 
-    assert_eq!(results[0].0, results0.id_list[0] as u32);
-    assert_eq!(results[1].0, results0.id_list[1] as u32);
-    assert_eq!(results[2].0, results0.id_list[2] as u32);
+    assert_eq!(v, classic_v);
 
-    assert_eq!(results[0].1, results0.distance_list[0]);
-    assert_eq!(results[1].1, results0.distance_list[1]);
-    assert_eq!(results[2].1, results0.distance_list[2]);
+    assert_eq!(results[0].0, classic_results[0].0 as u32);
+    assert_eq!(results[1].0, classic_results[1].0 as u32);
+    assert_eq!(results[2].0, classic_results[2].0 as u32);
+
+    assert_eq!(results[0].1, classic_results[0].1);
+    assert_eq!(results[1].1, classic_results[1].1);
+    assert_eq!(results[2].1, classic_results[2].1);
 
     Ok(())
 }

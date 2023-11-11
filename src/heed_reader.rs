@@ -2,8 +2,7 @@ use std::borrow::Cow;
 use std::cmp::Reverse;
 use std::collections::BinaryHeap;
 use std::mem::size_of;
-use std::ops::RemAssign;
-use std::{io, iter};
+use std::{iter, mem};
 
 use bytemuck::{pod_collect_to_vec, Pod, Zeroable};
 use byteorder::{ByteOrder, NativeEndian};
@@ -15,7 +14,6 @@ use crate::distance::{
     cosine_distance_no_simd, dot_product_no_simd, euclidean_distance_no_simd,
     manhattan_distance_no_simd, minkowski_margin,
 };
-use crate::node::*;
 use crate::priority_queue::BinaryHeapItem;
 use crate::DistanceType;
 
@@ -88,6 +86,9 @@ impl HeedReader {
                 }
             }
         }
+
+        println!("{roots:?}");
+        println!("{max_descendants:?}");
 
         Ok(HeedReader {
             dimension: dimensions,
@@ -181,9 +182,17 @@ impl HeedReader {
         while !pq.is_empty() && nearest_neighbors.len() < search_k {
             if let Some(BinaryHeapItem { item: top_node_id, ord: top_node_margin }) = pq.pop() {
                 let node_bytes = self.database.get(rtxn, &top_node_id)?.unwrap();
-                match Node::from_bytes(node_bytes, self.max_descendants) {
-                    Node::Leaf(_) => nearest_neighbors.push(top_node_id),
+                let node = Node::from_bytes(node_bytes, self.max_descendants);
+                println!("top_node_id: {top_node_id:?} {:?}", node.n_descendants());
+                match node {
+                    Node::Leaf(_) => {
+                        if (top_node_id as usize) < self.size {
+                            println!("top_node_id: {top_node_id:?}");
+                            nearest_neighbors.push(top_node_id);
+                        }
+                    }
                     Node::Descendants(descendants) => {
+                        descendants.descendants_ids().for_each(|id| println!("id: {id:?}"));
                         nearest_neighbors.extend(descendants.descendants_ids())
                     }
                     Node::SplitPlaneNormal(normal) => {
@@ -202,7 +211,12 @@ impl HeedReader {
                 }
             }
         }
+
+        println!("{:?}", nearest_neighbors.len());
+        println!("{nearest_neighbors:?}");
+
         nearest_neighbors.sort_unstable();
+
         let mut sorted_nns = BinaryHeap::with_capacity(nearest_neighbors.len());
         let mut nn_id_last = None;
         for nn_id in nearest_neighbors {
@@ -213,16 +227,19 @@ impl HeedReader {
             let node_bytes = self.database.get(rtxn, &nn_id)?.unwrap();
             if let Node::Leaf(node) = Node::from_bytes(node_bytes, self.max_descendants) {
                 let s = node.vector();
-                sorted_nns.push(Reverse(BinaryHeapItem {
-                    item: nn_id,
-                    ord: OrderedFloat(DistanceType::Angular.distance_no_norm(&s, query_vector)),
-                }));
+                let distance = DistanceType::Angular.distance_no_norm(&s, query_vector);
+                println!("{nn_id}: {distance:?}");
+                sorted_nns
+                    .push(Reverse(BinaryHeapItem { item: nn_id, ord: OrderedFloat(distance) }));
             }
         }
 
         let final_result_capacity = n_results.min(sorted_nns.len());
         let mut output = Vec::with_capacity(final_result_capacity);
         while let Some(Reverse(heap_item)) = sorted_nns.pop() {
+            if output.len() == final_result_capacity {
+                break;
+            }
             let BinaryHeapItem { item, ord: OrderedFloat(dist) } = heap_item;
             output.push((item, DistanceType::Angular.normalized_distance(dist)));
         }
@@ -295,8 +312,9 @@ impl<'a> Node<'a> {
             let (header, vector_bytes) = NodeHeader::from_bytes(bytes, DistanceType::Angular);
             Node::Leaf(Leaf { header, vector_bytes })
         } else if n_descendants as usize <= max_descendants {
-            let offset_before_children = NodeHeaderAngular::offset_before_children();
-            let descendants_bytes = &bytes[offset_before_children..];
+            let offset = NodeHeaderAngular::offset_before_children();
+            let length = n_descendants as usize * size_of::<u32>();
+            let descendants_bytes = &bytes[offset..offset + length];
             Node::Descendants(Descendants { n_descendants, descendants_bytes })
         } else {
             let (header, normal_bytes) = NodeHeader::from_bytes(bytes, DistanceType::Angular);
