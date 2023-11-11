@@ -12,13 +12,13 @@ impl Node {
     pub fn new_with_id(
         id: usize,
         node_size: usize,
-        index_type: DistanceType,
+        distance_type: DistanceType,
         storage: &[u8],
     ) -> Node {
         let offset = id * node_size;
         Node {
             offset,
-            header: NodeHeader::new(offset, index_type, storage),
+            header: NodeHeader::new(offset, distance_type, storage),
         }
     }
 }

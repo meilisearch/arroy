@@ -13,6 +13,7 @@ use crate::distance::{
 };
 use crate::node::{Node, NodeHeaderAngular, NodeHeaderDot, NodeHeaderMinkowski};
 use crate::priority_queue::BinaryHeapItem;
+use crate::DistanceType;
 
 pub struct ArroyReader<'a> {
     pub dimension: usize,
@@ -270,14 +271,4 @@ pub(crate) fn get_nth_descendant_id(
 ) -> usize {
     let child_offset = node_offset + offset_before_children + n * size_of::<i32>();
     NativeEndian::read_i32(&storage[child_offset..]) as usize
-}
-
-#[derive(PartialEq, Eq, Debug, Copy, Clone)]
-#[repr(u8)]
-pub enum DistanceType {
-    Angular = 0,
-    Euclidean = 1,
-    Manhattan = 2,
-    // Hamming = 3,
-    Dot = 4,
 }

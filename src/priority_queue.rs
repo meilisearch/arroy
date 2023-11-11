@@ -31,13 +31,14 @@ where
     }
 }
 
+#[allow(clippy::incorrect_partial_ord_impl_on_ord_type)]
 impl<I, O> PartialOrd for BinaryHeapItem<I, O>
 where
     I: Eq,
     O: PartialEq + Eq + PartialOrd,
 {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        Some(self.cmp(other))
+        self.ord.partial_cmp(&other.ord)
     }
 }
 
