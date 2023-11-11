@@ -1,3 +1,5 @@
+use std::time::Instant;
+
 use arroy::{DistanceType, HeedReader};
 use heed::EnvOpenOptions;
 
@@ -20,9 +22,11 @@ fn main() -> heed::Result<()> {
     let rtxn = env.read_txn()?;
     let arroy = HeedReader::new(&rtxn, database, dimensions, distance_type)?;
     let v = arroy.item_vector(&rtxn, 0)?.unwrap();
-    let results = arroy.nns_by_item(&rtxn, 0, 3, None)?.unwrap();
-
     println!("{v:?}");
+
+    let before = Instant::now();
+    let results = arroy.nns_by_item(&rtxn, 0, 30, None)?.unwrap();
+    eprintln!("It took {:.02?} to find the nns", before.elapsed());
     println!("{results:?}");
 
     Ok(())

@@ -71,9 +71,6 @@ impl<'a> ArroyReader<'a> {
             }
         }
 
-        println!("{roots:?}");
-        println!("{max_descendants:?}");
-
         ArroyReader {
             dimension,
             distance_type,
@@ -132,13 +129,9 @@ impl<'a> ArroyReader<'a> {
                 let top_node_header = top_node.header;
                 let top_node_offset = top_node.offset;
                 let n_descendants = top_node_header.get_n_descendant();
-                println!("top_node_id: {top_node_id_i32:?} {:?}", n_descendants);
                 if n_descendants == 1 && top_node_id < self.size {
-                    println!("top_node_id: {top_node_id:?}");
                     nearest_neighbors.push(top_node_id_i32);
                 } else if n_descendants <= self.max_descendants {
-                    let children_ids = self.descendant_ids(top_node_offset, n_descendants as usize);
-                    children_ids.for_each(|id| println!("id: {id:?}"));
                     let children_ids = self.descendant_ids(top_node_offset, n_descendants as usize);
                     nearest_neighbors.extend(children_ids);
                 } else {
@@ -158,9 +151,6 @@ impl<'a> ArroyReader<'a> {
             }
         }
 
-        println!("{:?}", nearest_neighbors.len());
-        println!("{nearest_neighbors:?}");
-
         nearest_neighbors.sort_unstable();
 
         let mut sorted_nns = BinaryHeap::with_capacity(nearest_neighbors.len());
@@ -178,9 +168,10 @@ impl<'a> ArroyReader<'a> {
             }
 
             let s = self.node_slice_with_offset(nn_id as usize * self.node_size);
-            let distance = self.distance_no_norm(&s, query_vector);
-            println!("{nn_id}: {distance:?}");
-            sorted_nns.push(Reverse(BinaryHeapItem { item: nn_id, ord: OrderedFloat(distance) }));
+            sorted_nns.push(Reverse(BinaryHeapItem {
+                item: nn_id,
+                ord: OrderedFloat(self.distance_no_norm(&s, query_vector)),
+            }));
         }
 
         let final_result_capacity = n_results.min(sorted_nns.len());

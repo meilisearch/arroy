@@ -1,3 +1,5 @@
+use std::time::Instant;
+
 use arroy::{ArroyReader, DistanceType};
 
 fn main() -> std::io::Result<()> {
@@ -8,9 +10,11 @@ fn main() -> std::io::Result<()> {
     let arroy = ArroyReader::new(&tree[..], dimensions, distance_type);
     // dbg!(&arroy);
     let v = arroy.item_vector(0).unwrap();
-    let results = arroy.nns_by_item(0, 3, None).unwrap();
-
     println!("{v:?}");
+
+    let before = Instant::now();
+    let results = arroy.nns_by_item(0, 30, None).unwrap();
+    eprintln!("It took {:.02?} to find the nns", before.elapsed());
     println!("{results:?}");
 
     Ok(())

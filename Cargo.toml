@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-annoy-rs = { path =  "../RuAnnoy" }
+annoy-rs = "0.1.0"
 bytemuck = { version = "1.14.0", features = ["min_const_generics", "derive", "extern_crate_alloc"] }
 byteorder = "1.5.0"
 heed = "0.20.0-alpha.6"
