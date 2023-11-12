@@ -9,4 +9,5 @@ bytemuck = { version = "1.14.0", features = ["min_const_generics", "derive", "ex
 byteorder = "1.5.0"
 heed = "0.20.0-alpha.6"
 ordered-float = "4.1.1"
+rand = "0.8.5"
 tempfile = "3.8.1"
