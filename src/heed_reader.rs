@@ -4,18 +4,16 @@ use std::collections::BinaryHeap;
 use std::mem::size_of;
 use std::{iter, mem};
 
-use annoy_rs::utils::dot_product_no_simd;
 use bytemuck::{bytes_of, cast_slice, pod_collect_to_vec, Pod, Zeroable};
 use byteorder::{ByteOrder, NativeEndian};
 use heed::types::ByteSlice;
-use heed::{BoxedError, BytesDecode, BytesEncode, Database, RoTxn, RwTxn};
+use heed::{Database, RoTxn, RwTxn};
 use ordered_float::OrderedFloat;
-use rand::seq::index::{IndexVec, IndexVecIter};
 use rand::seq::SliceRandom;
 use rand::Rng;
 
 use crate::distance::{
-    self, cosine_distance_no_simd, dot_product_no_simd, euclidean_distance_no_simd,
+    cosine_distance_no_simd, dot_product_no_simd, euclidean_distance_no_simd,
     manhattan_distance_no_simd, minkowski_margin,
 };
 use crate::priority_queue::BinaryHeapItem;
@@ -24,10 +22,8 @@ use crate::DistanceType;
 // An big endian-encoded u32
 pub type BEU32 = heed::types::U32<heed::byteorder::BE>;
 
-pub struct HeedReader {
+pub struct HeedReader<D> {
     dimension: usize,
-    // TODO make the distance a generic type
-    distance_type: DistanceType,
     size: usize,
     max_descendants: usize,
     offset_before_children: usize,
@@ -36,13 +32,12 @@ pub struct HeedReader {
     roots: Vec<u32>,
 }
 
-impl HeedReader {
+impl<D: Distance> HeedReader<D> {
     pub fn new(
         rtxn: &RoTxn,
         database: Database<BEU32, ByteSlice>,
         dimensions: usize,
-        distance_type: DistanceType,
-    ) -> heed::Result<HeedReader> {
+    ) -> heed::Result<HeedReader<D>> {
         let (offset_before_children, node_header_size, max_descendants) = match distance_type {
             DistanceType::Angular => (4, NodeHeaderAngular::header_size(), dimensions + 2),
             DistanceType::Euclidean | DistanceType::Manhattan => {
