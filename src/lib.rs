@@ -1,11 +1,13 @@
+mod arroy;
 mod arroy_reader;
 mod distance;
-mod heed_reader;
+// mod heed_reader;
 mod node;
 mod priority_queue;
 
+pub use arroy::{Reader, Writer};
 pub use arroy_reader::ArroyReader;
-pub use heed_reader::HeedReader;
+// pub use heed_reader::HeedReader;
 
 #[derive(PartialEq, Eq, Debug, Copy, Clone)]
 #[repr(u8)]

@@ -33,30 +33,3 @@ pub fn manhattan_distance_no_simd(u: &[f32], v: &[f32]) -> f32 {
 pub fn euclidean_distance_no_simd(u: &[f32], v: &[f32]) -> f32 {
     u.iter().zip(v.iter()).map(|(x, y)| (x - y).powi(2)).sum()
 }
-
-trait Distance {
-    fn preprocess();
-    fn postprocess();
-    fn zero_value();
-    fn copy_node();
-    // fn norm(leaf: &Leaf) -> f32 {
-    //     let v = leaf.vector();
-    //     dot_product_no_simd(&v, &v).sqrt()
-    // }
-    // fn normalize(leaf: &mut OwnedLeaf) {
-    //     let norm = Self::norm(leaf.as_leaf());
-    //     if norm > 0.0 {
-    //         leaf.vector.iter_mut().for_each(|x| *x /= norm);
-    //     }
-    // }
-    // fn update_mean(mean: &mut OwnedLeaf, new_node: &Leaf, norm: f32, c: f32) {
-    //     let new_node_vector = new_node.vector();
-    //     mean.vector.iter_mut().zip(&new_node_vector).for_each(|(x, y)| {
-    //         *x = (*x * c + y / norm) / c + 1.0;
-    //     });
-    // }
-}
-
-enum Euclidean {}
-
-impl Distance for Euclidean {}
