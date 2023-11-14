@@ -1,7 +1,7 @@
 use std::borrow::Cow;
 use std::error::Error;
-use std::marker;
 use std::mem::size_of;
+use std::{cmp, marker};
 
 use bytemuck::checked::cast_slice;
 use bytemuck::{bytes_of, cast, pod_collect_to_vec, pod_read_unaligned, Pod, Zeroable};
@@ -71,6 +71,7 @@ impl<D: Distance> Reader<D> {
 pub struct Writer<D: Distance> {
     database: heed::Database<BEU32, NodeCodec<D>>,
     dimensions: usize,
+    n_items: usize,
     roots: Vec<NodeId>,
     _marker: marker::PhantomData<D>,
 }
@@ -80,6 +81,7 @@ impl<D: Distance> Writer<D> {
         Writer {
             database: database.remap_data_type(),
             dimensions,
+            n_items: todo!(),
             roots: Vec::new(),
             _marker: marker::PhantomData,
         }
@@ -121,9 +123,9 @@ impl<D: Distance> Writer<D> {
         // D::template preprocess<T, S, Node>(_nodes, _s, _n_items, _f);
 
         // _n_nodes = _n_items;
-        todo!("clear all the nodes but the items");
+        // todo!("clear all the nodes but the items");
 
-        let n_items = self.database.len(wtxn)?;
+        self.n_items = self.database.len(wtxn)? as usize;
         let last_item_id = match self.database.last(wtxn)? {
             Some((i, _)) => i,
             None => todo!(),
@@ -133,7 +135,7 @@ impl<D: Distance> Writer<D> {
         loop {
             match n_trees {
                 Some(n_trees) if thread_roots.len() >= n_trees => break,
-                None if self.database.len(wtxn)? >= 2 * n_items => break,
+                None if self.database.len(wtxn)? >= 2 * self.n_items as u64 => break,
                 _ => (),
             }
 
@@ -179,8 +181,138 @@ impl<D: Distance> Writer<D> {
         is_root: bool,
         rng: &mut R,
     ) -> heed::Result<NodeId> {
+        // we simplify the max descendants (_K) thing by considering
+        // that we can fit as much descendants as the number of dimensions
+        let max_descendants = self.dimensions;
+
+        let last_node_id = match self.database.last(wtxn)? {
+            Some((i, _)) => i,
+            None => todo!(),
+        };
+
+        // The basic rule is that if we have <= _K items, then it's a leaf node, otherwise it's a split node.
+        // There's some regrettable complications caused by the problem that root nodes have to be "special":
+        // 1. We identify root nodes by the arguable logic that _n_items == n->n_descendants, regardless of how many descendants they actually have
+        // 2. Root nodes with only 1 child need to be a "dummy" parent
+        // 3. Due to the _n_items "hack", we need to be careful with the cases where _n_items <= _K or _n_items > _K
+        if indices.len() == 1 && !is_root {
+            return Ok(indices[0]);
+        }
+
+        if indices.len() <= max_descendants
+            && (!is_root || self.n_items <= max_descendants || indices.len() == 1)
+        {
+            //   threaded_build_policy.lock_n_nodes();
+            //   _allocate_size(_n_nodes + 1, threaded_build_policy);
+            //   S item = _n_nodes++;
+            //   threaded_build_policy.unlock_n_nodes();
+            let item = last_node_id + 1;
+
+            let node = if is_root {
+                Node::Root(Root { children: () })
+            } else {
+                // Node::
+                unimplemented!()
+            };
+
+            return Ok(item);
+
+            //   threaded_build_policy.lock_shared_nodes();
+            //   Node* m = _get(item);
+            //   m->n_descendants = is_root ? _n_items : (S)indices.size();
+
+            //   // Using std::copy instead of a loop seems to resolve issues #3 and #13,
+            //   // probably because gcc 4.8 goes overboard with optimizations.
+            //   // Using memcpy instead of std::copy for MSVC compatibility. #235
+            //   // Only copy when necessary to avoid crash in MSVC 9. #293
+            //   if (!indices.empty())
+            //     memcpy(m->children, &indices[0], indices.size() * sizeof(S));
+
+            //   threaded_build_policy.unlock_shared_nodes();
+            //   return item;
+        }
+
+        // threaded_build_policy.lock_shared_nodes();
+        // vector<Node*> children;
+        // for (size_t i = 0; i < indices.size(); i++) {
+        //   S j = indices[i];
+        //   Node* n = _get(j);
+        //   if (n)
+        //     children.push_back(n);
+        // }
+
+        // vector<S> children_indices[2];
+        // Node* m = (Node*)alloca(_s);
+
+        // for (int attempt = 0; attempt < 3; attempt++) {
+        //   children_indices[0].clear();
+        //   children_indices[1].clear();
+        //   D::create_split(children, _f, _s, _random, m);
+
+        //   for (size_t i = 0; i < indices.size(); i++) {
+        //     S j = indices[i];
+        //     Node* n = _get(j);
+        //     if (n) {
+        //       bool side = D::side(m, n, _f, _random);
+        //       children_indices[side].push_back(j);
+        //     } else {
+        //       annoylib_showUpdate("No node for index %d?\n", j);
+        //     }
+        //   }
+
+        //   if (_split_imbalance(children_indices[0], children_indices[1]) < 0.95)
+        //     break;
+        // }
+        // threaded_build_policy.unlock_shared_nodes();
+
+        // // If we didn't find a hyperplane, just randomize sides as a last option
+        // while (_split_imbalance(children_indices[0], children_indices[1]) > 0.99) {
+        //   if (_verbose)
+        //     annoylib_showUpdate("\tNo hyperplane found (left has %zu children, right has %zu children)\n",
+        //       children_indices[0].size(), children_indices[1].size());
+
+        //   children_indices[0].clear();
+        //   children_indices[1].clear();
+
+        //   // Set the vector to 0.0
+        //   for (int z = 0; z < _f; z++)
+        //     m->v[z] = 0;
+
+        //   for (size_t i = 0; i < indices.size(); i++) {
+        //     S j = indices[i];
+        //     // Just randomize...
+        //     children_indices[_random.flip()].push_back(j);
+        //   }
+        // }
+
+        // int flip = (children_indices[0].size() > children_indices[1].size());
+
+        // m->n_descendants = is_root ? _n_items : (S)indices.size();
+        // for (int side = 0; side < 2; side++) {
+        //   // run _make_tree for the smallest child first (for cache locality)
+        //   m->children[side^flip] = _make_tree(children_indices[side^flip], false, _random, threaded_build_policy);
+        // }
+
+        // threaded_build_policy.lock_n_nodes();
+        // _allocate_size(_n_nodes + 1, threaded_build_policy);
+        // S item = _n_nodes++;
+        // threaded_build_policy.unlock_n_nodes();
+
+        // threaded_build_policy.lock_shared_nodes();
+        // memcpy(_get(item), m, _s);
+        // threaded_build_policy.unlock_shared_nodes();
+
+        // return item;
+
         todo!()
     }
+}
+
+fn split_imbalance(left_indices_len: usize, right_indices_len: usize) -> f64 {
+    let ls = left_indices_len as f64;
+    let rs = right_indices_len as f64;
+    let f = ls / (ls + rs + f64::EPSILON); // Avoid 0/0
+    f.max(1.0 - f)
 }
 
 fn item_vector<D: Distance>(
@@ -191,6 +323,7 @@ fn item_vector<D: Distance>(
     match database.get(rtxn, &item)? {
         Some(Node::Leaf(Leaf { header: _, vector })) => Ok(Some(vector)),
         Some(Node::SplitPlaneNormal(_)) => Ok(None),
+        Some(Node::Root(_)) => Ok(None),
         None => Ok(None),
     }
 }
@@ -212,10 +345,12 @@ fn item_vector<D: Distance>(
 enum Node<D: Distance> {
     Leaf(Leaf<D>),
     SplitPlaneNormal(SplitPlaneNormal),
+    Root(Root),
 }
 
 const LEAF_TAG: u8 = 0;
 const SPLIT_PLANE_NORMAL_TAG: u8 = 1;
+const ROOT_TAG: u8 = 2;
 
 struct Leaf<D: Distance> {
     pub header: D::Header,
@@ -228,6 +363,10 @@ struct SplitPlaneNormal {
     // TODO make the deser lazy
     pub left: Vec<NodeId>,
     pub right: Vec<NodeId>,
+}
+
+struct Root {
+    pub children: Vec<NodeId>,
 }
 
 struct NodeCodec<D>(D);
