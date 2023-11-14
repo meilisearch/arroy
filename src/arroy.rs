@@ -6,8 +6,9 @@ use std::mem::size_of;
 use bytemuck::checked::cast_slice;
 use bytemuck::{bytes_of, cast, pod_collect_to_vec, pod_read_unaligned, Pod, Zeroable};
 use byteorder::{BigEndian, ByteOrder};
-use heed::types::ByteSlice;
+use heed::types::{ByteSlice, DecodeIgnore};
 use heed::{BytesDecode, BytesEncode, Database, RoTxn, RwTxn};
+use rand::seq::index;
 use rand::Rng;
 
 /// An big endian-encoded u32.
@@ -70,12 +71,18 @@ impl<D: Distance> Reader<D> {
 pub struct Writer<D: Distance> {
     database: heed::Database<BEU32, NodeCodec<D>>,
     dimensions: usize,
+    roots: Vec<NodeId>,
     _marker: marker::PhantomData<D>,
 }
 
 impl<D: Distance> Writer<D> {
     pub fn open<U>(dimensions: usize, database: Database<BEU32, U>) -> Writer<D> {
-        Writer { database: database.remap_data_type(), dimensions, _marker: marker::PhantomData }
+        Writer {
+            database: database.remap_data_type(),
+            dimensions,
+            roots: Vec::new(),
+            _marker: marker::PhantomData,
+        }
     }
 
     pub fn item_vector(&self, rtxn: &RoTxn, item: ItemId) -> heed::Result<Option<Vec<f32>>> {
@@ -106,11 +113,72 @@ impl<D: Distance> Writer<D> {
     }
 
     pub fn build<R: Rng>(
-        self,
+        mut self,
         wtxn: &mut RwTxn,
-        rng: R,
+        mut rng: R,
         n_trees: Option<usize>,
     ) -> heed::Result<Reader<D>> {
+        // D::template preprocess<T, S, Node>(_nodes, _s, _n_items, _f);
+
+        // _n_nodes = _n_items;
+        todo!("clear all the nodes but the items");
+
+        let n_items = self.database.len(wtxn)?;
+        let last_item_id = match self.database.last(wtxn)? {
+            Some((i, _)) => i,
+            None => todo!(),
+        };
+
+        let mut thread_roots = Vec::new();
+        loop {
+            match n_trees {
+                Some(n_trees) if thread_roots.len() >= n_trees => break,
+                None if self.database.len(wtxn)? >= 2 * n_items => break,
+                _ => (),
+            }
+
+            let mut indices = Vec::new();
+            for result in self.database.remap_data_type::<DecodeIgnore>().iter(wtxn)? {
+                let (i, _) = result?;
+                indices.push(i);
+                if i > last_item_id {
+                    break;
+                }
+            }
+
+            let tree_root_id = self.make_tree(wtxn, indices, true, &mut rng)?;
+            thread_roots.push(tree_root_id);
+        }
+
+        self.roots.append(&mut thread_roots);
+
+        // Also, copy the roots into the last segment of the database
+        // This way we can load them faster without reading the whole file
+        // TODO do not do that, store the root ids into the metadata field
+        let n_nodes = self.database.len(wtxn)?;
+        for (i, id) in self.roots.iter().enumerate() {
+            let root_bytes = self.database.remap_data_type::<ByteSlice>().get(wtxn, id)?.unwrap();
+            let root_vec = root_bytes.to_vec();
+            let end_root_id = (n_nodes + i as u64).try_into().unwrap();
+            self.database.remap_data_type::<ByteSlice>().put(wtxn, &end_root_id, &root_vec)?;
+        }
+
+        // D::template postprocess<T, S, Node>(_nodes, _s, _n_items, _f);
+
+        Ok(Reader {
+            database: self.database,
+            dimensions: self.dimensions,
+            _marker: marker::PhantomData,
+        })
+    }
+
+    fn make_tree<R: Rng>(
+        &self,
+        wtxn: &mut RwTxn,
+        indices: Vec<u32>,
+        is_root: bool,
+        rng: &mut R,
+    ) -> heed::Result<NodeId> {
         todo!()
     }
 }
