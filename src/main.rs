@@ -50,7 +50,7 @@
 //     Ok(())
 // }
 
-use arroy::{Angular, NodeCodec, Reader, Writer, BEU32};
+use arroy::{Angular, NodeCodec, Writer, BEU32};
 use bytemuck::pod_collect_to_vec;
 use heed::types::{ByteSlice, LazyDecode};
 use heed::{Database, EnvOpenOptions, Unspecified};
@@ -67,9 +67,10 @@ fn main() -> heed::Result<()> {
     let database: Database<BEU32, Unspecified> = env.create_database(&mut wtxn, None)?;
     let writer = Writer::<Angular>::prepare(&mut wtxn, dimensions, database)?;
 
-    writer.add_item(&mut wtxn, 0, &[0., 1., 2.])?;
-    writer.add_item(&mut wtxn, 1, &[1., 2., 3.])?;
-    writer.add_item(&mut wtxn, 2, &[3., 4., 5.])?;
+    for i in 0..100 {
+        let f = i as f32;
+        writer.add_item(&mut wtxn, i, &[f, f + 1.0, f + 2.0])?;
+    }
 
     let rng = rand::thread_rng();
     let _reader = writer.build(&mut wtxn, rng, Some(1))?;

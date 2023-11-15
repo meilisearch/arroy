@@ -259,7 +259,6 @@ impl<D: Distance> Writer<D> {
         }
 
         // TODO make sure to run _make_tree for the smallest child first (for cache locality)
-
         m.left = self.make_tree(wtxn, children_left, false, rng)?;
         m.right = self.make_tree(wtxn, children_right, false, rng)?;
 
