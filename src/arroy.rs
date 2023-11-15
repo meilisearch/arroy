@@ -235,7 +235,8 @@ impl<D: Distance> Writer<D> {
         let mut children = Vec::new();
         for node_id in &indices {
             let node = self.database.get(wtxn, node_id)?.unwrap();
-            children.push(node);
+            let leaf = node.leaf().unwrap();
+            children.push(leaf);
         }
 
         let mut children_left = Vec::new();
@@ -409,6 +410,16 @@ const DESCENDANTS_TAG: u8 = 1;
 const SPLIT_PLANE_NORMAL_TAG: u8 = 2;
 const ROOT_TAG: u8 = 3;
 
+impl<D: Distance> Node<D> {
+    fn leaf(self) -> Option<Leaf<D>> {
+        if let Node::Leaf(leaf) = self {
+            Some(leaf)
+        } else {
+            None
+        }
+    }
+}
+
 #[derive(Clone)]
 pub struct Leaf<D: Distance> {
     pub header: D::Header,
@@ -507,8 +518,8 @@ pub trait Distance: Sized + Clone {
     fn normalize(node: &mut Leaf<Self>);
     fn init(node: &mut Leaf<Self>);
     fn update_mean(mean: &mut Leaf<Self>, new_node: &Leaf<Self>, norm: f32, c: f32);
-    fn create_split<R: Rng>(children: &[Node<Self>], rng: &mut R) -> SplitPlaneNormal;
-    fn side<R: Rng>(plane: &SplitPlaneNormal, node: &Node<Self>, rng: &mut R) -> Side;
+    fn create_split<R: Rng>(children: &[Leaf<Self>], rng: &mut R) -> SplitPlaneNormal;
+    fn side<R: Rng>(plane: &SplitPlaneNormal, node: &Leaf<Self>, rng: &mut R) -> Side;
 }
 
 #[repr(C)]
