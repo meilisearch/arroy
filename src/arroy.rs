@@ -402,7 +402,6 @@ enum Node<D: Distance> {
 const LEAF_TAG: u8 = 0;
 const DESCENDANTS_TAG: u8 = 1;
 const SPLIT_PLANE_NORMAL_TAG: u8 = 2;
-const ROOT_TAG: u8 = 3;
 
 impl<D: Distance> Node<D> {
     fn leaf(self) -> Option<Leaf<D>> {
@@ -445,22 +444,16 @@ impl<'a, D: Distance + 'a> BytesEncode<'a> for NodeCodec<D> {
                 bytes.extend_from_slice(bytes_of(header));
                 bytes.extend_from_slice(cast_slice(vector));
             }
-            Node::SplitPlaneNormal(SplitPlaneNormal { /* header,*/ normal, left, right }) => {
+            Node::SplitPlaneNormal(SplitPlaneNormal { normal, left, right }) => {
                 bytes.push(SPLIT_PLANE_NORMAL_TAG);
-                // bytes.extend_from_slice(bytes_of(header));
-                // TODO return error on try_into ???
-                // let normal_len: u32 = normal.len().try_into().unwrap();
-                // let left_len: u32 = left.len().try_into().unwrap();
-
-                // bytes.extend_from_slice(&normal_len.to_be_bytes());
-                // bytes.extend_from_slice(&left_len.to_be_bytes());
-
-                // bytes.extend_from_slice(cast_slice(normal));
-                // bytes.extend_from_slice(cast_slice(left));
-                // bytes.extend_from_slice(cast_slice(right));
-                todo!()
+                bytes.extend_from_slice(&left.to_be_bytes());
+                bytes.extend_from_slice(&right.to_be_bytes());
+                bytes.extend_from_slice(cast_slice(normal));
             }
-            _ => todo!(),
+            Node::Descendants(Descendants { descendants }) => {
+                bytes.push(DESCENDANTS_TAG);
+                bytes.extend_from_slice(cast_slice(descendants));
+            }
         }
         Ok(Cow::Owned(bytes))
     }
@@ -478,18 +471,18 @@ impl<'a, D: Distance + 'a> BytesDecode<'a> for NodeCodec<D> {
                 Ok(Node::Leaf(Leaf { header, vector }))
             }
             [SPLIT_PLANE_NORMAL_TAG, bytes @ ..] => {
-                let normal_len = BigEndian::read_u32(bytes);
+                let left = BigEndian::read_u32(bytes);
                 let bytes = &bytes[size_of::<u32>()..];
-                let left_len = BigEndian::read_u32(bytes);
+                let right = BigEndian::read_u32(bytes);
                 let bytes = &bytes[size_of::<u32>()..];
-                let (normal_bytes, bytes) = &bytes.split_at(normal_len as usize);
-                let (left_bytes, right_bytes) = &bytes.split_at(left_len as usize);
-                // Ok(Node::SplitPlaneNormal(SplitPlaneNormal {
-                //     normal: pod_collect_to_vec(normal_bytes),
-                //     left: pod_collect_to_vec(left_bytes),
-                //     right: pod_collect_to_vec(right_bytes),
-                // }))
-                todo!()
+                Ok(Node::SplitPlaneNormal(SplitPlaneNormal {
+                    normal: pod_collect_to_vec(bytes),
+                    left,
+                    right,
+                }))
+            }
+            [DESCENDANTS_TAG, bytes @ ..] => {
+                Ok(Node::Descendants(Descendants { descendants: pod_collect_to_vec(bytes) }))
             }
             unknown => panic!("What the fuck is an {unknown:?}"),
         }
