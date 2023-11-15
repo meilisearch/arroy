@@ -1,3 +1,39 @@
+use std::fmt;
+
+pub use angular::Angular;
+use bytemuck::{Pod, Zeroable};
+use rand::Rng;
+
+use crate::node::{Leaf, SplitPlaneNormal};
+use crate::Side;
+
+mod angular;
+
+pub trait Distance: Sized + Clone + fmt::Debug {
+    type Header: Pod + Zeroable + fmt::Debug;
+
+    fn new_header(vector: &[f32]) -> Self::Header;
+    fn distance(p: &Leaf<Self>, q: &Leaf<Self>) -> f32;
+    fn norm(v: &[f32]) -> f32;
+    fn normalize(node: &mut Leaf<Self>);
+    fn init(node: &mut Leaf<Self>);
+    fn update_mean(mean: &mut Leaf<Self>, new_node: &Leaf<Self>, norm: f32, c: f32);
+    fn create_split<R: Rng>(children: &[Leaf<Self>], rng: &mut R) -> SplitPlaneNormal;
+    fn side<R: Rng>(plane: &SplitPlaneNormal, node: &Leaf<Self>, rng: &mut R) -> Side;
+}
+
+#[repr(C)]
+#[derive(Pod, Zeroable, Debug, Clone, Copy)]
+pub struct NodeHeaderMinkowski {
+    bias: f32,
+}
+
+#[repr(C)]
+#[derive(Pod, Zeroable, Debug, Clone, Copy)]
+pub struct NodeHeaderDot {
+    dot_factor: f32,
+}
+
 pub fn dot_product_no_simd(u: &[f32], v: &[f32]) -> f32 {
     u.iter().zip(v.iter()).map(|(x, y)| x * y).sum()
 }

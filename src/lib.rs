@@ -1,20 +1,36 @@
-mod arroy;
-mod arroy_reader;
 mod distance;
-// mod heed_reader;
 mod node;
 mod priority_queue;
+mod reader;
+mod writer;
 
-pub use arroy::{Angular, NodeCodec, NodeHeaderAngular, Reader, Writer, BEU32};
-pub use arroy_reader::ArroyReader;
-// pub use heed_reader::HeedReader;
+pub use distance::{Angular, Distance};
+pub use node::{Node, NodeCodec};
+use rand::Rng;
+pub use reader::Reader;
+pub use writer::Writer;
 
-#[derive(PartialEq, Eq, Debug, Copy, Clone)]
-#[repr(u8)]
-pub enum DistanceType {
-    Angular = 0,
-    Euclidean = 1,
-    Manhattan = 2,
-    // Hamming = 3,
-    Dot = 4,
+/// An big endian-encoded u32.
+pub type BEU32 = heed::types::U32<heed::byteorder::BE>;
+
+/// An external item id.
+pub type ItemId = u32;
+
+/// An internal node id.
+type NodeId = u32;
+
+#[derive(Debug, Copy, Clone)]
+pub enum Side {
+    Left,
+    Right,
+}
+
+impl Side {
+    pub fn random<R: Rng>(rng: &mut R) -> Side {
+        if rng.gen() {
+            Side::Left
+        } else {
+            Side::Right
+        }
+    }
 }
