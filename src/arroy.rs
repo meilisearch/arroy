@@ -1,7 +1,7 @@
 use std::borrow::Cow;
 use std::error::Error;
-use std::marker;
 use std::mem::size_of;
+use std::{fmt, marker};
 
 use bytemuck::checked::cast_slice;
 use bytemuck::{bytes_of, pod_collect_to_vec, pod_read_unaligned, Pod, Zeroable};
@@ -392,8 +392,8 @@ impl Side {
  * Note that we can't really do sizeof(node<T>) because we cheat and allocate
  * more memory to be able to fit the vector outside
  */
-#[derive(Clone)]
-enum Node<D: Distance> {
+#[derive(Debug, Clone)]
+pub enum Node<D: Distance> {
     Leaf(Leaf<D>),
     Descendants(Descendants),
     SplitPlaneNormal(SplitPlaneNormal),
@@ -413,25 +413,25 @@ impl<D: Distance> Node<D> {
     }
 }
 
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct Leaf<D: Distance> {
     pub header: D::Header,
     pub vector: Vec<f32>,
 }
 
-#[derive(Clone)]
-struct Descendants {
+#[derive(Debug, Clone)]
+pub struct Descendants {
     descendants: Vec<NodeId>,
 }
 
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct SplitPlaneNormal {
     pub normal: Vec<f32>,
     pub left: NodeId,
     pub right: NodeId,
 }
 
-struct NodeCodec<D>(D);
+pub struct NodeCodec<D>(D);
 
 impl<'a, D: Distance + 'a> BytesEncode<'a> for NodeCodec<D> {
     type EItem = Node<D>;
@@ -489,8 +489,8 @@ impl<'a, D: Distance + 'a> BytesDecode<'a> for NodeCodec<D> {
     }
 }
 
-pub trait Distance: Sized + Clone {
-    type Header: Pod + Zeroable;
+pub trait Distance: Sized + Clone + fmt::Debug {
+    type Header: Pod + Zeroable + fmt::Debug;
 
     fn name() -> &'static str;
     fn new_header(vector: &[f32]) -> Self::Header;
@@ -521,7 +521,7 @@ pub struct NodeHeaderDot {
     dot_factor: f32,
 }
 
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub enum Angular {}
 
 impl Distance for Angular {

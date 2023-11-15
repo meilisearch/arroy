@@ -5,7 +5,7 @@ mod distance;
 mod node;
 mod priority_queue;
 
-pub use arroy::{Reader, Writer};
+pub use arroy::{Angular, NodeCodec, NodeHeaderAngular, Reader, Writer, BEU32};
 pub use arroy_reader::ArroyReader;
 // pub use heed_reader::HeedReader;
 

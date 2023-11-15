@@ -50,4 +50,45 @@
 //     Ok(())
 // }
 
-fn main() {}
+use arroy::{Angular, NodeCodec, Reader, Writer, BEU32};
+use bytemuck::pod_collect_to_vec;
+use heed::types::{ByteSlice, LazyDecode};
+use heed::{Database, EnvOpenOptions, Unspecified};
+
+const TWENTY_HUNDRED_MIB: usize = 200 * 1024 * 1024;
+
+fn main() -> heed::Result<()> {
+    let dir = tempfile::tempdir()?;
+    let env = EnvOpenOptions::new().map_size(TWENTY_HUNDRED_MIB).open(dir.path())?;
+
+    // we will open the default unnamed database
+    let mut wtxn = env.write_txn()?;
+    let dimensions = 3;
+    let database: Database<BEU32, Unspecified> = env.create_database(&mut wtxn, None)?;
+    let writer = Writer::<Angular>::prepare(&mut wtxn, dimensions, database)?;
+
+    writer.add_item(&mut wtxn, 0, &[0., 1., 2.])?;
+    writer.add_item(&mut wtxn, 1, &[1., 2., 3.])?;
+    writer.add_item(&mut wtxn, 2, &[3., 4., 5.])?;
+
+    let rng = rand::thread_rng();
+    let _reader = writer.build(&mut wtxn, rng, Some(1))?;
+
+    for result in database.remap_data_type::<LazyDecode<NodeCodec<Angular>>>().iter(&wtxn)? {
+        let (i, lazy_node) = result?;
+        if i != u32::MAX {
+            let node = lazy_node.decode().unwrap();
+            println!("{i}: {node:?}");
+        } else {
+            let roots_bytes = database.remap_data_type::<ByteSlice>().get(&wtxn, &i)?.unwrap();
+            let roots: Vec<u32> = pod_collect_to_vec(roots_bytes);
+            println!("u32::MAX: {roots:?}");
+        }
+    }
+
+    wtxn.commit()?;
+
+    // HeedReader::load_from_tree(&mut wtxn, database, dimensions, distance_type, &tree)?;
+
+    Ok(())
+}
