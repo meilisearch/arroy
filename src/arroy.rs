@@ -71,20 +71,27 @@ impl<D: Distance> Reader<D> {
 pub struct Writer<D: Distance> {
     database: heed::Database<BEU32, NodeCodec<D>>,
     dimensions: usize,
+    // non-initiliazed until build is called.
     n_items: usize,
     roots: Vec<NodeId>,
     _marker: marker::PhantomData<D>,
 }
 
 impl<D: Distance> Writer<D> {
-    pub fn open<U>(dimensions: usize, database: Database<BEU32, U>) -> Writer<D> {
-        Writer {
-            database: database.remap_data_type(),
+    pub fn prepare<U>(
+        wtxn: &mut RwTxn,
+        dimensions: usize,
+        database: Database<BEU32, U>,
+    ) -> heed::Result<Writer<D>> {
+        let database = database.remap_data_type();
+        clear_tree_nodes(wtxn, database)?;
+        Ok(Writer {
+            database,
             dimensions,
-            n_items: todo!(),
+            n_items: 0,
             roots: Vec::new(),
             _marker: marker::PhantomData,
-        }
+        })
     }
 
     pub fn item_vector(&self, rtxn: &RoTxn, item: ItemId) -> heed::Result<Option<Vec<f32>>> {
@@ -122,14 +129,8 @@ impl<D: Distance> Writer<D> {
     ) -> heed::Result<Reader<D>> {
         // D::template preprocess<T, S, Node>(_nodes, _s, _n_items, _f);
 
-        // _n_nodes = _n_items;
-        // todo!("clear all the nodes but the items");
-
         self.n_items = self.database.len(wtxn)? as usize;
-        let last_item_id = match self.last_node_id(wtxn)? {
-            Some(last_id) => last_id,
-            None => todo!(),
-        };
+        let last_item_id = self.last_node_id(wtxn)?;
 
         let mut thread_roots = Vec::new();
         loop {
@@ -140,12 +141,13 @@ impl<D: Distance> Writer<D> {
             }
 
             let mut indices = Vec::new();
+            // Only fetch the item's ids, not the tree nodes ones
             for result in self.database.remap_data_type::<DecodeIgnore>().iter(wtxn)? {
                 let (i, _) = result?;
-                indices.push(i);
-                if i > last_item_id {
+                if last_item_id.map_or(true, |last| i > last) {
                     break;
                 }
+                indices.push(i);
             }
 
             let tree_root_id = self.make_tree(wtxn, indices, true, &mut rng)?;
@@ -154,15 +156,17 @@ impl<D: Distance> Writer<D> {
 
         self.roots.append(&mut thread_roots);
 
-        // Also, copy the roots into the last segment of the database
-        // This way we can load them faster without reading the whole file
-        // TODO do not do that, store the root ids into the metadata field
-        let n_nodes = self.database.len(wtxn)?;
-        for (i, id) in self.roots.iter().enumerate() {
-            let root_bytes = self.database.remap_data_type::<ByteSlice>().get(wtxn, id)?.unwrap();
-            let root_vec = root_bytes.to_vec();
-            let end_root_id = (n_nodes + i as u64).try_into().unwrap();
-            self.database.remap_data_type::<ByteSlice>().put(wtxn, &end_root_id, &root_vec)?;
+        // Also, copy the roots into the highest key of the database (u32::MAX).
+        // This way we can load them faster without reading the whole database.
+        match self.database.get(wtxn, &u32::MAX)? {
+            Some(_) => panic!("The database is full. We cannot write the root nodes ids"),
+            None => {
+                self.database.remap_data_type::<ByteSlice>().put(
+                    wtxn,
+                    &u32::MAX,
+                    cast_slice(self.roots.as_slice()),
+                )?;
+            }
         }
 
         // D::template postprocess<T, S, Node>(_nodes, _s, _n_items, _f);
@@ -174,6 +178,8 @@ impl<D: Distance> Writer<D> {
         })
     }
 
+    /// Creates a tree of nodes from the items the user provided
+    /// and generates descendants, split normal and root nodes.
     fn make_tree<R: Rng>(
         &self,
         wtxn: &mut RwTxn,
@@ -185,16 +191,6 @@ impl<D: Distance> Writer<D> {
         // that we can fit as much descendants as the number of dimensions
         let max_descendants = self.dimensions;
 
-        let last_node_id = match self.last_node_id(wtxn)? {
-            Some(last_id) => last_id,
-            None => todo!(),
-        };
-
-        // The basic rule is that if we have <= _K items, then it's a leaf node, otherwise it's a split node.
-        // There's some regrettable complications caused by the problem that root nodes have to be "special":
-        // 1. We identify root nodes by the arguable logic that _n_items == n->n_descendants, regardless of how many descendants they actually have
-        // 2. Root nodes with only 1 child need to be a "dummy" parent
-        // 3. Due to the _n_items "hack", we need to be careful with the cases where _n_items <= _K or _n_items > _K
         if indices.len() == 1 && !is_root {
             return Ok(indices[0]);
         }
@@ -202,34 +198,14 @@ impl<D: Distance> Writer<D> {
         if indices.len() <= max_descendants
             && (!is_root || self.n_items <= max_descendants || indices.len() == 1)
         {
-            //   threaded_build_policy.lock_n_nodes();
-            //   _allocate_size(_n_nodes + 1, threaded_build_policy);
-            //   S item = _n_nodes++;
-            //   threaded_build_policy.unlock_n_nodes();
-            let item = last_node_id + 1;
+            let item_id = match self.last_node_id(wtxn)? {
+                Some(last_id) => last_id.checked_add(1).unwrap(),
+                None => 0,
+            };
 
-            // let node = if is_root {
-            //     Node::Root(Root { children: () })
-            // } else {
-            //     // Node::
-            //     unimplemented!()
-            // };
-
-            return Ok(item);
-
-            //   threaded_build_policy.lock_shared_nodes();
-            //   Node* m = _get(item);
-            //   m->n_descendants = is_root ? _n_items : (S)indices.size();
-
-            //   // Using std::copy instead of a loop seems to resolve issues #3 and #13,
-            //   // probably because gcc 4.8 goes overboard with optimizations.
-            //   // Using memcpy instead of std::copy for MSVC compatibility. #235
-            //   // Only copy when necessary to avoid crash in MSVC 9. #293
-            //   if (!indices.empty())
-            //     memcpy(m->children, &indices[0], indices.size() * sizeof(S));
-
-            //   threaded_build_policy.unlock_shared_nodes();
-            //   return item;
+            let item = Node::Descendants(Descendants { descendants: indices });
+            self.database.put(wtxn, &item_id, &item)?;
+            return Ok(item_id);
         }
 
         let mut children = Vec::new();
@@ -281,7 +257,7 @@ impl<D: Distance> Writer<D> {
         }
 
         // TODO make sure to run _make_tree for the smallest child first (for cache locality)
-        // m->n_descendants = is_root ? _n_items : (S)indices.size();
+
         m.left = self.make_tree(wtxn, children_left, false, rng)?;
         m.right = self.make_tree(wtxn, children_right, false, rng)?;
 
@@ -302,6 +278,24 @@ impl<D: Distance> Writer<D> {
     }
 }
 
+/// Clears everything but the leafs nodes (items).
+/// Starts from the last node and stops at the first leaf.
+fn clear_tree_nodes<D: Distance>(
+    wtxn: &mut RwTxn,
+    database: Database<BEU32, NodeCodec<D>>,
+) -> heed::Result<()> {
+    database.delete(wtxn, &u32::MAX)?;
+    let mut cursor = database.rev_iter_mut(wtxn)?;
+    while let Some((_id, node)) = cursor.next().transpose()? {
+        if node.leaf().is_none() {
+            unsafe { cursor.del_current()? };
+        } else {
+            break;
+        }
+    }
+    Ok(())
+}
+
 fn split_imbalance(left_indices_len: usize, right_indices_len: usize) -> f64 {
     let ls = left_indices_len as f64;
     let rs = right_indices_len as f64;
@@ -318,7 +312,6 @@ fn item_vector<D: Distance>(
         Some(Node::Leaf(Leaf { header: _, vector })) => Ok(Some(vector)),
         Some(Node::SplitPlaneNormal(_)) => Ok(None),
         Some(Node::Descendants(_)) => Ok(None),
-        Some(Node::Root(_)) => Ok(None),
         None => Ok(None),
     }
 }
@@ -398,11 +391,10 @@ impl Side {
  * more memory to be able to fit the vector outside
  */
 #[derive(Clone)]
-pub enum Node<D: Distance> {
+enum Node<D: Distance> {
     Leaf(Leaf<D>),
     Descendants(Descendants),
     SplitPlaneNormal(SplitPlaneNormal),
-    Root(Root),
 }
 
 const LEAF_TAG: u8 = 0;
@@ -427,21 +419,15 @@ pub struct Leaf<D: Distance> {
 }
 
 #[derive(Clone)]
-pub struct Descendants {
+struct Descendants {
     descendants: Vec<NodeId>,
 }
 
 #[derive(Clone)]
 pub struct SplitPlaneNormal {
-    // pub header: D::Header,
     pub normal: Vec<f32>,
     pub left: NodeId,
     pub right: NodeId,
-}
-
-#[derive(Clone)]
-pub struct Root {
-    pub children: Vec<NodeId>,
 }
 
 struct NodeCodec<D>(D);
