@@ -1,14 +1,14 @@
 use std::borrow::Cow;
 use std::error::Error;
+use std::marker;
 use std::mem::size_of;
-use std::{cmp, marker};
 
 use bytemuck::checked::cast_slice;
-use bytemuck::{bytes_of, cast, pod_collect_to_vec, pod_read_unaligned, Pod, Zeroable};
+use bytemuck::{bytes_of, pod_collect_to_vec, pod_read_unaligned, Pod, Zeroable};
 use byteorder::{BigEndian, ByteOrder};
 use heed::types::{ByteSlice, DecodeIgnore};
 use heed::{BytesDecode, BytesEncode, Database, RoTxn, RwTxn};
-use rand::seq::index;
+use rand::seq::SliceRandom;
 use rand::Rng;
 
 /// An big endian-encoded u32.
@@ -126,8 +126,8 @@ impl<D: Distance> Writer<D> {
         // todo!("clear all the nodes but the items");
 
         self.n_items = self.database.len(wtxn)? as usize;
-        let last_item_id = match self.database.last(wtxn)? {
-            Some((i, _)) => i,
+        let last_item_id = match self.last_node_id(wtxn)? {
+            Some(last_id) => last_id,
             None => todo!(),
         };
 
@@ -185,8 +185,8 @@ impl<D: Distance> Writer<D> {
         // that we can fit as much descendants as the number of dimensions
         let max_descendants = self.dimensions;
 
-        let last_node_id = match self.database.last(wtxn)? {
-            Some((i, _)) => i,
+        let last_node_id = match self.last_node_id(wtxn)? {
+            Some(last_id) => last_id,
             None => todo!(),
         };
 
@@ -208,12 +208,12 @@ impl<D: Distance> Writer<D> {
             //   threaded_build_policy.unlock_n_nodes();
             let item = last_node_id + 1;
 
-            let node = if is_root {
-                Node::Root(Root { children: () })
-            } else {
-                // Node::
-                unimplemented!()
-            };
+            // let node = if is_root {
+            //     Node::Root(Root { children: () })
+            // } else {
+            //     // Node::
+            //     unimplemented!()
+            // };
 
             return Ok(item);
 
@@ -232,79 +232,72 @@ impl<D: Distance> Writer<D> {
             //   return item;
         }
 
-        // threaded_build_policy.lock_shared_nodes();
-        // vector<Node*> children;
-        // for (size_t i = 0; i < indices.size(); i++) {
-        //   S j = indices[i];
-        //   Node* n = _get(j);
-        //   if (n)
-        //     children.push_back(n);
-        // }
+        let mut children = Vec::new();
+        for node_id in &indices {
+            let node = self.database.get(wtxn, node_id)?.unwrap();
+            children.push(node);
+        }
 
-        // vector<S> children_indices[2];
-        // Node* m = (Node*)alloca(_s);
+        let mut children_left = Vec::new();
+        let mut children_right = Vec::new();
+        let mut remaining_attempts = 3;
 
-        // for (int attempt = 0; attempt < 3; attempt++) {
-        //   children_indices[0].clear();
-        //   children_indices[1].clear();
-        //   D::create_split(children, _f, _s, _random, m);
+        let mut m = loop {
+            children_left.clear();
+            children_right.clear();
 
-        //   for (size_t i = 0; i < indices.size(); i++) {
-        //     S j = indices[i];
-        //     Node* n = _get(j);
-        //     if (n) {
-        //       bool side = D::side(m, n, _f, _random);
-        //       children_indices[side].push_back(j);
-        //     } else {
-        //       annoylib_showUpdate("No node for index %d?\n", j);
-        //     }
-        //   }
+            let m = D::create_split(&children, rng);
+            for (&node_id, node) in indices.iter().zip(&children) {
+                match D::side(&m, node, rng) {
+                    Side::Left => children_left.push(node_id),
+                    Side::Right => children_right.push(node_id),
+                }
+            }
 
-        //   if (_split_imbalance(children_indices[0], children_indices[1]) < 0.95)
-        //     break;
-        // }
-        // threaded_build_policy.unlock_shared_nodes();
+            if split_imbalance(children_left.len(), children_right.len()) < 0.95
+                || remaining_attempts == 0
+            {
+                break m;
+            }
 
-        // // If we didn't find a hyperplane, just randomize sides as a last option
-        // while (_split_imbalance(children_indices[0], children_indices[1]) > 0.99) {
-        //   if (_verbose)
-        //     annoylib_showUpdate("\tNo hyperplane found (left has %zu children, right has %zu children)\n",
-        //       children_indices[0].size(), children_indices[1].size());
+            remaining_attempts -= 1;
+        };
 
-        //   children_indices[0].clear();
-        //   children_indices[1].clear();
+        // If we didn't find a hyperplane, just randomize sides as a last option
+        // and set the split plane to zero as a dummy plane.
+        while split_imbalance(children_left.len(), children_right.len()) > 0.99 {
+            children_left.clear();
+            children_right.clear();
 
-        //   // Set the vector to 0.0
-        //   for (int z = 0; z < _f; z++)
-        //     m->v[z] = 0;
+            m.normal.fill(0.0);
 
-        //   for (size_t i = 0; i < indices.size(); i++) {
-        //     S j = indices[i];
-        //     // Just randomize...
-        //     children_indices[_random.flip()].push_back(j);
-        //   }
-        // }
+            for &node_id in &indices {
+                match Side::random(rng) {
+                    Side::Left => children_left.push(node_id),
+                    Side::Right => children_right.push(node_id),
+                }
+            }
+        }
 
-        // int flip = (children_indices[0].size() > children_indices[1].size());
-
+        // TODO make sure to run _make_tree for the smallest child first (for cache locality)
         // m->n_descendants = is_root ? _n_items : (S)indices.size();
-        // for (int side = 0; side < 2; side++) {
-        //   // run _make_tree for the smallest child first (for cache locality)
-        //   m->children[side^flip] = _make_tree(children_indices[side^flip], false, _random, threaded_build_policy);
-        // }
+        m.left = self.make_tree(wtxn, children_left, false, rng)?;
+        m.right = self.make_tree(wtxn, children_right, false, rng)?;
 
-        // threaded_build_policy.lock_n_nodes();
-        // _allocate_size(_n_nodes + 1, threaded_build_policy);
-        // S item = _n_nodes++;
-        // threaded_build_policy.unlock_n_nodes();
+        let new_node_id = match self.last_node_id(wtxn)? {
+            Some(last_id) => last_id.checked_add(1).unwrap(),
+            None => 0,
+        };
 
-        // threaded_build_policy.lock_shared_nodes();
-        // memcpy(_get(item), m, _s);
-        // threaded_build_policy.unlock_shared_nodes();
+        self.database.put(wtxn, &new_node_id, &Node::SplitPlaneNormal(m))?;
+        Ok(new_node_id)
+    }
 
-        // return item;
-
-        todo!()
+    fn last_node_id(&self, rtxn: &RoTxn) -> heed::Result<Option<NodeId>> {
+        match self.database.remap_data_type::<DecodeIgnore>().last(rtxn)? {
+            Some((last_id, _)) => Ok(Some(last_id)),
+            None => Ok(None),
+        }
     }
 }
 
@@ -323,8 +316,69 @@ fn item_vector<D: Distance>(
     match database.get(rtxn, &item)? {
         Some(Node::Leaf(Leaf { header: _, vector })) => Ok(Some(vector)),
         Some(Node::SplitPlaneNormal(_)) => Ok(None),
+        Some(Node::Descendants(_)) => Ok(None),
         Some(Node::Root(_)) => Ok(None),
         None => Ok(None),
+    }
+}
+
+fn two_means<D: Distance, R: Rng>(rng: &mut R, leafs: &[Leaf<D>], cosine: bool) -> [Leaf<D>; 2] {
+    // This algorithm is a huge heuristic. Empirically it works really well, but I
+    // can't motivate it well. The basic idea is to keep two centroids and assign
+    // points to either one of them. We weight each centroid by the number of points
+    // assigned to it, so to balance it.
+
+    const ITERATION_STEPS: usize = 200;
+
+    let mut random_nodes = leafs.choose_multiple(rng, 2);
+    let mut leaf_p = random_nodes.next().unwrap().clone();
+    let mut leaf_q = random_nodes.next().unwrap().clone();
+
+    if cosine {
+        D::normalize(&mut leaf_p);
+        D::normalize(&mut leaf_q);
+    }
+
+    D::init(&mut leaf_p);
+    D::init(&mut leaf_q);
+
+    let mut ic = 1.0;
+    let mut jc = 1.0;
+    for _ in 0..ITERATION_STEPS {
+        let node_k = leafs.choose(rng).unwrap();
+        let di = ic * D::distance(&leaf_p.vector, &node_k.vector);
+        let dj = jc * D::distance(&leaf_q.vector, &node_k.vector);
+        let norm = if cosine { D::norm(&node_k.vector) } else { 1.0 };
+        if norm.is_nan() || norm <= 0.0 {
+            continue;
+        }
+        if di < dj {
+            Distance::update_mean(&mut leaf_p, node_k, norm, ic);
+            Distance::init(&mut leaf_p);
+            ic += 1.0;
+        } else if dj < di {
+            Distance::update_mean(&mut leaf_q, node_k, norm, jc);
+            Distance::init(&mut leaf_q);
+            jc += 1.0;
+        }
+    }
+
+    [leaf_p, leaf_q]
+}
+
+#[derive(Debug, Copy, Clone)]
+pub enum Side {
+    Left,
+    Right,
+}
+
+impl Side {
+    fn random<R: Rng>(rng: &mut R) -> Side {
+        if rng.gen() {
+            Side::Left
+        } else {
+            Side::Right
+        }
     }
 }
 
@@ -342,30 +396,40 @@ fn item_vector<D: Distance>(
  * Note that we can't really do sizeof(node<T>) because we cheat and allocate
  * more memory to be able to fit the vector outside
  */
-enum Node<D: Distance> {
+#[derive(Clone)]
+pub enum Node<D: Distance> {
     Leaf(Leaf<D>),
+    Descendants(Descendants),
     SplitPlaneNormal(SplitPlaneNormal),
     Root(Root),
 }
 
 const LEAF_TAG: u8 = 0;
-const SPLIT_PLANE_NORMAL_TAG: u8 = 1;
-const ROOT_TAG: u8 = 2;
+const DESCENDANTS_TAG: u8 = 1;
+const SPLIT_PLANE_NORMAL_TAG: u8 = 2;
+const ROOT_TAG: u8 = 3;
 
-struct Leaf<D: Distance> {
+#[derive(Clone)]
+pub struct Leaf<D: Distance> {
     pub header: D::Header,
     pub vector: Vec<f32>,
 }
 
-struct SplitPlaneNormal {
-    // pub header: D::Header,
-    pub normal: Vec<f32>,
-    // TODO make the deser lazy
-    pub left: Vec<NodeId>,
-    pub right: Vec<NodeId>,
+#[derive(Clone)]
+pub struct Descendants {
+    descendants: Vec<NodeId>,
 }
 
-struct Root {
+#[derive(Clone)]
+pub struct SplitPlaneNormal {
+    // pub header: D::Header,
+    pub normal: Vec<f32>,
+    pub left: NodeId,
+    pub right: NodeId,
+}
+
+#[derive(Clone)]
+pub struct Root {
     pub children: Vec<NodeId>,
 }
 
@@ -386,16 +450,18 @@ impl<'a, D: Distance + 'a> BytesEncode<'a> for NodeCodec<D> {
                 bytes.push(SPLIT_PLANE_NORMAL_TAG);
                 // bytes.extend_from_slice(bytes_of(header));
                 // TODO return error on try_into ???
-                let normal_len: u32 = normal.len().try_into().unwrap();
-                let left_len: u32 = left.len().try_into().unwrap();
+                // let normal_len: u32 = normal.len().try_into().unwrap();
+                // let left_len: u32 = left.len().try_into().unwrap();
 
-                bytes.extend_from_slice(&normal_len.to_be_bytes());
-                bytes.extend_from_slice(&left_len.to_be_bytes());
+                // bytes.extend_from_slice(&normal_len.to_be_bytes());
+                // bytes.extend_from_slice(&left_len.to_be_bytes());
 
-                bytes.extend_from_slice(cast_slice(normal));
-                bytes.extend_from_slice(cast_slice(left));
-                bytes.extend_from_slice(cast_slice(right));
+                // bytes.extend_from_slice(cast_slice(normal));
+                // bytes.extend_from_slice(cast_slice(left));
+                // bytes.extend_from_slice(cast_slice(right));
+                todo!()
             }
+            _ => todo!(),
         }
         Ok(Cow::Owned(bytes))
     }
@@ -419,24 +485,30 @@ impl<'a, D: Distance + 'a> BytesDecode<'a> for NodeCodec<D> {
                 let bytes = &bytes[size_of::<u32>()..];
                 let (normal_bytes, bytes) = &bytes.split_at(normal_len as usize);
                 let (left_bytes, right_bytes) = &bytes.split_at(left_len as usize);
-                Ok(Node::SplitPlaneNormal(SplitPlaneNormal {
-                    normal: pod_collect_to_vec(normal_bytes),
-                    left: pod_collect_to_vec(left_bytes),
-                    right: pod_collect_to_vec(right_bytes),
-                }))
+                // Ok(Node::SplitPlaneNormal(SplitPlaneNormal {
+                //     normal: pod_collect_to_vec(normal_bytes),
+                //     left: pod_collect_to_vec(left_bytes),
+                //     right: pod_collect_to_vec(right_bytes),
+                // }))
+                todo!()
             }
             unknown => panic!("What the fuck is an {unknown:?}"),
         }
     }
 }
 
-pub trait Distance {
+pub trait Distance: Sized + Clone {
     type Header: Pod + Zeroable;
 
     fn name() -> &'static str;
     fn new_header(vector: &[f32]) -> Self::Header;
     fn distance(p: &[f32], q: &[f32]) -> f32;
     fn norm(v: &[f32]) -> f32;
+    fn normalize(node: &mut Leaf<Self>);
+    fn init(node: &mut Leaf<Self>);
+    fn update_mean(mean: &mut Leaf<Self>, new_node: &Leaf<Self>, norm: f32, c: f32);
+    fn create_split<R: Rng>(children: &[Node<Self>], rng: &mut R) -> SplitPlaneNormal;
+    fn side<R: Rng>(plane: &SplitPlaneNormal, node: &Node<Self>, rng: &mut R) -> Side;
 }
 
 #[repr(C)]
