@@ -14,11 +14,14 @@ pub trait Distance: Sized + Clone + fmt::Debug {
 
     fn new_header(vector: &[f32]) -> Self::Header;
     fn distance(p: &Leaf<Self>, q: &Leaf<Self>) -> f32;
+    fn non_normalized_distance(p: &[f32], q: &[f32]) -> f32;
+    fn normalize_distance(d: f32) -> f32;
     fn norm(v: &[f32]) -> f32;
     fn normalize(node: &mut Leaf<Self>);
     fn init(node: &mut Leaf<Self>);
     fn update_mean(mean: &mut Leaf<Self>, new_node: &Leaf<Self>, norm: f32, c: f32);
     fn create_split<R: Rng>(children: &[Leaf<Self>], rng: &mut R) -> SplitPlaneNormal;
+    fn margin(p: &[f32], q: &[f32]) -> f32;
     fn side<R: Rng>(plane: &SplitPlaneNormal, node: &Leaf<Self>, rng: &mut R) -> Side;
 }
 

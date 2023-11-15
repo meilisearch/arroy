@@ -73,7 +73,7 @@ fn main() -> heed::Result<()> {
     }
 
     let rng = rand::thread_rng();
-    let _reader = writer.build(&mut wtxn, rng, Some(1))?;
+    writer.build(&mut wtxn, rng, Some(1))?;
 
     for result in database.remap_data_type::<LazyDecode<NodeCodec<Angular>>>().iter(&wtxn)? {
         let (i, lazy_node) = result?;

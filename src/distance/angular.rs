@@ -2,7 +2,7 @@ use bytemuck::{Pod, Zeroable};
 use rand::seq::SliceRandom;
 use rand::Rng;
 
-use super::dot_product_no_simd;
+use super::{cosine_distance_no_simd, dot_product_no_simd};
 use crate::node::{Leaf, SplitPlaneNormal};
 use crate::{Distance, Side};
 
@@ -23,16 +23,15 @@ impl Distance for Angular {
     }
 
     fn distance(p: &Leaf<Self>, q: &Leaf<Self>) -> f32 {
-        // want to calculate (a/|a| - b/|b|)^2
-        // = a^2 / a^2 + b^2 / b^2 - 2ab/|a||b|
-        // = 2 - 2cos
-        let pq = dot_product_no_simd(&p.vector, &q.vector);
-        let ppqq = p.header.norm * q.header.norm;
-        if ppqq > 0.0 {
-            2.0 - 2.0 * pq / ppqq.sqrt()
-        } else {
-            2.0 // cos is 0
-        }
+        Self::normalize_distance(Self::non_normalized_distance(&p.vector, &q.vector))
+    }
+
+    fn non_normalized_distance(p: &[f32], q: &[f32]) -> f32 {
+        cosine_distance_no_simd(p, q)
+    }
+
+    fn normalize_distance(d: f32) -> f32 {
+        d.sqrt()
     }
 
     fn norm(v: &[f32]) -> f32 {
@@ -66,8 +65,12 @@ impl Distance for Angular {
         SplitPlaneNormal { normal: normal.vector, left: u32::MAX, right: u32::MAX }
     }
 
+    fn margin(p: &[f32], q: &[f32]) -> f32 {
+        dot_product_no_simd(p, q)
+    }
+
     fn side<R: Rng>(plane: &SplitPlaneNormal, node: &Leaf<Self>, rng: &mut R) -> Side {
-        let dot = dot_product_no_simd(&plane.normal, &node.vector);
+        let dot = Self::margin(&node.vector, &plane.normal);
         if dot > 0.0 {
             Side::Right
         } else if dot < 0.0 {

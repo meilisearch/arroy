@@ -7,7 +7,7 @@ use rand::Rng;
 
 use crate::node::{Descendants, Leaf};
 use crate::reader::item_vector;
-use crate::{Distance, ItemId, Node, NodeCodec, NodeId, Reader, Side, BEU32};
+use crate::{Distance, ItemId, Node, NodeCodec, NodeId, Side, BEU32};
 
 pub struct Writer<D: Distance> {
     database: heed::Database<BEU32, NodeCodec<D>>,
@@ -67,7 +67,7 @@ impl<D: Distance> Writer<D> {
         wtxn: &mut RwTxn,
         mut rng: R,
         n_trees: Option<usize>,
-    ) -> heed::Result<Reader<D>> {
+    ) -> heed::Result<()> {
         // D::template preprocess<T, S, Node>(_nodes, _s, _n_items, _f);
 
         self.n_items = self.database.len(wtxn)? as usize;
@@ -112,7 +112,7 @@ impl<D: Distance> Writer<D> {
 
         // D::template postprocess<T, S, Node>(_nodes, _s, _n_items, _f);
 
-        Ok(Reader::from_database_and_dimensions(self.database, self.dimensions))
+        Ok(())
     }
 
     /// Creates a tree of nodes from the items the user provided
