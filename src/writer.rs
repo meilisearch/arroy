@@ -238,3 +238,107 @@ fn split_imbalance(left_indices_len: usize, right_indices_len: usize) -> f64 {
     let f = ls / (ls + rs + f64::EPSILON); // Avoid 0/0
     f.max(1.0 - f)
 }
+
+#[cfg(test)]
+mod test {
+    use std::fmt::{Display, Write};
+
+    use bytemuck::pod_collect_to_vec;
+    use heed::types::LazyDecode;
+    use heed::{Env, EnvOpenOptions, Unspecified};
+    use tempfile::TempDir;
+
+    use super::*;
+    use crate::Angular;
+
+    struct DatabaseHandle {
+        pub env: Env,
+        pub database: Database<BEU32, Unspecified>,
+        #[allow(unused)]
+        pub tempdir: TempDir,
+    }
+
+    impl Display for DatabaseHandle {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            let rtxn = self.env.read_txn().unwrap();
+            for result in self
+                .database
+                .remap_data_type::<LazyDecode<NodeCodec<Angular>>>()
+                .iter(&rtxn)
+                .unwrap()
+            {
+                let (i, lazy_node) = result.unwrap();
+                if i != u32::MAX {
+                    let node = lazy_node.decode().unwrap();
+                    writeln!(f, "{i}: {node:?}")?;
+                } else {
+                    let roots_bytes = self
+                        .database
+                        .remap_data_type::<ByteSlice>()
+                        .get(&rtxn, &i)
+                        .unwrap()
+                        .unwrap();
+                    let roots: Vec<u32> = pod_collect_to_vec(roots_bytes);
+                    writeln!(f, "\nu32::MAX: {roots:?}")?;
+                }
+            }
+            Ok(())
+        }
+    }
+
+    fn create_database() -> DatabaseHandle {
+        let dir = tempfile::tempdir().unwrap();
+        let env = EnvOpenOptions::new().map_size(200 * 1024 * 1024).open(dir.path()).unwrap();
+        let mut wtxn = env.write_txn().unwrap();
+        let database: Database<BEU32, Unspecified> = env.create_database(&mut wtxn, None).unwrap();
+        wtxn.commit().unwrap();
+        DatabaseHandle { env, database, tempdir: dir }
+    }
+
+    #[test]
+    fn write_one_vector_in_one_tree() {
+        let handle = create_database();
+        let mut wtxn = handle.env.write_txn().unwrap();
+        let writer = Writer::<Angular>::prepare(&mut wtxn, 3, handle.database).unwrap();
+        writer.add_item(&mut wtxn, 0, &[0.0, 1.0, 2.0]).unwrap();
+
+        let rng = rand::thread_rng();
+        let _reader = writer.build(&mut wtxn, rng, Some(1)).unwrap();
+        wtxn.commit().unwrap();
+
+        insta::assert_display_snapshot!(handle, @r###"
+        0: Leaf(Leaf { header: NodeHeaderAngular { norm: 2.236068 }, vector: [0.0, 1.0, 2.0] })
+        1: Descendants(Descendants { descendants: [0] })
+
+        u32::MAX: [1]
+        "###);
+    }
+
+    #[test]
+    fn write_one_vector_in_multiple_trees() {
+        let handle = create_database();
+        let mut wtxn = handle.env.write_txn().unwrap();
+        let writer = Writer::<Angular>::prepare(&mut wtxn, 3, handle.database).unwrap();
+        writer.add_item(&mut wtxn, 0, &[0.0, 1.0, 2.0]).unwrap();
+
+        let rng = rand::thread_rng();
+        let _reader = writer.build(&mut wtxn, rng, Some(10)).unwrap();
+        wtxn.commit().unwrap();
+
+        insta::assert_display_snapshot!(handle, @r###"
+        0: Leaf(Leaf { header: NodeHeaderAngular { norm: 2.236068 }, vector: [0.0, 1.0, 2.0] })
+        1: Descendants(Descendants { descendants: [0] })
+        2: Descendants(Descendants { descendants: [0] })
+        3: Descendants(Descendants { descendants: [0] })
+        4: Descendants(Descendants { descendants: [0] })
+        5: Descendants(Descendants { descendants: [0] })
+        6: Descendants(Descendants { descendants: [0] })
+        7: Descendants(Descendants { descendants: [0] })
+        8: Descendants(Descendants { descendants: [0] })
+        9: Descendants(Descendants { descendants: [0] })
+        10: Descendants(Descendants { descendants: [0] })
+
+        u32::MAX: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+        "###);
+    }
+}

@@ -86,7 +86,6 @@ fn main() -> heed::Result<()> {
             println!("u32::MAX: {roots:?}");
         }
     }
-
     wtxn.commit()?;
 
     // HeedReader::load_from_tree(&mut wtxn, database, dimensions, distance_type, &tree)?;
