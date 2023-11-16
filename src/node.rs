@@ -2,25 +2,27 @@ use std::borrow::Cow;
 use std::error::Error;
 use std::mem::size_of;
 
-use bytemuck::{bytes_of, cast_slice, pod_collect_to_vec, pod_read_unaligned};
+use bytemuck::{
+    bytes_of, cast_slice, pod_collect_to_vec, pod_read_unaligned, try_cast_slice, Pod, Zeroable,
+};
 use byteorder::{BigEndian, ByteOrder};
 use heed::{BytesDecode, BytesEncode};
 
 use crate::{Distance, NodeId};
 
 #[derive(Debug, Clone)]
-pub enum Node<D: Distance> {
-    Leaf(Leaf<D>),
-    Descendants(Descendants),
-    SplitPlaneNormal(SplitPlaneNormal),
+pub enum Node<'a, D: Distance> {
+    Leaf(Leaf<'a, D>),
+    Descendants(Descendants<'a>),
+    SplitPlaneNormal(SplitPlaneNormal<'a>),
 }
 
 const LEAF_TAG: u8 = 0;
 const DESCENDANTS_TAG: u8 = 1;
 const SPLIT_PLANE_NORMAL_TAG: u8 = 2;
 
-impl<D: Distance> Node<D> {
-    pub fn leaf(self) -> Option<Leaf<D>> {
+impl<'a, D: Distance> Node<'a, D> {
+    pub fn leaf(self) -> Option<Leaf<'a, D>> {
         if let Node::Leaf(leaf) = self {
             Some(leaf)
         } else {
@@ -30,27 +32,33 @@ impl<D: Distance> Node<D> {
 }
 
 #[derive(Debug, Clone)]
-pub struct Leaf<D: Distance> {
+pub struct Leaf<'a, D: Distance> {
     pub header: D::Header,
-    pub vector: Vec<f32>,
+    pub vector: Cow<'a, [f32]>,
+}
+
+impl<D: Distance> Leaf<'_, D> {
+    pub fn into_owned(self) -> Leaf<'static, D> {
+        Leaf { header: self.header, vector: Cow::Owned(self.vector.into_owned()) }
+    }
 }
 
 #[derive(Debug, Clone)]
-pub struct Descendants {
-    pub descendants: Vec<NodeId>,
+pub struct Descendants<'a> {
+    pub descendants: Cow<'a, [NodeId]>,
 }
 
 #[derive(Debug, Clone)]
-pub struct SplitPlaneNormal {
-    pub normal: Vec<f32>,
+pub struct SplitPlaneNormal<'a> {
+    pub normal: Cow<'a, [f32]>,
     pub left: NodeId,
     pub right: NodeId,
 }
 
 pub struct NodeCodec<D>(D);
 
-impl<'a, D: Distance + 'a> BytesEncode<'a> for NodeCodec<D> {
-    type EItem = Node<D>;
+impl<'a, D: Distance + 'static> BytesEncode<'a> for NodeCodec<D> {
+    type EItem = Node<'a, D>;
 
     fn bytes_encode(item: &Self::EItem) -> Result<Cow<'a, [u8]>, Box<dyn Error + Send + Sync>> {
         let mut bytes = Vec::new();
@@ -75,15 +83,15 @@ impl<'a, D: Distance + 'a> BytesEncode<'a> for NodeCodec<D> {
     }
 }
 
-impl<'a, D: Distance + 'a> BytesDecode<'a> for NodeCodec<D> {
-    type DItem = Node<D>;
+impl<'a, D: Distance + 'static> BytesDecode<'a> for NodeCodec<D> {
+    type DItem = Node<'a, D>;
 
-    fn bytes_decode(bytes: &[u8]) -> Result<Self::DItem, Box<dyn Error + Send + Sync>> {
+    fn bytes_decode(bytes: &'a [u8]) -> Result<Self::DItem, Box<dyn Error + Send + Sync>> {
         match bytes {
             [LEAF_TAG, bytes @ ..] => {
                 let (header_bytes, remaining) = bytes.split_at(size_of::<D::Header>());
                 let header = pod_read_unaligned(header_bytes);
-                let vector = pod_collect_to_vec(remaining);
+                let vector = aligned_or_collect_vec(remaining);
                 Ok(Node::Leaf(Leaf { header, vector }))
             }
             [SPLIT_PLANE_NORMAL_TAG, bytes @ ..] => {
@@ -92,15 +100,24 @@ impl<'a, D: Distance + 'a> BytesDecode<'a> for NodeCodec<D> {
                 let right = BigEndian::read_u32(bytes);
                 let bytes = &bytes[size_of::<u32>()..];
                 Ok(Node::SplitPlaneNormal(SplitPlaneNormal {
-                    normal: pod_collect_to_vec(bytes),
+                    normal: aligned_or_collect_vec(bytes),
                     left,
                     right,
                 }))
             }
             [DESCENDANTS_TAG, bytes @ ..] => {
-                Ok(Node::Descendants(Descendants { descendants: pod_collect_to_vec(bytes) }))
+                Ok(Node::Descendants(Descendants { descendants: aligned_or_collect_vec(bytes) }))
             }
             unknown => panic!("What the fuck is an {unknown:?}"),
         }
+    }
+}
+
+fn aligned_or_collect_vec<T: Pod + Zeroable>(bytes: &[u8]) -> Cow<[T]> {
+    use bytemuck::PodCastError::TargetAlignmentGreaterAndInputNotAligned;
+    match try_cast_slice(bytes) {
+        Ok(casted) => Cow::Borrowed(casted),
+        Err(TargetAlignmentGreaterAndInputNotAligned) => Cow::Owned(pod_collect_to_vec(bytes)),
+        Err(e) => panic!("casting slices failed: {e}"),
     }
 }

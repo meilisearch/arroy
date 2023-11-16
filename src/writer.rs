@@ -1,3 +1,4 @@
+use std::borrow::Cow;
 use std::marker;
 
 use bytemuck::checked::cast_slice;
@@ -18,7 +19,7 @@ pub struct Writer<D: Distance> {
     _marker: marker::PhantomData<D>,
 }
 
-impl<D: Distance> Writer<D> {
+impl<D: Distance + 'static> Writer<D> {
     pub fn prepare<U>(
         wtxn: &mut RwTxn,
         dimensions: usize,
@@ -36,7 +37,7 @@ impl<D: Distance> Writer<D> {
     }
 
     pub fn item_vector(&self, rtxn: &RoTxn, item: ItemId) -> heed::Result<Option<Vec<f32>>> {
-        Ok(item_leaf(self.database, rtxn, item)?.map(|leaf| leaf.vector))
+        Ok(item_leaf(self.database, rtxn, item)?.map(|leaf| leaf.vector.into_owned()))
     }
 
     pub fn add_item(&self, wtxn: &mut RwTxn, item: ItemId, vector: &[f32]) -> heed::Result<()> {
@@ -50,7 +51,7 @@ impl<D: Distance> Writer<D> {
         );
 
         // TODO find a way to not allocate the vector
-        let leaf = Leaf { header: D::new_header(vector), vector: vector.to_vec() };
+        let leaf = Leaf { header: D::new_header(vector), vector: Cow::Borrowed(vector) };
         self.database.put(wtxn, &item, &Node::Leaf(leaf))
     }
 
@@ -140,7 +141,7 @@ impl<D: Distance> Writer<D> {
                 None => 0,
             };
 
-            let item = Node::Descendants(Descendants { descendants: indices });
+            let item = Node::Descendants(Descendants { descendants: Cow::Owned(indices) });
             self.database.put(wtxn, &item_id, &item)?;
             return Ok(item_id);
         }
@@ -183,7 +184,7 @@ impl<D: Distance> Writer<D> {
             children_left.clear();
             children_right.clear();
 
-            m.normal.fill(0.0);
+            m.normal.to_mut().fill(0.0);
 
             for &node_id in &indices {
                 match Side::random(rng) {
@@ -216,7 +217,7 @@ impl<D: Distance> Writer<D> {
 
 /// Clears everything but the leafs nodes (items).
 /// Starts from the last node and stops at the first leaf.
-fn clear_tree_nodes<D: Distance>(
+fn clear_tree_nodes<D: Distance + 'static>(
     wtxn: &mut RwTxn,
     database: Database<BEU32, NodeCodec<D>>,
 ) -> heed::Result<()> {

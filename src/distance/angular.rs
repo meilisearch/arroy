@@ -44,7 +44,7 @@ impl Distance for Angular {
     fn normalize(node: &mut Leaf<Self>) {
         let norm = Self::norm(&node.vector);
         if norm > 0.0 {
-            node.vector.iter_mut().for_each(|x| *x /= norm);
+            node.vector.to_mut().iter_mut().for_each(|x| *x /= norm);
         }
     }
 
@@ -54,12 +54,13 @@ impl Distance for Angular {
 
     fn update_mean(mean: &mut Leaf<Self>, new_node: &Leaf<Self>, norm: f32, c: f32) {
         mean.vector
+            .to_mut()
             .iter_mut()
-            .zip(&new_node.vector)
+            .zip(new_node.vector.iter())
             .for_each(|(x, n)| *x = (*x * c + *n / norm) / (c + 1.0));
     }
 
-    fn create_split<R: Rng>(children: &[Leaf<Self>], rng: &mut R) -> SplitPlaneNormal {
+    fn create_split<R: Rng>(children: &[Leaf<Self>], rng: &mut R) -> SplitPlaneNormal<'static> {
         let [node_p, node_q] = two_means(rng, children, true);
         let vector = node_p.vector.iter().zip(node_q.vector.iter()).map(|(&p, &q)| p - q).collect();
         let mut normal = Leaf { header: NodeHeaderAngular { norm: 0.0 }, vector };
@@ -84,7 +85,11 @@ impl Distance for Angular {
     }
 }
 
-fn two_means<D: Distance, R: Rng>(rng: &mut R, leafs: &[Leaf<D>], cosine: bool) -> [Leaf<D>; 2] {
+fn two_means<D: Distance, R: Rng>(
+    rng: &mut R,
+    leafs: &[Leaf<D>],
+    cosine: bool,
+) -> [Leaf<'static, D>; 2] {
     // This algorithm is a huge heuristic. Empirically it works really well, but I
     // can't motivate it well. The basic idea is to keep two centroids and assign
     // points to either one of them. We weight each centroid by the number of points
@@ -93,8 +98,8 @@ fn two_means<D: Distance, R: Rng>(rng: &mut R, leafs: &[Leaf<D>], cosine: bool) 
     const ITERATION_STEPS: usize = 200;
 
     let mut random_nodes = leafs.choose_multiple(rng, 2);
-    let mut leaf_p = random_nodes.next().unwrap().clone();
-    let mut leaf_q = random_nodes.next().unwrap().clone();
+    let mut leaf_p = random_nodes.next().unwrap().clone().into_owned();
+    let mut leaf_q = random_nodes.next().unwrap().clone().into_owned();
 
     if cosine {
         D::normalize(&mut leaf_p);

@@ -1,8 +1,8 @@
+use std::borrow::Cow;
 use std::cmp::Reverse;
 use std::collections::BinaryHeap;
 use std::iter::repeat;
 use std::marker;
-use std::str::pattern::CharPredicateSearcher;
 
 use bytemuck::pod_collect_to_vec;
 use heed::types::ByteSlice;
@@ -20,7 +20,7 @@ pub struct Reader<D: Distance> {
     _marker: marker::PhantomData<D>,
 }
 
-impl<D: Distance> Reader<D> {
+impl<D: Distance + 'static> Reader<D> {
     pub fn open<U>(
         rtxn: &RoTxn,
         database: Database<BEU32, U>,
@@ -40,7 +40,7 @@ impl<D: Distance> Reader<D> {
     }
 
     pub fn item_vector(&self, rtxn: &RoTxn, item: ItemId) -> heed::Result<Option<Vec<f32>>> {
-        Ok(item_leaf(self.database, rtxn, item)?.map(|leaf| leaf.vector))
+        Ok(item_leaf(self.database, rtxn, item)?.map(|leaf| leaf.vector.into_owned()))
     }
 
     pub fn nns_by_item(
@@ -71,7 +71,7 @@ impl<D: Distance> Reader<D> {
             self.dimensions
         );
 
-        let leaf = Leaf { header: D::new_header(vector), vector: vector.to_vec() };
+        let leaf = Leaf { header: D::new_header(vector), vector: Cow::Borrowed(vector) };
         self.nns_by_leaf(rtxn, &leaf, count, search_k)
     }
 
@@ -98,7 +98,11 @@ impl<D: Distance> Reader<D> {
 
             match self.database.get(rtxn, &item)?.unwrap() {
                 Node::Leaf(_) => nns.push(item),
-                Node::Descendants(Descendants { mut descendants }) => nns.append(&mut descendants),
+                // TODO introduce an iterator method to avoid deserializing into a vector
+                Node::Descendants(Descendants { mut descendants }) => match descendants {
+                    Cow::Borrowed(descendants) => nns.extend_from_slice(descendants),
+                    Cow::Owned(ref mut descendants) => nns.append(descendants),
+                },
                 Node::SplitPlaneNormal(SplitPlaneNormal { normal, left, right }) => {
                     let margin = D::margin(&normal, &query_leaf.vector);
                     queue.push((OrderedFloat(D::pq_distance(dist, margin, Side::Left)), left));
@@ -125,21 +129,21 @@ impl<D: Distance> Reader<D> {
         let capacity = count.min(sorted_nns.len());
         let mut output = Vec::with_capacity(capacity);
         while let Some(Reverse((OrderedFloat(dist), item))) = sorted_nns.pop() {
-            output.push((item, D::normalized_distance(dist)));
             if output.len() == capacity {
                 break;
             }
+            output.push((item, D::normalized_distance(dist)));
         }
 
         Ok(output)
     }
 }
 
-pub fn item_leaf<D: Distance>(
+pub fn item_leaf<'a, D: Distance + 'static>(
     database: Database<BEU32, NodeCodec<D>>,
-    rtxn: &RoTxn,
+    rtxn: &'a RoTxn,
     item: ItemId,
-) -> heed::Result<Option<Leaf<D>>> {
+) -> heed::Result<Option<Leaf<'a, D>>> {
     match database.get(rtxn, &item)? {
         Some(Node::Leaf(leaf)) => Ok(Some(leaf)),
         Some(Node::SplitPlaneNormal(_)) => Ok(None),

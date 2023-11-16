@@ -1,6 +1,5 @@
 mod distance;
 mod node;
-mod priority_queue;
 mod reader;
 mod writer;
 

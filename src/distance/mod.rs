@@ -22,7 +22,7 @@ pub trait Distance: Sized + Clone + fmt::Debug {
     fn normalize(node: &mut Leaf<Self>);
     fn init(node: &mut Leaf<Self>);
     fn update_mean(mean: &mut Leaf<Self>, new_node: &Leaf<Self>, norm: f32, c: f32);
-    fn create_split<R: Rng>(children: &[Leaf<Self>], rng: &mut R) -> SplitPlaneNormal;
+    fn create_split<R: Rng>(children: &[Leaf<Self>], rng: &mut R) -> SplitPlaneNormal<'static>;
     fn margin(p: &[f32], q: &[f32]) -> f32;
     fn side<R: Rng>(plane: &SplitPlaneNormal, node: &Leaf<Self>, rng: &mut R) -> Side;
 }
