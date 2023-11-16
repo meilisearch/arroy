@@ -241,8 +241,8 @@ fn split_imbalance(left_indices_len: usize, right_indices_len: usize) -> f64 {
 }
 
 #[cfg(test)]
-mod test {
-    use std::fmt::{Display, Write};
+pub mod test {
+    use std::fmt::Display;
 
     use bytemuck::pod_collect_to_vec;
     use heed::types::LazyDecode;
@@ -253,7 +253,7 @@ mod test {
     use super::*;
     use crate::Angular;
 
-    struct DatabaseHandle {
+    pub struct DatabaseHandle {
         pub env: Env,
         pub database: Database<BEU32, Unspecified>,
         #[allow(unused)]
@@ -288,7 +288,7 @@ mod test {
         }
     }
 
-    fn create_database() -> DatabaseHandle {
+    pub fn create_database() -> DatabaseHandle {
         let dir = tempfile::tempdir().unwrap();
         let env = EnvOpenOptions::new().map_size(200 * 1024 * 1024).open(dir.path()).unwrap();
         let mut wtxn = env.write_txn().unwrap();
@@ -297,7 +297,7 @@ mod test {
         DatabaseHandle { env, database, tempdir: dir }
     }
 
-    fn rng() -> rand::rngs::StdRng {
+    pub fn rng() -> rand::rngs::StdRng {
         rand::rngs::StdRng::from_seed(std::array::from_fn(|_| 42))
     }
 
