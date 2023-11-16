@@ -30,6 +30,13 @@ impl Distance for Angular {
         d.max(0.0).sqrt()
     }
 
+    fn pq_distance(distance: f32, margin: f32, side: Side) -> f32 {
+        match side {
+            Side::Left => (-margin).min(distance),
+            Side::Right => margin.min(distance),
+        }
+    }
+
     fn norm(v: &[f32]) -> f32 {
         dot_product_no_simd(v, v).sqrt()
     }

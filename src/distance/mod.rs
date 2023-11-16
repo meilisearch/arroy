@@ -17,6 +17,7 @@ pub trait Distance: Sized + Clone + fmt::Debug {
     fn distance(p: &Leaf<Self>, q: &Leaf<Self>) -> f32;
     /// Normalizes the distance returned by the distance method.
     fn normalized_distance(d: f32) -> f32;
+    fn pq_distance(distance: f32, margin: f32, side: Side) -> f32;
     fn norm(v: &[f32]) -> f32;
     fn normalize(node: &mut Leaf<Self>);
     fn init(node: &mut Leaf<Self>);
