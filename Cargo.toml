@@ -13,5 +13,6 @@ rand = { version = "0.8.5", features = ["alloc"] }
 tempfile = "3.8.1"
 
 [dev-dependencies]
+rand = { features = ["std_rng"] }
 insta = "1.34.0"
 tempfile = "3.8.1"
