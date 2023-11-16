@@ -1,4 +1,5 @@
 use std::fmt::Display;
+use std::num::NonZeroUsize;
 
 use super::*;
 use crate::{Angular, ItemId, Reader, Writer};
@@ -60,12 +61,8 @@ fn two_dimension_on_a_line() {
     let rtxn = handle.env.read_txn().unwrap();
     let reader = Reader::<Angular>::open(&rtxn, handle.database, 2).unwrap();
 
-    // if we can't look into any node we can't find anything
-    let ret = reader.nns_by_item(&rtxn, 0, 5, Some(0)).unwrap();
-    insta::assert_display_snapshot!(NnsRes(ret), @"");
-
     // if we can't look into enough nodes we find some random points
-    let ret = reader.nns_by_item(&rtxn, 0, 5, Some(1)).unwrap();
+    let ret = reader.nns_by_item(&rtxn, 0, 5, NonZeroUsize::new(1)).unwrap();
     // TODO: The distances are wrong
     insta::assert_display_snapshot!(NnsRes(ret), @r###"
     id(9): distance(1.4142135)
@@ -73,7 +70,7 @@ fn two_dimension_on_a_line() {
     "###);
 
     // if we can look into all the node there is no inifinite loop and it works
-    let ret = reader.nns_by_item(&rtxn, 0, 5, Some(usize::MAX)).unwrap();
+    let ret = reader.nns_by_item(&rtxn, 0, 5, NonZeroUsize::new(usize::MAX)).unwrap();
     // TODO: The distances are wrong
     insta::assert_display_snapshot!(NnsRes(ret), @r###"
     id(0): distance(1.4142135)

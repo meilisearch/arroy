@@ -3,6 +3,7 @@ use std::cmp::Reverse;
 use std::collections::BinaryHeap;
 use std::iter::repeat;
 use std::marker;
+use std::num::NonZeroUsize;
 
 use bytemuck::pod_collect_to_vec;
 use heed::types::ByteSlice;
@@ -48,7 +49,7 @@ impl<D: Distance + 'static> Reader<D> {
         rtxn: &RoTxn,
         item: ItemId,
         count: usize,
-        search_k: Option<usize>, // TODO consider Option<NonZeroUsize>
+        search_k: Option<NonZeroUsize>,
     ) -> heed::Result<Option<Vec<(ItemId, f32)>>> {
         match item_leaf(self.database, rtxn, item)? {
             Some(leaf) => self.nns_by_leaf(rtxn, &leaf, count, search_k).map(Some),
@@ -61,7 +62,7 @@ impl<D: Distance + 'static> Reader<D> {
         rtxn: &RoTxn,
         vector: &[f32],
         count: usize,
-        search_k: Option<usize>, // TODO consider Option<NonZeroUsize>
+        search_k: Option<NonZeroUsize>,
     ) -> heed::Result<Vec<(ItemId, f32)>> {
         assert_eq!(
             vector.len(),
@@ -80,11 +81,11 @@ impl<D: Distance + 'static> Reader<D> {
         rtxn: &RoTxn,
         query_leaf: &Leaf<D>,
         count: usize,
-        search_k: Option<usize>, // TODO consider Option<NonZeroUsize>
+        search_k: Option<NonZeroUsize>,
     ) -> heed::Result<Vec<(ItemId, f32)>> {
         // TODO define the capacity
         let mut queue = BinaryHeap::new();
-        let search_k = search_k.unwrap_or(count * self.roots.len());
+        let search_k = search_k.map_or(count * self.roots.len(), NonZeroUsize::get);
 
         // Insert all the root nodes and associate them to the highest distance.
         queue.extend(repeat(OrderedFloat(f32::INFINITY)).zip(self.roots.iter().copied()));
