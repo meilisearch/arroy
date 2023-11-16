@@ -6,7 +6,7 @@ use heed::{Database, RoTxn, RwTxn};
 use rand::Rng;
 
 use crate::node::{Descendants, Leaf};
-use crate::reader::item_vector;
+use crate::reader::item_leaf;
 use crate::{Distance, ItemId, Node, NodeCodec, NodeId, Side, BEU32};
 
 pub struct Writer<D: Distance> {
@@ -36,7 +36,7 @@ impl<D: Distance> Writer<D> {
     }
 
     pub fn item_vector(&self, rtxn: &RoTxn, item: ItemId) -> heed::Result<Option<Vec<f32>>> {
-        item_vector(self.database, rtxn, item)
+        Ok(item_leaf(self.database, rtxn, item)?.map(|leaf| leaf.vector))
     }
 
     pub fn add_item(&self, wtxn: &mut RwTxn, item: ItemId, vector: &[f32]) -> heed::Result<()> {

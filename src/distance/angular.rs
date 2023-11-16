@@ -23,15 +23,11 @@ impl Distance for Angular {
     }
 
     fn distance(p: &Leaf<Self>, q: &Leaf<Self>) -> f32 {
-        Self::normalize_distance(Self::non_normalized_distance(&p.vector, &q.vector))
+        cosine_distance_no_simd(&p.vector, &q.vector)
     }
 
-    fn non_normalized_distance(p: &[f32], q: &[f32]) -> f32 {
-        cosine_distance_no_simd(p, q)
-    }
-
-    fn normalize_distance(d: f32) -> f32 {
-        d.sqrt()
+    fn normalized_distance(d: f32) -> f32 {
+        d.max(0.0).sqrt()
     }
 
     fn norm(v: &[f32]) -> f32 {

@@ -13,9 +13,10 @@ pub trait Distance: Sized + Clone + fmt::Debug {
     type Header: Pod + Zeroable + fmt::Debug;
 
     fn new_header(vector: &[f32]) -> Self::Header;
+    /// Returns a non-normalized distance.
     fn distance(p: &Leaf<Self>, q: &Leaf<Self>) -> f32;
-    fn non_normalized_distance(p: &[f32], q: &[f32]) -> f32;
-    fn normalize_distance(d: f32) -> f32;
+    /// Normalizes the distance returned by the distance method.
+    fn normalized_distance(d: f32) -> f32;
     fn norm(v: &[f32]) -> f32;
     fn normalize(node: &mut Leaf<Self>);
     fn init(node: &mut Leaf<Self>);

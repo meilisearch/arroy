@@ -332,6 +332,7 @@ impl<D: Distance> HeedReader<D> {
                 Node::Leaf(leaf) => leaf.vector(),
                 Node::Descendants(_) | Node::SplitPlaneNormal(_) => continue,
             };
+            // TODO use a tuple to simplify things
             sorted_nns.push(Reverse(BinaryHeapItem {
                 item: nn_id,
                 ord: OrderedFloat(self.distance_type.distance_no_norm(&s, query_vector)),
