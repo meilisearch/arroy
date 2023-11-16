@@ -3,6 +3,9 @@ mod node;
 mod reader;
 mod writer;
 
+#[cfg(test)]
+mod tests;
+
 pub use distance::{Angular, Distance};
 pub use node::{Node, NodeCodec};
 use rand::Rng;
