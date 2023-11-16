@@ -50,7 +50,7 @@
 //     Ok(())
 // }
 
-use arroy::{Angular, NodeCodec, Writer, BEU32};
+use arroy::{Angular, NodeCodec, Reader, Writer, BEU32};
 use bytemuck::pod_collect_to_vec;
 use heed::types::{ByteSlice, LazyDecode};
 use heed::{Database, EnvOpenOptions, Unspecified};
@@ -87,6 +87,12 @@ fn main() -> heed::Result<()> {
         }
     }
     wtxn.commit()?;
+
+    let rtxn = env.read_txn()?;
+    let reader = Reader::<Angular>::open(&rtxn, database, dimensions)?;
+    for (id, dist) in reader.nns_by_item(&rtxn, 50, 10, None)?.unwrap() {
+        println!("id({id}): distance({dist})");
+    }
 
     // HeedReader::load_from_tree(&mut wtxn, database, dimensions, distance_type, &tree)?;
 
