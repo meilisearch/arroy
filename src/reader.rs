@@ -104,7 +104,7 @@ impl<D: Distance + 'static> Reader<D> {
                     Cow::Owned(ref mut descendants) => nns.append(descendants),
                 },
                 Node::SplitPlaneNormal(SplitPlaneNormal { normal, left, right }) => {
-                    let margin = D::margin(&normal, &query_leaf.vector);
+                    let margin = D::margin_no_header(&normal, &query_leaf.vector);
                     queue.push((OrderedFloat(D::pq_distance(dist, margin, Side::Left)), left));
                     queue.push((OrderedFloat(D::pq_distance(dist, margin, Side::Right)), right));
                 }
@@ -133,7 +133,7 @@ impl<D: Distance + 'static> Reader<D> {
             if output.len() == capacity {
                 break;
             }
-            output.push((item, D::normalized_distance(dbg!(dist))));
+            output.push((item, D::normalized_distance(dist)));
         }
 
         Ok(output)
