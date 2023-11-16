@@ -6,7 +6,7 @@ mod writer;
 #[cfg(test)]
 mod tests;
 
-pub use distance::{Angular, Distance, Euclidean};
+pub use distance::{Angular, Distance, Euclidean, Manhattan};
 pub use node::{Node, NodeCodec};
 use rand::Rng;
 pub use reader::Reader;

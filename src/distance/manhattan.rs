@@ -6,26 +6,28 @@ use crate::node::{Leaf, SplitPlaneNormal};
 use crate::Distance;
 
 #[derive(Debug, Clone)]
-pub enum Euclidean {}
+pub enum Manhattan {}
 
 #[repr(C)]
 #[derive(Pod, Zeroable, Debug, Clone, Copy)]
-pub struct NodeHeaderEuclidean {
+pub struct NodeHeaderManhattan {
     /// An extra constant term to determine the offset of the plane
     bias: f32,
 }
 
-impl Distance for Euclidean {
-    type Header = NodeHeaderEuclidean;
+impl Distance for Manhattan {
+    type Header = NodeHeaderManhattan;
 
     fn new_header(_vector: &[f32]) -> Self::Header {
-        NodeHeaderEuclidean { bias: 0.0 }
+        NodeHeaderManhattan { bias: 0.0 }
     }
 
     fn distance(p: &Leaf<Self>, q: &Leaf<Self>) -> f32 {
-        // Don't use dot-product: avoid catastrophic cancellation in
-        // https://github.com/spotify/annoy/issues/314.
-        p.vector.iter().zip(q.vector.iter()).map(|(&p, &q)| (p - q) * (p - q)).sum()
+        p.vector.iter().zip(q.vector.iter()).map(|(&p, &q)| (p - q).abs()).sum()
+    }
+
+    fn normalized_distance(d: f32) -> f32 {
+        d.max(0.0)
     }
 
     fn init(_node: &mut Leaf<Self>) {}
@@ -33,7 +35,7 @@ impl Distance for Euclidean {
     fn create_split<R: Rng>(children: &[Leaf<Self>], rng: &mut R) -> SplitPlaneNormal<'static> {
         let [node_p, node_q] = two_means(rng, children, false);
         let vector = node_p.vector.iter().zip(node_q.vector.iter()).map(|(&p, &q)| p - q).collect();
-        let mut normal = Leaf { header: NodeHeaderEuclidean { bias: 0.0 }, vector };
+        let mut normal = Leaf { header: NodeHeaderManhattan { bias: 0.0 }, vector };
         Self::normalize(&mut normal);
 
         normal.header.bias = normal

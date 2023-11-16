@@ -3,6 +3,7 @@ use std::fmt;
 pub use angular::Angular;
 use bytemuck::{Pod, Zeroable};
 pub use euclidean::Euclidean;
+pub use manhattan::Manhattan;
 use rand::seq::SliceRandom;
 use rand::Rng;
 
@@ -11,6 +12,7 @@ use crate::Side;
 
 mod angular;
 mod euclidean;
+mod manhattan;
 
 pub trait Distance: Sized + Clone + fmt::Debug {
     type Header: Pod + Zeroable + fmt::Debug;
