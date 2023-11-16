@@ -22,8 +22,8 @@ pub struct Writer<D: Distance> {
 impl<D: Distance + 'static> Writer<D> {
     pub fn prepare<U>(
         wtxn: &mut RwTxn,
-        dimensions: usize,
         database: Database<BEU32, U>,
+        dimensions: usize,
     ) -> heed::Result<Writer<D>> {
         let database = database.remap_data_type();
         clear_tree_nodes(wtxn, database)?;

@@ -24,7 +24,7 @@ impl Display for NnsRes {
 fn two_db_with_wrong_dimension() {
     let handle = create_database();
     let mut wtxn = handle.env.write_txn().unwrap();
-    let writer = Writer::<Angular>::prepare(&mut wtxn, 2, handle.database).unwrap();
+    let writer = Writer::<Angular>::prepare(&mut wtxn, handle.database, 2).unwrap();
     writer.add_item(&mut wtxn, 0, &[0.0, 0.0]).unwrap();
 
     writer.build(&mut wtxn, rng(), Some(1)).unwrap();
@@ -44,7 +44,7 @@ fn two_db_with_wrong_dimension() {
 fn two_dimension_on_a_line() {
     let handle = create_database();
     let mut wtxn = handle.env.write_txn().unwrap();
-    let writer = Writer::<Angular>::prepare(&mut wtxn, 2, handle.database).unwrap();
+    let writer = Writer::<Angular>::prepare(&mut wtxn, handle.database, 2).unwrap();
     // We'll draw a simple line over the y as seen below
     // (0,0) # . . . . .
     // (0,1) # . . . . .
@@ -95,7 +95,7 @@ fn two_dimension_on_a_line() {
 fn two_dimension_on_a_column() {
     let handle = create_database();
     let mut wtxn = handle.env.write_txn().unwrap();
-    let writer = Writer::<Angular>::prepare(&mut wtxn, 2, handle.database).unwrap();
+    let writer = Writer::<Angular>::prepare(&mut wtxn, handle.database, 2).unwrap();
     // We'll draw a simple line over the y as seen below
     // (0,0) # # # # # # ...
     for i in 0..100 {

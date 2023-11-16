@@ -13,7 +13,7 @@ fn main() -> heed::Result<()> {
     let mut wtxn = env.write_txn()?;
     let dimensions = 2;
     let database: Database<BEU32, Unspecified> = env.create_database(&mut wtxn, None)?;
-    let writer = Writer::<Euclidean>::prepare(&mut wtxn, dimensions, database)?;
+    let writer = Writer::<Euclidean>::prepare(&mut wtxn, database, dimensions)?;
 
     for i in 0..5 {
         let f = i as f32;

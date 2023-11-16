@@ -7,7 +7,7 @@ use crate::{Angular, Writer};
 fn write_one_vector_in_one_tree() {
     let handle = create_database();
     let mut wtxn = handle.env.write_txn().unwrap();
-    let writer = Writer::<Angular>::prepare(&mut wtxn, 3, handle.database).unwrap();
+    let writer = Writer::<Angular>::prepare(&mut wtxn, handle.database, 3).unwrap();
     writer.add_item(&mut wtxn, 0, &[0.0, 1.0, 2.0]).unwrap();
 
     writer.build(&mut wtxn, rng(), Some(1)).unwrap();
@@ -25,7 +25,7 @@ fn write_one_vector_in_one_tree() {
 fn write_one_vector_in_multiple_trees() {
     let handle = create_database();
     let mut wtxn = handle.env.write_txn().unwrap();
-    let writer = Writer::<Angular>::prepare(&mut wtxn, 3, handle.database).unwrap();
+    let writer = Writer::<Angular>::prepare(&mut wtxn, handle.database, 3).unwrap();
     writer.add_item(&mut wtxn, 0, &[0.0, 1.0, 2.0]).unwrap();
 
     writer.build(&mut wtxn, rng(), Some(10)).unwrap();
@@ -52,7 +52,7 @@ fn write_one_vector_in_multiple_trees() {
 fn write_vectors_until_there_is_a_descendants() {
     let handle = create_database();
     let mut wtxn = handle.env.write_txn().unwrap();
-    let writer = Writer::<Angular>::prepare(&mut wtxn, 3, handle.database).unwrap();
+    let writer = Writer::<Angular>::prepare(&mut wtxn, handle.database, 3).unwrap();
     for i in 0..3 {
         let id = i;
         let i = i as f32;
@@ -76,7 +76,7 @@ fn write_vectors_until_there_is_a_descendants() {
 fn write_vectors_until_there_is_a_split() {
     let handle = create_database();
     let mut wtxn = handle.env.write_txn().unwrap();
-    let writer = Writer::<Angular>::prepare(&mut wtxn, 3, handle.database).unwrap();
+    let writer = Writer::<Angular>::prepare(&mut wtxn, handle.database, 3).unwrap();
     for i in 0..4 {
         let id = i;
         let i = i as f32;
@@ -102,7 +102,7 @@ fn write_vectors_until_there_is_a_split() {
 fn write_a_lot_of_random_points() {
     let handle = create_database();
     let mut wtxn = handle.env.write_txn().unwrap();
-    let writer = Writer::<Angular>::prepare(&mut wtxn, 30, handle.database).unwrap();
+    let writer = Writer::<Angular>::prepare(&mut wtxn, handle.database, 30).unwrap();
     let mut rng = rng();
     for id in 0..100 {
         let vector: [f32; 30] = std::array::from_fn(|_| rng.gen());
