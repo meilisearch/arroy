@@ -122,7 +122,8 @@ impl<D: Distance + 'static> Reader<D> {
                 Node::Leaf(leaf) => leaf,
                 Node::Descendants(_) | Node::SplitPlaneNormal(_) => panic!("Shouldn't happen"),
             };
-            nns_distances.push(Reverse((OrderedFloat(D::distance(query_leaf, &leaf)), nn)));
+            let distance = D::distance(query_leaf, &leaf);
+            nns_distances.push(Reverse((OrderedFloat(distance), nn)));
         }
 
         let mut sorted_nns = BinaryHeap::from(nns_distances);
@@ -132,7 +133,7 @@ impl<D: Distance + 'static> Reader<D> {
             if output.len() == capacity {
                 break;
             }
-            output.push((item, D::normalized_distance(dist)));
+            output.push((item, D::normalized_distance(dbg!(dist))));
         }
 
         Ok(output)
@@ -192,7 +193,7 @@ mod test {
         let ret = reader.nns_by_item(&rtxn, 0, 5, None).unwrap();
 
         insta::assert_display_snapshot!(NnsRes(ret), @r###"
-        id(0): distance(0)
+        id(0): distance(1.4142135)
         "###);
     }
 
@@ -225,29 +226,29 @@ mod test {
         let ret = reader.nns_by_item(&rtxn, 0, 5, Some(1)).unwrap();
         // TODO: The distances are wrong
         insta::assert_display_snapshot!(NnsRes(ret), @r###"
-        id(9): distance(0)
-        id(70): distance(0)
+        id(9): distance(1.4142135)
+        id(70): distance(1.4142135)
         "###);
 
         // if we can look into all the node there is no inifinite loop and it works
         let ret = reader.nns_by_item(&rtxn, 0, 5, Some(usize::MAX)).unwrap();
         // TODO: The distances are wrong
         insta::assert_display_snapshot!(NnsRes(ret), @r###"
-        id(0): distance(0)
-        id(1): distance(0)
-        id(2): distance(0)
-        id(3): distance(0)
-        id(4): distance(0)
+        id(0): distance(1.4142135)
+        id(1): distance(1.4142135)
+        id(2): distance(1.4142135)
+        id(3): distance(1.4142135)
+        id(4): distance(1.4142135)
         "###);
 
         let ret = reader.nns_by_item(&rtxn, 0, 5, None).unwrap();
         // TODO: The distances are wrong
         insta::assert_display_snapshot!(NnsRes(ret), @r###"
-        id(0): distance(0)
-        id(1): distance(0)
-        id(2): distance(0)
-        id(3): distance(0)
-        id(4): distance(0)
+        id(0): distance(1.4142135)
+        id(1): distance(1.4142135)
+        id(2): distance(1.4142135)
+        id(3): distance(1.4142135)
+        id(4): distance(1.4142135)
         "###);
     }
 
@@ -271,11 +272,11 @@ mod test {
 
         // TODO: The distances are wrong
         insta::assert_display_snapshot!(NnsRes(ret), @r###"
-        id(0): distance(0)
-        id(1): distance(0)
-        id(2): distance(0)
-        id(3): distance(0)
-        id(4): distance(0)
+        id(0): distance(1.4142135)
+        id(1): distance(1.4142135)
+        id(2): distance(1.4142135)
+        id(3): distance(1.4142135)
+        id(4): distance(1.4142135)
         "###);
     }
 }

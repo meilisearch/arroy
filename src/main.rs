@@ -63,13 +63,13 @@ fn main() -> heed::Result<()> {
 
     // we will open the default unnamed database
     let mut wtxn = env.write_txn()?;
-    let dimensions = 3;
+    let dimensions = 2;
     let database: Database<BEU32, Unspecified> = env.create_database(&mut wtxn, None)?;
     let writer = Writer::<Angular>::prepare(&mut wtxn, dimensions, database)?;
 
-    for i in 0..100 {
+    for i in 0..5 {
         let f = i as f32;
-        writer.add_item(&mut wtxn, i, &[f, f + 1.0, f + 2.0])?;
+        writer.add_item(&mut wtxn, i, &[0.0, f])?;
     }
 
     let rng = rand::thread_rng();
@@ -90,7 +90,7 @@ fn main() -> heed::Result<()> {
 
     let rtxn = env.read_txn()?;
     let reader = Reader::<Angular>::open(&rtxn, database, dimensions)?;
-    for (id, dist) in reader.nns_by_item(&rtxn, 50, 10, None)?.unwrap() {
+    for (id, dist) in reader.nns_by_vector(&rtxn, &[0., 0.], 10, None)? {
         println!("id({id}): distance({dist})");
     }
 

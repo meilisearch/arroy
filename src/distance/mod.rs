@@ -54,14 +54,14 @@ pub fn cosine_distance_no_simd(u: &[f32], v: &[f32]) -> f32 {
     let mut pp: f32 = 0.0;
     let mut qq: f32 = 0.0;
     let mut pq: f32 = 0.0;
-    for (_u, _v) in u.iter().zip(v.iter()) {
-        pp += _u * _u;
-        qq += _v * _v;
-        pq += _u * _v;
+    for (u, v) in u.iter().zip(v.iter()) {
+        pp += u * u;
+        qq += v * v;
+        pq += u * v;
     }
-    let ppqq = pp * qq;
+    let ppqq = dbg!(pp) * dbg!(qq);
     if ppqq.is_sign_positive() {
-        2.0 - 2.0 * pq / ppqq.sqrt()
+        2.0 - dbg!(2.0 * dbg!(pq)) / dbg!(ppqq.sqrt())
     } else {
         2.0
     }

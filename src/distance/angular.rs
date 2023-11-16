@@ -2,7 +2,7 @@ use bytemuck::{Pod, Zeroable};
 use rand::seq::SliceRandom;
 use rand::Rng;
 
-use super::{cosine_distance_no_simd, dot_product_no_simd};
+use super::dot_product_no_simd;
 use crate::node::{Leaf, SplitPlaneNormal};
 use crate::{Distance, Side};
 
@@ -23,11 +23,19 @@ impl Distance for Angular {
     }
 
     fn distance(p: &Leaf<Self>, q: &Leaf<Self>) -> f32 {
-        cosine_distance_no_simd(&p.vector, &q.vector)
+        let pp = p.header.norm;
+        let qq = q.header.norm;
+        let pq = dot_product_no_simd(&p.vector, &q.vector);
+        let ppqq = pp * qq;
+        if ppqq >= f32::MIN_POSITIVE {
+            2.0 - 2.0 * pq / ppqq.sqrt()
+        } else {
+            2.0 // cos is 0
+        }
     }
 
     fn normalized_distance(d: f32) -> f32 {
-        d.max(0.0).sqrt()
+        d.sqrt()
     }
 
     fn pq_distance(distance: f32, margin: f32, side: Side) -> f32 {
