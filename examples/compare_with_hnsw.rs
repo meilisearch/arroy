@@ -1,7 +1,8 @@
+use std::borrow::Cow;
 use std::num::NonZeroUsize;
 use std::time::Instant;
 
-use arroy::{Euclidean, ItemId, Reader, Writer, BEU32};
+use arroy::{Distance, Euclidean, ItemId, Leaf, Reader, Writer, BEU32};
 use heed::{Database, EnvOpenOptions, RwTxn, Unspecified};
 use instant_distance::{Builder, HnswMap, MapItem};
 use rand::rngs::StdRng;
@@ -9,7 +10,7 @@ use rand::{Rng, SeedableRng};
 
 const TWENTY_HUNDRED_MIB: usize = 200 * 1024 * 1024;
 const NUMBER_VECTORS: usize = 10_000;
-const VECTOR_DIMENSIONS: usize = 1536;
+const VECTOR_DIMENSIONS: usize = 300;
 const NUMBER_FETCHED: usize = 10;
 
 fn main() -> heed::Result<()> {
@@ -29,17 +30,17 @@ fn main() -> heed::Result<()> {
     load_into_arroy(rng_arroy, wtxn, database, VECTOR_DIMENSIONS, &points)?;
     eprintln!("took {:.02?} to load into arroy", before.elapsed());
 
-    // let before = Instant::now();
-    // let hnsw = load_into_hnsw(points, items_ids);
-    // eprintln!("took {:.02?} to load into hnsw", before.elapsed());
+    let before = Instant::now();
+    let hnsw = load_into_hnsw(points, items_ids);
+    eprintln!("took {:.02?} to load into hnsw", before.elapsed());
 
     let before = Instant::now();
     let rtxn = env.read_txn()?;
     let reader = Reader::<Euclidean>::open(&rtxn, database, VECTOR_DIMENSIONS)?;
 
-    // By macking it precise we are near the HNSW but
+    // By making it precise we are near the HNSW but
     // we take a lot more time to search than the HNSW.
-    let is_precise = true;
+    let is_precise = false;
     let search_k =
         if is_precise { NonZeroUsize::new(NUMBER_FETCHED * reader.n_trees() * 20) } else { None };
 
@@ -48,15 +49,15 @@ fn main() -> heed::Result<()> {
     }
     eprintln!("took {:.02?} to find into arroy", before.elapsed());
 
-    // let point = Point(reader.item_vector(&rtxn, 0)?.unwrap());
+    let first = Point(reader.item_vector(&rtxn, 0)?.unwrap());
 
-    // println!();
-    // let before = Instant::now();
-    // let mut search = instant_distance::Search::default();
-    // for MapItem { distance, value, .. } in hnsw.search(&point, &mut search).take(NUMBER_FETCHED) {
-    //     println!("id({}): distance({distance})", value);
-    // }
-    // eprintln!("took {:.02?} to find into hnsw", before.elapsed());
+    println!();
+    let before = Instant::now();
+    let mut search = instant_distance::Search::default();
+    for MapItem { distance, value, .. } in hnsw.search(&first, &mut search).take(NUMBER_FETCHED) {
+        println!("id({}): distance({distance})", value);
+    }
+    eprintln!("took {:.02?} to find into hnsw", before.elapsed());
 
     // HeedReader::load_from_tree(&mut wtxn, database, dimensions, distance_type, &tree)?;
 
@@ -87,7 +88,9 @@ struct Point(Vec<f32>);
 
 impl instant_distance::Point for Point {
     fn distance(&self, other: &Self) -> f32 {
-        self.0.iter().zip(other.0.iter()).map(|(&p, &q)| (p - q) * (p - q)).sum::<f32>().sqrt()
+        let p = Leaf { header: Euclidean::new_header(&self.0), vector: Cow::Borrowed(&self.0) };
+        let q = Leaf { header: Euclidean::new_header(&other.0), vector: Cow::Borrowed(&other.0) };
+        arroy::Euclidean::distance(&p, &q).sqrt()
     }
 }
 

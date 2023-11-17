@@ -8,7 +8,7 @@ mod writer;
 mod tests;
 
 pub use distance::{Angular, Distance, Euclidean, Manhattan};
-pub use node::{Node, NodeCodec};
+pub use node::{Leaf, Node, NodeCodec};
 use rand::Rng;
 pub use reader::Reader;
 pub use writer::Writer;
