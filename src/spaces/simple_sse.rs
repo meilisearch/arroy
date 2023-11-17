@@ -50,48 +50,6 @@ pub(crate) unsafe fn euclid_similarity_sse(v1: &[f32], v2: &[f32]) -> f32 {
 }
 
 #[target_feature(enable = "sse")]
-pub(crate) unsafe fn cosine_preprocess_sse(vector: Vec<f32>) -> Vec<f32> {
-    let n = vector.len();
-    let m = n - (n % 16);
-    let mut ptr: *const f32 = vector.as_ptr();
-    let mut sum128_1: __m128 = _mm_setzero_ps();
-    let mut sum128_2: __m128 = _mm_setzero_ps();
-    let mut sum128_3: __m128 = _mm_setzero_ps();
-    let mut sum128_4: __m128 = _mm_setzero_ps();
-
-    let mut i: usize = 0;
-    while i < m {
-        let m128_1 = _mm_loadu_ps(ptr);
-        sum128_1 = _mm_add_ps(_mm_mul_ps(m128_1, m128_1), sum128_1);
-
-        let m128_2 = _mm_loadu_ps(ptr.add(4));
-        sum128_2 = _mm_add_ps(_mm_mul_ps(m128_2, m128_2), sum128_2);
-
-        let m128_3 = _mm_loadu_ps(ptr.add(8));
-        sum128_3 = _mm_add_ps(_mm_mul_ps(m128_3, m128_3), sum128_3);
-
-        let m128_4 = _mm_loadu_ps(ptr.add(12));
-        sum128_4 = _mm_add_ps(_mm_mul_ps(m128_4, m128_4), sum128_4);
-
-        ptr = ptr.add(16);
-        i += 16;
-    }
-
-    let mut length = hsum128_ps_sse(sum128_1)
-        + hsum128_ps_sse(sum128_2)
-        + hsum128_ps_sse(sum128_3)
-        + hsum128_ps_sse(sum128_4);
-    for i in 0..n - m {
-        length += (*ptr.add(i)).powi(2);
-    }
-    if length < f32::EPSILON {
-        return vector;
-    }
-    length = length.sqrt();
-    vector.into_iter().map(|x| x / length).collect()
-}
-
-#[target_feature(enable = "sse")]
 pub(crate) unsafe fn dot_similarity_sse(v1: &[f32], v2: &[f32]) -> f32 {
     let n = v1.len();
     let m = n - (n % 16);
@@ -154,16 +112,16 @@ mod tests {
             ];
 
             let euclid_simd = unsafe { euclid_similarity_sse(&v1, &v2) };
-            let euclid = euclidean_distance(&v1, &v2);
+            let euclid = euclidean_distance_non_optimized(&v1, &v2);
             assert_eq!(euclid_simd, euclid);
 
             let dot_simd = unsafe { dot_similarity_sse(&v1, &v2) };
-            let dot = dot_product(&v1, &v2);
+            let dot = dot_product_non_optimized(&v1, &v2);
             assert_eq!(dot_simd, dot);
 
-            let cosine_simd = unsafe { cosine_preprocess_sse(v1.clone()) };
-            let cosine = cosine_preprocess(v1);
-            assert_eq!(cosine_simd, cosine);
+            // let cosine_simd = unsafe { cosine_preprocess_sse(v1.clone()) };
+            // let cosine = cosine_preprocess(v1);
+            // assert_eq!(cosine_simd, cosine);
         } else {
             println!("sse test skipped");
         }
