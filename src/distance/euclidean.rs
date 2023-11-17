@@ -3,6 +3,7 @@ use rand::Rng;
 
 use super::{dot_product_no_simd, two_means};
 use crate::node::{Leaf, SplitPlaneNormal};
+use crate::spaces::simple::euclidean_distance;
 use crate::Distance;
 
 #[derive(Debug, Clone)]
@@ -23,9 +24,7 @@ impl Distance for Euclidean {
     }
 
     fn distance(p: &Leaf<Self>, q: &Leaf<Self>) -> f32 {
-        // Don't use dot-product: avoid catastrophic cancellation in
-        // https://github.com/spotify/annoy/issues/314.
-        p.vector.iter().zip(q.vector.iter()).map(|(&p, &q)| (p - q) * (p - q)).sum()
+        euclidean_distance(&p.vector, &q.vector)
     }
 
     fn init(_node: &mut Leaf<Self>) {}

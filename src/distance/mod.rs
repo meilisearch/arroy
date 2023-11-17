@@ -85,38 +85,6 @@ fn dot_product_no_simd(u: &[f32], v: &[f32]) -> f32 {
     u.iter().zip(v.iter()).map(|(x, y)| x * y).sum()
 }
 
-fn minkowski_margin(u: &[f32], v: &[f32], bias: f32) -> f32 {
-    bias + dot_product_no_simd(u, v)
-}
-
-fn cosine_distance_no_simd(u: &[f32], v: &[f32]) -> f32 {
-    // want to calculate (a/|a| - b/|b|)^2
-    // = a^2 / a^2 + b^2 / b^2 - 2ab/|a||b|
-    // = 2 - 2cos
-    let mut pp: f32 = 0.0;
-    let mut qq: f32 = 0.0;
-    let mut pq: f32 = 0.0;
-    for (u, v) in u.iter().zip(v.iter()) {
-        pp += u * u;
-        qq += v * v;
-        pq += u * v;
-    }
-    let ppqq = dbg!(pp) * dbg!(qq);
-    if ppqq.is_sign_positive() {
-        2.0 - dbg!(2.0 * dbg!(pq)) / dbg!(ppqq.sqrt())
-    } else {
-        2.0
-    }
-}
-
-fn manhattan_distance_no_simd(u: &[f32], v: &[f32]) -> f32 {
-    u.iter().zip(v.iter()).map(|(x, y)| (x - y).abs()).sum()
-}
-
-fn euclidean_distance_no_simd(u: &[f32], v: &[f32]) -> f32 {
-    u.iter().zip(v.iter()).map(|(x, y)| (x - y).powi(2)).sum()
-}
-
 fn two_means<D: Distance, R: Rng>(
     rng: &mut R,
     leafs: &[Leaf<D>],

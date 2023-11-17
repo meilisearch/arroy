@@ -1,6 +1,7 @@
 mod distance;
 mod node;
 mod reader;
+mod spaces;
 mod writer;
 
 #[cfg(test)]

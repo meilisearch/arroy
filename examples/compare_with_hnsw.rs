@@ -9,7 +9,7 @@ use rand::{Rng, SeedableRng};
 
 const TWENTY_HUNDRED_MIB: usize = 200 * 1024 * 1024;
 const NUMBER_VECTORS: usize = 10_000;
-const VECTOR_DIMENSIONS: usize = 300;
+const VECTOR_DIMENSIONS: usize = 1536;
 const NUMBER_FETCHED: usize = 10;
 
 fn main() -> heed::Result<()> {
@@ -29,9 +29,9 @@ fn main() -> heed::Result<()> {
     load_into_arroy(rng_arroy, wtxn, database, VECTOR_DIMENSIONS, &points)?;
     eprintln!("took {:.02?} to load into arroy", before.elapsed());
 
-    let before = Instant::now();
-    let hnsw = load_into_hnsw(points, items_ids);
-    eprintln!("took {:.02?} to load into hnsw", before.elapsed());
+    // let before = Instant::now();
+    // let hnsw = load_into_hnsw(points, items_ids);
+    // eprintln!("took {:.02?} to load into hnsw", before.elapsed());
 
     let before = Instant::now();
     let rtxn = env.read_txn()?;
@@ -48,15 +48,15 @@ fn main() -> heed::Result<()> {
     }
     eprintln!("took {:.02?} to find into arroy", before.elapsed());
 
-    let point = Point(reader.item_vector(&rtxn, 0)?.unwrap());
+    // let point = Point(reader.item_vector(&rtxn, 0)?.unwrap());
 
-    println!();
-    let before = Instant::now();
-    let mut search = instant_distance::Search::default();
-    for MapItem { distance, value, .. } in hnsw.search(&point, &mut search).take(NUMBER_FETCHED) {
-        println!("id({}): distance({distance})", value);
-    }
-    eprintln!("took {:.02?} to find into hnsw", before.elapsed());
+    // println!();
+    // let before = Instant::now();
+    // let mut search = instant_distance::Search::default();
+    // for MapItem { distance, value, .. } in hnsw.search(&point, &mut search).take(NUMBER_FETCHED) {
+    //     println!("id({}): distance({distance})", value);
+    // }
+    // eprintln!("took {:.02?} to find into hnsw", before.elapsed());
 
     // HeedReader::load_from_tree(&mut wtxn, database, dimensions, distance_type, &tree)?;
 
