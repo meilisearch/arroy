@@ -55,8 +55,8 @@ impl<D: Distance + 'static> Writer<D> {
         self.database.put(wtxn, &item, &Node::Leaf(leaf))
     }
 
-    pub fn del_item(&self, _wtxn: &mut RwTxn, _item: ItemId) -> heed::Result<bool> {
-        todo!()
+    pub fn del_item(&self, wtxn: &mut RwTxn, item: ItemId) -> heed::Result<bool> {
+        self.database.delete(wtxn, &item)
     }
 
     pub fn clear(&self, wtxn: &mut RwTxn) -> heed::Result<()> {
