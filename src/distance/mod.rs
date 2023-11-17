@@ -8,6 +8,7 @@ use rand::seq::SliceRandom;
 use rand::Rng;
 
 use crate::node::{Leaf, SplitPlaneNormal};
+use crate::spaces::simple::dot_product;
 use crate::Side;
 
 mod angular;
@@ -35,7 +36,7 @@ pub trait Distance: Sized + Clone + fmt::Debug {
     }
 
     fn norm(v: &[f32]) -> f32 {
-        dot_product_no_simd(v, v).sqrt()
+        dot_product(v, v).sqrt()
     }
 
     fn normalize(node: &mut Leaf<Self>) {
@@ -79,10 +80,6 @@ pub trait Distance: Sized + Clone + fmt::Debug {
 #[derive(Pod, Zeroable, Debug, Clone, Copy)]
 pub struct NodeHeaderDot {
     dot_factor: f32,
-}
-
-fn dot_product_no_simd(u: &[f32], v: &[f32]) -> f32 {
-    u.iter().zip(v.iter()).map(|(x, y)| x * y).sum()
 }
 
 fn two_means<D: Distance, R: Rng>(

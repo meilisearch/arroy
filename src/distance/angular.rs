@@ -1,8 +1,9 @@
 use bytemuck::{Pod, Zeroable};
 use rand::Rng;
 
-use super::{dot_product_no_simd, two_means};
+use super::two_means;
 use crate::node::{Leaf, SplitPlaneNormal};
+use crate::spaces::simple::dot_product;
 use crate::Distance;
 
 #[derive(Debug, Clone)]
@@ -24,7 +25,7 @@ impl Distance for Angular {
     fn distance(p: &Leaf<Self>, q: &Leaf<Self>) -> f32 {
         let pp = p.header.norm;
         let qq = q.header.norm;
-        let pq = dot_product_no_simd(&p.vector, &q.vector);
+        let pq = dot_product(&p.vector, &q.vector);
         let ppqq = pp * qq;
         if ppqq >= f32::MIN_POSITIVE {
             2.0 - 2.0 * pq / ppqq.sqrt()
@@ -34,7 +35,7 @@ impl Distance for Angular {
     }
 
     fn init(node: &mut Leaf<Self>) {
-        node.header.norm = dot_product_no_simd(&node.vector, &node.vector);
+        node.header.norm = dot_product(&node.vector, &node.vector);
     }
 
     fn create_split<R: Rng>(children: &[Leaf<Self>], rng: &mut R) -> SplitPlaneNormal<'static> {
@@ -47,6 +48,6 @@ impl Distance for Angular {
     }
 
     fn margin_no_header(p: &[f32], q: &[f32]) -> f32 {
-        dot_product_no_simd(p, q)
+        dot_product(p, q)
     }
 }

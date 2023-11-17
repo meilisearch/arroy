@@ -1,9 +1,9 @@
 use bytemuck::{Pod, Zeroable};
 use rand::Rng;
 
-use super::{dot_product_no_simd, two_means};
+use super::two_means;
 use crate::node::{Leaf, SplitPlaneNormal};
-use crate::spaces::simple::euclidean_distance;
+use crate::spaces::simple::{dot_product, euclidean_distance};
 use crate::Distance;
 
 #[derive(Debug, Clone)]
@@ -48,10 +48,10 @@ impl Distance for Euclidean {
     }
 
     fn margin(p: &Leaf<Self>, q: &[f32]) -> f32 {
-        p.header.bias + dot_product_no_simd(&p.vector, q)
+        p.header.bias + dot_product(&p.vector, q)
     }
 
     fn margin_no_header(p: &[f32], q: &[f32]) -> f32 {
-        dot_product_no_simd(p, q)
+        dot_product(p, q)
     }
 }

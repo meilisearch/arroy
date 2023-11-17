@@ -158,7 +158,7 @@ mod tests {
             assert_eq!(euclid_simd, euclid);
 
             let dot_simd = unsafe { dot_similarity_sse(&v1, &v2) };
-            let dot = dot_similarity(&v1, &v2);
+            let dot = dot_product(&v1, &v2);
             assert_eq!(dot_simd, dot);
 
             let cosine_simd = unsafe { cosine_preprocess_sse(v1.clone()) };

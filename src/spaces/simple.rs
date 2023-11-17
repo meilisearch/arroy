@@ -45,47 +45,33 @@ pub fn euclidean_distance(u: &[f32], v: &[f32]) -> f32 {
     u.iter().zip(v.iter()).map(|(&u, &v)| (u - v) * (u - v)).sum()
 }
 
-// impl Metric for DotProductMetric {
-//     fn distance() -> Distance {
-//         Distance::Dot
-//     }
+pub fn dot_product(u: &[f32], v: &[f32]) -> f32 {
+    #[cfg(target_arch = "x86_64")]
+    {
+        if is_x86_feature_detected!("avx")
+            && is_x86_feature_detected!("fma")
+            && u.len() >= MIN_DIM_SIZE_AVX
+        {
+            return unsafe { dot_similarity_avx(u, v) };
+        }
+    }
 
-//     fn similarity(v1: &[VectorElementType], v2: &[VectorElementType]) -> ScoreType {
-//         #[cfg(target_arch = "x86_64")]
-//         {
-//             if is_x86_feature_detected!("avx")
-//                 && is_x86_feature_detected!("fma")
-//                 && v1.len() >= MIN_DIM_SIZE_AVX
-//             {
-//                 return unsafe { dot_similarity_avx(v1, v2) };
-//             }
-//         }
+    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+    {
+        if is_x86_feature_detected!("sse") && u.len() >= MIN_DIM_SIZE_SIMD {
+            return unsafe { dot_similarity_sse(u, v) };
+        }
+    }
 
-//         #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
-//         {
-//             if is_x86_feature_detected!("sse") && v1.len() >= MIN_DIM_SIZE_SIMD {
-//                 return unsafe { dot_similarity_sse(v1, v2) };
-//             }
-//         }
+    #[cfg(all(target_arch = "aarch64", target_feature = "neon"))]
+    {
+        if std::arch::is_aarch64_feature_detected!("neon") && u.len() >= MIN_DIM_SIZE_SIMD {
+            return unsafe { dot_similarity_neon(u, v) };
+        }
+    }
 
-//         #[cfg(all(target_arch = "aarch64", target_feature = "neon"))]
-//         {
-//             if std::arch::is_aarch64_feature_detected!("neon") && v1.len() >= MIN_DIM_SIZE_SIMD {
-//                 return unsafe { dot_similarity_neon(v1, v2) };
-//             }
-//         }
-
-//         dot_similarity(v1, v2)
-//     }
-
-//     fn preprocess(vector: VectorType) -> VectorType {
-//         vector
-//     }
-
-//     fn postprocess(score: ScoreType) -> ScoreType {
-//         score
-//     }
-// }
+    u.iter().zip(v).map(|(a, b)| a * b).sum()
+}
 
 // impl Metric for CosineMetric {
 //     fn distance() -> Distance {
