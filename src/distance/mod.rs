@@ -1,9 +1,9 @@
 use std::fmt;
 
-pub use angular::Angular;
+pub use angular::{Angular, NodeHeaderAngular};
 use bytemuck::{Pod, Zeroable};
-pub use euclidean::Euclidean;
-pub use manhattan::Manhattan;
+pub use euclidean::{Euclidean, NodeHeaderEuclidean};
+pub use manhattan::{Manhattan, NodeHeaderManhattan};
 use rand::seq::SliceRandom;
 use rand::Rng;
 
@@ -74,12 +74,6 @@ pub trait Distance: Sized + Clone + fmt::Debug {
             Side::random(rng)
         }
     }
-}
-
-#[repr(C)]
-#[derive(Pod, Zeroable, Debug, Clone, Copy)]
-pub struct NodeHeaderDot {
-    dot_factor: f32,
 }
 
 fn two_means<D: Distance, R: Rng>(
