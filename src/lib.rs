@@ -11,6 +11,7 @@ mod tests;
 
 use std::borrow::Cow;
 use std::mem::size_of;
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 use bytemuck::{pod_collect_to_vec, try_cast_slice, Pod, Zeroable};
 use byteorder::{BigEndian, ByteOrder};
@@ -53,11 +54,20 @@ impl Side {
     }
 }
 
+pub static ALIGNED_VECTOR: AtomicUsize = AtomicUsize::new(0);
+pub static NON_ALIGNED_VECTOR: AtomicUsize = AtomicUsize::new(0);
+
 fn aligned_or_collect_vec<T: Pod + Zeroable>(bytes: &[u8]) -> Cow<[T]> {
     use bytemuck::PodCastError::TargetAlignmentGreaterAndInputNotAligned;
     match try_cast_slice(bytes) {
-        Ok(casted) => Cow::Borrowed(casted),
-        Err(TargetAlignmentGreaterAndInputNotAligned) => Cow::Owned(pod_collect_to_vec(bytes)),
+        Ok(casted) => {
+            ALIGNED_VECTOR.fetch_add(1, Ordering::SeqCst);
+            Cow::Borrowed(casted)
+        }
+        Err(TargetAlignmentGreaterAndInputNotAligned) => {
+            NON_ALIGNED_VECTOR.fetch_add(1, Ordering::SeqCst);
+            Cow::Owned(pod_collect_to_vec(bytes))
+        }
         Err(e) => panic!("casting slices failed: {e}"),
     }
 }

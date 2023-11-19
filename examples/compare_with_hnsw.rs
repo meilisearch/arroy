@@ -1,7 +1,9 @@
 use std::borrow::Cow;
 use std::time::Instant;
 
-use arroy::{Distance, Euclidean, ItemId, Leaf, Reader, Result, Writer, BEU32};
+use arroy::{
+    Distance, Euclidean, ItemId, Leaf, Reader, Result, Writer, ALIGNED_VECTOR, BEU32, NON_ALIGNED_VECTOR,
+};
 use heed::{Database, EnvOpenOptions, RwTxn, Unspecified};
 use instant_distance::{Builder, HnswMap, MapItem};
 use rand::rngs::StdRng;
@@ -46,6 +48,14 @@ fn main() -> Result<()> {
         println!("id({id}): distance({dist})");
     }
     eprintln!("took {:.02?} to find into arroy", before.elapsed());
+
+    let aligned = ALIGNED_VECTOR.load(std::sync::atomic::Ordering::SeqCst);
+    let non_aligned = NON_ALIGNED_VECTOR.load(std::sync::atomic::Ordering::SeqCst);
+    eprintln!("ALIGNED_VECTOR: {}, NON_ALIGNED_VECTOR: {}", aligned, non_aligned);
+    eprintln!(
+        "which means {:.02?}% of aligned reads",
+        aligned as f64 / (aligned + non_aligned) as f64 * 100.0
+    );
 
     let first = Point(reader.item_vector(&rtxn, 0)?.unwrap());
 
