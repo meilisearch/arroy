@@ -9,6 +9,7 @@ byteorder = "1.5.0"
 heed = "0.20.0-alpha.6"
 ordered-float = "4.1.1"
 rand = { version = "0.8.5", features = ["alloc"] }
+thiserror = "1.0.50"
 
 [dev-dependencies]
 rand = { version = "0.8.5", features = ["std_rng"] }

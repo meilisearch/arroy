@@ -1,4 +1,5 @@
 mod distance;
+mod error;
 mod node;
 mod reader;
 mod spaces;
@@ -16,10 +17,13 @@ pub use distance::{
     Angular, Distance, Euclidean, Manhattan, NodeHeaderAngular, NodeHeaderEuclidean,
     NodeHeaderManhattan,
 };
+pub use error::Error;
 pub use node::{Leaf, Node, NodeCodec};
 use rand::Rng;
 pub use reader::Reader;
 pub use writer::Writer;
+
+pub type Result<T, E = Error> = std::result::Result<T, E>;
 
 /// An big endian-encoded u32.
 pub type BEU32 = heed::types::U32<heed::byteorder::BE>;

@@ -9,7 +9,7 @@ use heed::{Database, RoTxn};
 use ordered_float::OrderedFloat;
 
 use crate::node::{Descendants, Leaf, SplitPlaneNormal};
-use crate::{Distance, ItemId, MetadataCodec, Node, NodeCodec, NodeId, Side, BEU32};
+use crate::{Distance, ItemId, MetadataCodec, Node, NodeCodec, NodeId, Result, Side, BEU32};
 
 pub struct Reader<D: Distance> {
     database: heed::Database<BEU32, NodeCodec<D>>,
@@ -19,7 +19,7 @@ pub struct Reader<D: Distance> {
 }
 
 impl<D: Distance + 'static> Reader<D> {
-    pub fn open<U>(rtxn: &RoTxn, database: Database<BEU32, U>) -> heed::Result<Reader<D>> {
+    pub fn open<U>(rtxn: &RoTxn, database: Database<BEU32, U>) -> Result<Reader<D>> {
         let metadata = match database.remap_data_type::<MetadataCodec>().get(rtxn, &u32::MAX)? {
             Some(metadata) => metadata,
             None => todo!("Invalid database"),
@@ -44,12 +44,12 @@ impl<D: Distance + 'static> Reader<D> {
     }
 
     /// Returns the number of nodes in the index. Useful to run an exhaustive search.
-    pub fn n_nodes(&self, rtxn: &RoTxn) -> heed::Result<Option<NonZeroUsize>> {
+    pub fn n_nodes(&self, rtxn: &RoTxn) -> Result<Option<NonZeroUsize>> {
         Ok(NonZeroUsize::new(self.database.len(rtxn)? as usize))
     }
 
     /// Returns the vector for item `i` that was previously added.
-    pub fn item_vector(&self, rtxn: &RoTxn, item: ItemId) -> heed::Result<Option<Vec<f32>>> {
+    pub fn item_vector(&self, rtxn: &RoTxn, item: ItemId) -> Result<Option<Vec<f32>>> {
         Ok(item_leaf(self.database, rtxn, item)?.map(|leaf| leaf.vector.into_owned()))
     }
 
@@ -64,7 +64,7 @@ impl<D: Distance + 'static> Reader<D> {
         item: ItemId,
         count: usize,
         search_k: Option<NonZeroUsize>,
-    ) -> heed::Result<Option<Vec<(ItemId, f32)>>> {
+    ) -> Result<Option<Vec<(ItemId, f32)>>> {
         match item_leaf(self.database, rtxn, item)? {
             Some(leaf) => self.nns_by_leaf(rtxn, &leaf, count, search_k).map(Some),
             None => Ok(None),
@@ -80,14 +80,13 @@ impl<D: Distance + 'static> Reader<D> {
         vector: &[f32],
         count: usize,
         search_k: Option<NonZeroUsize>,
-    ) -> heed::Result<Vec<(ItemId, f32)>> {
-        assert_eq!(
-            vector.len(),
-            self.dimensions,
-            "invalid vector dimensions, provided {} but expected {}",
-            vector.len(),
-            self.dimensions
-        );
+    ) -> Result<Vec<(ItemId, f32)>> {
+        if vector.len() != self.dimensions {
+            return Err(crate::Error::InvalidVecDimension {
+                expected: self.dimensions(),
+                received: vector.len(),
+            });
+        }
 
         let leaf = Leaf { header: D::new_header(vector), vector: Cow::Borrowed(vector) };
         self.nns_by_leaf(rtxn, &leaf, count, search_k)
@@ -99,7 +98,7 @@ impl<D: Distance + 'static> Reader<D> {
         query_leaf: &Leaf<D>,
         count: usize,
         search_k: Option<NonZeroUsize>,
-    ) -> heed::Result<Vec<(ItemId, f32)>> {
+    ) -> Result<Vec<(ItemId, f32)>> {
         // TODO define the capacity
         let mut queue = BinaryHeap::new();
         let search_k = search_k.map_or(count * self.roots.len(), NonZeroUsize::get);
@@ -162,7 +161,7 @@ pub fn item_leaf<'a, D: Distance + 'static>(
     database: Database<BEU32, NodeCodec<D>>,
     rtxn: &'a RoTxn,
     item: ItemId,
-) -> heed::Result<Option<Leaf<'a, D>>> {
+) -> Result<Option<Leaf<'a, D>>> {
     match database.get(rtxn, &item)? {
         Some(Node::Leaf(leaf)) => Ok(Some(leaf)),
         Some(Node::SplitPlaneNormal(_)) => Ok(None),

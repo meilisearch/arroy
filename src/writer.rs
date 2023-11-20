@@ -7,7 +7,9 @@ use rand::Rng;
 
 use crate::node::{Descendants, Leaf};
 use crate::reader::item_leaf;
-use crate::{Distance, ItemId, Metadata, MetadataCodec, Node, NodeCodec, NodeId, Side, BEU32};
+use crate::{
+    Distance, Error, ItemId, Metadata, MetadataCodec, Node, NodeCodec, NodeId, Result, Side, BEU32,
+};
 
 pub struct Writer<D: Distance> {
     database: heed::Database<BEU32, NodeCodec<D>>,
@@ -23,7 +25,7 @@ impl<D: Distance + 'static> Writer<D> {
         wtxn: &mut RwTxn,
         database: Database<BEU32, U>,
         dimensions: usize,
-    ) -> heed::Result<Writer<D>> {
+    ) -> Result<Writer<D>> {
         let database = database.remap_data_type();
         clear_tree_nodes(wtxn, database)?;
         Ok(Writer {
@@ -35,31 +37,29 @@ impl<D: Distance + 'static> Writer<D> {
         })
     }
 
-    pub fn item_vector(&self, rtxn: &RoTxn, item: ItemId) -> heed::Result<Option<Vec<f32>>> {
+    pub fn item_vector(&self, rtxn: &RoTxn, item: ItemId) -> Result<Option<Vec<f32>>> {
         Ok(item_leaf(self.database, rtxn, item)?.map(|leaf| leaf.vector.into_owned()))
     }
 
-    pub fn add_item(&self, wtxn: &mut RwTxn, item: ItemId, vector: &[f32]) -> heed::Result<()> {
-        // TODO make this not an assert
-        assert_eq!(
-            vector.len(),
-            self.dimensions,
-            "invalid vector dimensions, provided {} but expected {}",
-            vector.len(),
-            self.dimensions
-        );
+    pub fn add_item(&self, wtxn: &mut RwTxn, item: ItemId, vector: &[f32]) -> Result<()> {
+        if vector.len() != self.dimensions {
+            return Err(Error::InvalidVecDimension {
+                expected: self.dimensions,
+                received: vector.len(),
+            });
+        }
 
         // TODO find a way to not allocate the vector
         let leaf = Leaf { header: D::new_header(vector), vector: Cow::Borrowed(vector) };
-        self.database.put(wtxn, &item, &Node::Leaf(leaf))
+        Ok(self.database.put(wtxn, &item, &Node::Leaf(leaf))?)
     }
 
-    pub fn del_item(&self, wtxn: &mut RwTxn, item: ItemId) -> heed::Result<bool> {
-        self.database.delete(wtxn, &item)
+    pub fn del_item(&self, wtxn: &mut RwTxn, item: ItemId) -> Result<bool> {
+        Ok(self.database.delete(wtxn, &item)?)
     }
 
-    pub fn clear(&self, wtxn: &mut RwTxn) -> heed::Result<()> {
-        self.database.clear(wtxn)
+    pub fn clear(&self, wtxn: &mut RwTxn) -> Result<()> {
+        Ok(self.database.clear(wtxn)?)
     }
 
     pub fn build<R: Rng>(
@@ -67,7 +67,7 @@ impl<D: Distance + 'static> Writer<D> {
         wtxn: &mut RwTxn,
         mut rng: R,
         n_trees: Option<usize>,
-    ) -> heed::Result<()> {
+    ) -> Result<()> {
         // D::template preprocess<T, S, Node>(_nodes, _s, _n_items, _f);
 
         self.n_items = self.database.len(wtxn)? as usize;
@@ -121,7 +121,7 @@ impl<D: Distance + 'static> Writer<D> {
         indices: Vec<u32>,
         is_root: bool,
         rng: &mut R,
-    ) -> heed::Result<NodeId> {
+    ) -> Result<NodeId> {
         // we simplify the max descendants (_K) thing by considering
         // that we can fit as much descendants as the number of dimensions
         let max_descendants = self.dimensions;
@@ -204,7 +204,7 @@ impl<D: Distance + 'static> Writer<D> {
         Ok(new_node_id)
     }
 
-    fn last_node_id(&self, rtxn: &RoTxn) -> heed::Result<Option<NodeId>> {
+    fn last_node_id(&self, rtxn: &RoTxn) -> Result<Option<NodeId>> {
         match self.database.remap_data_type::<DecodeIgnore>().last(rtxn)? {
             Some((last_id, _)) => Ok(Some(last_id)),
             None => Ok(None),
@@ -217,7 +217,7 @@ impl<D: Distance + 'static> Writer<D> {
 fn clear_tree_nodes<D: Distance + 'static>(
     wtxn: &mut RwTxn,
     database: Database<BEU32, NodeCodec<D>>,
-) -> heed::Result<()> {
+) -> Result<()> {
     database.delete(wtxn, &u32::MAX)?;
     let mut cursor = database.rev_iter_mut(wtxn)?;
     while let Some((_id, node)) = cursor.next().transpose()? {
@@ -227,6 +227,7 @@ fn clear_tree_nodes<D: Distance + 'static>(
             break;
         }
     }
+
     Ok(())
 }
 

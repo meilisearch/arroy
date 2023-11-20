@@ -1,7 +1,7 @@
 use std::borrow::Cow;
 use std::time::Instant;
 
-use arroy::{Distance, Euclidean, ItemId, Leaf, Reader, Writer, BEU32};
+use arroy::{Distance, Euclidean, ItemId, Leaf, Reader, Result, Writer, BEU32};
 use heed::{Database, EnvOpenOptions, RwTxn, Unspecified};
 use instant_distance::{Builder, HnswMap, MapItem};
 use rand::rngs::StdRng;
@@ -12,8 +12,8 @@ const NUMBER_VECTORS: usize = 60_000;
 const VECTOR_DIMENSIONS: usize = 768;
 const NUMBER_FETCHED: usize = 5;
 
-fn main() -> heed::Result<()> {
-    let dir = tempfile::tempdir()?;
+fn main() -> Result<()> {
+    let dir = tempfile::tempdir().unwrap();
     let env = EnvOpenOptions::new().map_size(TWENTY_HUNDRED_MIB).open(dir.path())?;
 
     let rng_points = StdRng::seed_from_u64(42);
@@ -68,13 +68,15 @@ fn load_into_arroy(
     database: Database<BEU32, Unspecified>,
     dimensions: usize,
     points: &[Point],
-) -> heed::Result<()> {
+) -> Result<()> {
     let writer = Writer::<Euclidean>::prepare(&mut wtxn, database, dimensions)?;
     for (i, Point(vector)) in points.iter().enumerate() {
         writer.add_item(&mut wtxn, i.try_into().unwrap(), &vector[..])?;
     }
     writer.build(&mut wtxn, rng, None)?;
-    wtxn.commit()
+    wtxn.commit()?;
+
+    Ok(())
 }
 
 fn load_into_hnsw(points: Vec<Point>, items_ids: Vec<ItemId>) -> HnswMap<Point, ItemId> {

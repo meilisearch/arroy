@@ -1,12 +1,12 @@
-use arroy::{Euclidean, NodeCodec, Reader, Writer, BEU32};
+use arroy::{Euclidean, NodeCodec, Reader, Result, Writer, BEU32};
 use bytemuck::pod_collect_to_vec;
 use heed::types::{ByteSlice, LazyDecode};
 use heed::{Database, EnvOpenOptions, Unspecified};
 
 const TWENTY_HUNDRED_MIB: usize = 200 * 1024 * 1024;
 
-fn main() -> heed::Result<()> {
-    let dir = tempfile::tempdir()?;
+fn main() -> Result<()> {
+    let dir = tempfile::tempdir().unwrap();
     let env = EnvOpenOptions::new().map_size(TWENTY_HUNDRED_MIB).open(dir.path())?;
 
     // we will open the default unnamed database
