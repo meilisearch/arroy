@@ -19,10 +19,10 @@ impl Distance for Angular {
     type Header = NodeHeaderAngular;
 
     fn new_header(vector: &[f32]) -> Self::Header {
-        NodeHeaderAngular { norm: Self::norm(vector) }
+        NodeHeaderAngular { norm: Self::norm_no_header(vector) }
     }
 
-    fn distance(p: &Leaf<Self>, q: &Leaf<Self>) -> f32 {
+    fn built_distance(p: &Leaf<Self>, q: &Leaf<Self>) -> f32 {
         let pp = p.header.norm;
         let qq = q.header.norm;
         let pq = dot_product(&p.vector, &q.vector);

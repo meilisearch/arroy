@@ -23,7 +23,7 @@ impl Distance for Manhattan {
         NodeHeaderManhattan { bias: 0.0 }
     }
 
-    fn distance(p: &Leaf<Self>, q: &Leaf<Self>) -> f32 {
+    fn built_distance(p: &Leaf<Self>, q: &Leaf<Self>) -> f32 {
         p.vector.iter().zip(q.vector.iter()).map(|(&p, &q)| (p - q).abs()).sum()
     }
 
@@ -51,8 +51,8 @@ impl Distance for Manhattan {
         SplitPlaneNormal { normal: normal.vector, left: u32::MAX, right: u32::MAX }
     }
 
-    fn margin(p: &Leaf<Self>, q: &[f32]) -> f32 {
-        p.header.bias + dot_product(&p.vector, q)
+    fn margin(p: &Leaf<Self>, q: &Leaf<Self>) -> f32 {
+        p.header.bias + dot_product(&p.vector, &q.vector)
     }
 
     fn margin_no_header(p: &[f32], q: &[f32]) -> f32 {

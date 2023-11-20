@@ -15,8 +15,8 @@ use std::mem::size_of;
 use bytemuck::{pod_collect_to_vec, try_cast_slice, Pod, Zeroable};
 use byteorder::{BigEndian, ByteOrder};
 pub use distance::{
-    Angular, Distance, Euclidean, Manhattan, NodeHeaderAngular, NodeHeaderEuclidean,
-    NodeHeaderManhattan,
+    Angular, Distance, DotProduct, Euclidean, Manhattan, NodeHeaderAngular, NodeHeaderDotProduct,
+    NodeHeaderEuclidean, NodeHeaderManhattan,
 };
 pub use error::Error;
 use heed::BoxedError;

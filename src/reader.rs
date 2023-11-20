@@ -150,7 +150,7 @@ impl<'t, D: Distance> Reader<'t, D> {
                 Node::Leaf(leaf) => leaf,
                 Node::Descendants(_) | Node::SplitPlaneNormal(_) => panic!("Shouldn't happen"),
             };
-            let distance = D::distance(query_leaf, &leaf);
+            let distance = D::built_distance(query_leaf, &leaf);
             nns_distances.push(Reverse((OrderedFloat(distance), nn)));
         }
 

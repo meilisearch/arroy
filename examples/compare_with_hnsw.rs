@@ -90,7 +90,7 @@ impl instant_distance::Point for Point {
     fn distance(&self, other: &Self) -> f32 {
         let p = Leaf { header: Euclidean::new_header(&self.0), vector: Cow::Borrowed(&self.0) };
         let q = Leaf { header: Euclidean::new_header(&other.0), vector: Cow::Borrowed(&other.0) };
-        arroy::Euclidean::distance(&p, &q).sqrt()
+        arroy::Euclidean::built_distance(&p, &q).sqrt()
     }
 }
 

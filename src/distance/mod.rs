@@ -2,16 +2,19 @@ use std::fmt;
 
 pub use angular::{Angular, NodeHeaderAngular};
 use bytemuck::{Pod, Zeroable};
+pub use dot_product::{DotProduct, NodeHeaderDotProduct};
 pub use euclidean::{Euclidean, NodeHeaderEuclidean};
+use heed::{RwIter, RwTxn};
 pub use manhattan::{Manhattan, NodeHeaderManhattan};
 use rand::seq::SliceRandom;
 use rand::Rng;
 
 use crate::node::{Leaf, SplitPlaneNormal};
 use crate::spaces::simple::dot_product;
-use crate::Side;
+use crate::{NodeCodec, Side, BEU32};
 
 mod angular;
+mod dot_product;
 mod euclidean;
 mod manhattan;
 
@@ -21,7 +24,11 @@ pub trait Distance: Sized + Clone + fmt::Debug + 'static {
     fn new_header(vector: &[f32]) -> Self::Header;
 
     /// Returns a non-normalized distance.
-    fn distance(p: &Leaf<Self>, q: &Leaf<Self>) -> f32;
+    fn built_distance(p: &Leaf<Self>, q: &Leaf<Self>) -> f32;
+
+    fn non_built_distance(p: &Leaf<Self>, q: &Leaf<Self>) -> f32 {
+        Self::built_distance(p, q)
+    }
 
     /// Normalizes the distance returned by the distance method.
     fn normalized_distance(d: f32) -> f32 {
@@ -35,12 +42,16 @@ pub trait Distance: Sized + Clone + fmt::Debug + 'static {
         }
     }
 
-    fn norm(v: &[f32]) -> f32 {
+    fn norm(leaf: &Leaf<Self>) -> f32 {
+        Self::norm_no_header(&leaf.vector)
+    }
+
+    fn norm_no_header(v: &[f32]) -> f32 {
         dot_product(v, v).sqrt()
     }
 
     fn normalize(node: &mut Leaf<Self>) {
-        let norm = Self::norm(&node.vector);
+        let norm = Self::norm(node);
         if norm > 0.0 {
             node.vector.to_mut().iter_mut().for_each(|x| *x /= norm);
         }
@@ -58,14 +69,14 @@ pub trait Distance: Sized + Clone + fmt::Debug + 'static {
 
     fn create_split<R: Rng>(children: &[Leaf<Self>], rng: &mut R) -> SplitPlaneNormal<'static>;
 
-    fn margin(p: &Leaf<Self>, q: &[f32]) -> f32 {
-        Self::margin_no_header(&p.vector, q)
+    fn margin(p: &Leaf<Self>, q: &Leaf<Self>) -> f32 {
+        Self::margin_no_header(&p.vector, &q.vector)
     }
 
     fn margin_no_header(p: &[f32], q: &[f32]) -> f32;
 
     fn side<R: Rng>(plane: &SplitPlaneNormal, node: &Leaf<Self>, rng: &mut R) -> Side {
-        let dot = Self::margin(node, &plane.normal);
+        let dot = Self::margin_no_header(&node.vector, &plane.normal);
         if dot > 0.0 {
             Side::Right
         } else if dot < 0.0 {
@@ -73,6 +84,13 @@ pub trait Distance: Sized + Clone + fmt::Debug + 'static {
         } else {
             Side::random(rng)
         }
+    }
+
+    fn preprocess(
+        _wtxn: &mut RwTxn,
+        _new_iter: impl for<'a> Fn(&'a mut RwTxn) -> heed::Result<RwIter<'a, BEU32, NodeCodec<Self>>>,
+    ) -> heed::Result<()> {
+        Ok(())
     }
 }
 
@@ -104,9 +122,9 @@ fn two_means<D: Distance, R: Rng>(
     let mut jc = 1.0;
     for _ in 0..ITERATION_STEPS {
         let node_k = leafs.choose(rng).unwrap();
-        let di = ic * D::distance(&leaf_p, node_k);
-        let dj = jc * D::distance(&leaf_q, node_k);
-        let norm = if cosine { D::norm(&node_k.vector) } else { 1.0 };
+        let di = ic * D::non_built_distance(&leaf_p, node_k);
+        let dj = jc * D::non_built_distance(&leaf_q, node_k);
+        let norm = if cosine { D::norm(node_k) } else { 1.0 };
         if norm.is_nan() || norm <= 0.0 {
             continue;
         }

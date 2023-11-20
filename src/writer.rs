@@ -128,7 +128,7 @@ impl<D: Distance> Writer<D> {
         mut rng: R,
         n_trees: Option<usize>,
     ) -> Result<Reader<'t, D>> {
-        // D::template preprocess<T, S, Node>(_nodes, _s, _n_items, _f);
+        D::preprocess(wtxn, |wtxn| self.database.iter_mut(wtxn))?;
 
         self.n_items = self.database.len(wtxn)? as usize;
         let last_item_id = self.last_node_id(wtxn)?;
@@ -174,8 +174,6 @@ impl<D: Distance> Writer<D> {
             Err(heed::Error::Mdb(MdbError::KeyExist)) => return Err(Error::DatabaseFull),
             Err(e) => return Err(e.into()),
         }
-
-        // D::template postprocess<T, S, Node>(_nodes, _s, _n_items, _f);
 
         Reader::open(wtxn, self.database)
     }
