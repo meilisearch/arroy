@@ -35,7 +35,7 @@ fn main() -> heed::Result<()> {
 
     let before = Instant::now();
     let rtxn = env.read_txn()?;
-    let reader = Reader::<Euclidean>::open(&rtxn, database, VECTOR_DIMENSIONS)?;
+    let reader = Reader::<Euclidean>::open(&rtxn, database)?;
 
     // By making it precise we are near the HNSW but
     // we take a lot more time to search than the HNSW.

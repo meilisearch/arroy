@@ -17,7 +17,7 @@ fn write_one_vector_in_one_tree() {
     0: Leaf(Leaf { header: NodeHeaderAngular { norm: 2.236068 }, vector: [0.0, 1.0, 2.0] })
     1: Descendants(Descendants { descendants: [0] })
 
-    u32::MAX: [1]
+    u32::MAX: Metadata { dimensions: 3, root_nodes: [1] }
     "###);
 }
 
@@ -44,7 +44,7 @@ fn write_one_vector_in_multiple_trees() {
     9: Descendants(Descendants { descendants: [0] })
     10: Descendants(Descendants { descendants: [0] })
 
-    u32::MAX: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+    u32::MAX: Metadata { dimensions: 3, root_nodes: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10] }
     "###);
 }
 
@@ -68,7 +68,7 @@ fn write_vectors_until_there_is_a_descendants() {
     2: Leaf(Leaf { header: NodeHeaderAngular { norm: 3.4641016 }, vector: [2.0, 2.0, 2.0] })
     3: Descendants(Descendants { descendants: [0, 1, 2] })
 
-    u32::MAX: [3]
+    u32::MAX: Metadata { dimensions: 3, root_nodes: [3] }
     "###);
 }
 
@@ -94,7 +94,7 @@ fn write_vectors_until_there_is_a_split() {
     4: Descendants(Descendants { descendants: [1, 2, 3] })
     5: SplitPlaneNormal(SplitPlaneNormal { normal: [0.57735026, 0.57735026, 0.57735026], left: 0, right: 4 })
 
-    u32::MAX: [5]
+    u32::MAX: Metadata { dimensions: 3, root_nodes: [5] }
     "###);
 }
 

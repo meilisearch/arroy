@@ -31,7 +31,7 @@ fn two_db_with_wrong_dimension() {
     wtxn.commit().unwrap();
 
     let rtxn = handle.env.read_txn().unwrap();
-    let reader = Reader::<Angular>::open(&rtxn, handle.database, 4).unwrap();
+    let reader = Reader::<Angular>::open(&rtxn, handle.database).unwrap();
     let ret = reader.nns_by_item(&rtxn, 0, 5, None).unwrap();
 
     insta::assert_display_snapshot!(NnsRes(ret), @r###"
@@ -54,7 +54,7 @@ fn two_dimension_on_a_line() {
     wtxn.commit().unwrap();
 
     let rtxn = handle.env.read_txn().unwrap();
-    let reader = Reader::<Angular>::open(&rtxn, handle.database, 2).unwrap();
+    let reader = Reader::<Angular>::open(&rtxn, handle.database).unwrap();
 
     // if we can't look into enough nodes we find some random points
     let ret = reader.nns_by_item(&rtxn, 0, 5, NonZeroUsize::new(1)).unwrap();
@@ -102,7 +102,7 @@ fn two_dimension_on_a_column() {
     wtxn.commit().unwrap();
 
     let rtxn = handle.env.read_txn().unwrap();
-    let reader = Reader::<Angular>::open(&rtxn, handle.database, 2).unwrap();
+    let reader = Reader::<Angular>::open(&rtxn, handle.database).unwrap();
     let ret = reader.nns_by_item(&rtxn, 0, 5, None).unwrap();
 
     insta::assert_display_snapshot!(NnsRes(ret), @r###"

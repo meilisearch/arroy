@@ -5,15 +5,12 @@ use std::iter::repeat;
 use std::marker;
 use std::num::NonZeroUsize;
 
-use bytemuck::pod_collect_to_vec;
-use heed::types::ByteSlice;
 use heed::{Database, RoTxn};
 use ordered_float::OrderedFloat;
 
 use crate::node::{Descendants, Leaf, SplitPlaneNormal};
-use crate::{Distance, ItemId, Node, NodeCodec, NodeId, Side, BEU32};
+use crate::{Distance, ItemId, MetadataCodec, Node, NodeCodec, NodeId, Side, BEU32};
 
-// TODO use a "metadata" key to store and check the dimensions and distance type
 pub struct Reader<D: Distance> {
     database: heed::Database<BEU32, NodeCodec<D>>,
     roots: Vec<NodeId>,
@@ -22,22 +19,23 @@ pub struct Reader<D: Distance> {
 }
 
 impl<D: Distance + 'static> Reader<D> {
-    pub fn open<U>(
-        rtxn: &RoTxn,
-        database: Database<BEU32, U>,
-        dimensions: usize,
-    ) -> heed::Result<Reader<D>> {
-        let roots = match database.remap_data_type::<ByteSlice>().get(rtxn, &u32::MAX)? {
-            Some(roots_bytes) => pod_collect_to_vec(roots_bytes),
-            None => Vec::new(),
+    pub fn open<U>(rtxn: &RoTxn, database: Database<BEU32, U>) -> heed::Result<Reader<D>> {
+        let metadata = match database.remap_data_type::<MetadataCodec>().get(rtxn, &u32::MAX)? {
+            Some(metadata) => metadata,
+            None => todo!("Invalid database"),
         };
 
         Ok(Reader {
             database: database.remap_data_type(),
-            roots,
-            dimensions,
+            roots: metadata.root_nodes.to_vec(),
+            dimensions: metadata.dimensions,
             _marker: marker::PhantomData,
         })
+    }
+
+    /// Returns the number of dimensions in the index.
+    pub fn dimensions(&self) -> usize {
+        self.dimensions
     }
 
     /// Returns the number of trees in the index.

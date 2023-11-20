@@ -1,13 +1,12 @@
 use std::fmt;
 
-use bytemuck::pod_collect_to_vec;
-use heed::types::{ByteSlice, LazyDecode};
+use heed::types::LazyDecode;
 use heed::{Database, Env, EnvOpenOptions, Unspecified};
 use rand::rngs::StdRng;
 use rand::SeedableRng;
 use tempfile::TempDir;
 
-use crate::{Angular, NodeCodec, BEU32};
+use crate::{Angular, MetadataCodec, NodeCodec, BEU32};
 
 mod reader;
 mod writer;
@@ -30,10 +29,13 @@ impl fmt::Display for DatabaseHandle {
                 let node = lazy_node.decode().unwrap();
                 writeln!(f, "{i}: {node:?}")?;
             } else {
-                let roots_bytes =
-                    self.database.remap_data_type::<ByteSlice>().get(&rtxn, &i).unwrap().unwrap();
-                let roots: Vec<u32> = pod_collect_to_vec(roots_bytes);
-                writeln!(f, "\nu32::MAX: {roots:?}")?;
+                let metadata = self
+                    .database
+                    .remap_data_type::<MetadataCodec>()
+                    .get(&rtxn, &i)
+                    .unwrap()
+                    .unwrap();
+                writeln!(f, "\nu32::MAX: {metadata:?}")?;
             }
         }
         Ok(())

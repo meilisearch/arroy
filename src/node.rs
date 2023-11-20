@@ -2,13 +2,11 @@ use std::borrow::Cow;
 use std::error::Error;
 use std::mem::size_of;
 
-use bytemuck::{
-    bytes_of, cast_slice, pod_collect_to_vec, pod_read_unaligned, try_cast_slice, Pod, Zeroable,
-};
+use bytemuck::{bytes_of, cast_slice, pod_read_unaligned};
 use byteorder::{BigEndian, ByteOrder};
 use heed::{BytesDecode, BytesEncode};
 
-use crate::{Distance, NodeId};
+use crate::{aligned_or_collect_vec, Distance, NodeId};
 
 #[derive(Debug, Clone)]
 pub enum Node<'a, D: Distance> {
@@ -110,14 +108,5 @@ impl<'a, D: Distance + 'static> BytesDecode<'a> for NodeCodec<D> {
             }
             unknown => panic!("What the fuck is an {unknown:?}"),
         }
-    }
-}
-
-fn aligned_or_collect_vec<T: Pod + Zeroable>(bytes: &[u8]) -> Cow<[T]> {
-    use bytemuck::PodCastError::TargetAlignmentGreaterAndInputNotAligned;
-    match try_cast_slice(bytes) {
-        Ok(casted) => Cow::Borrowed(casted),
-        Err(TargetAlignmentGreaterAndInputNotAligned) => Cow::Owned(pod_collect_to_vec(bytes)),
-        Err(e) => panic!("casting slices failed: {e}"),
     }
 }

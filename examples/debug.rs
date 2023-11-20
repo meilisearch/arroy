@@ -37,7 +37,7 @@ fn main() -> heed::Result<()> {
     wtxn.commit()?;
 
     let rtxn = env.read_txn()?;
-    let reader = Reader::<Euclidean>::open(&rtxn, database, dimensions)?;
+    let reader = Reader::<Euclidean>::open(&rtxn, database)?;
     for (id, dist) in reader.nns_by_vector(&rtxn, &[0., 0.], 10, None)? {
         println!("id({id}): distance({dist})");
     }

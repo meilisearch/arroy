@@ -1,14 +1,13 @@
 use std::borrow::Cow;
 use std::marker;
 
-use bytemuck::checked::cast_slice;
-use heed::types::{ByteSlice, DecodeIgnore};
+use heed::types::DecodeIgnore;
 use heed::{Database, RoTxn, RwTxn};
 use rand::Rng;
 
 use crate::node::{Descendants, Leaf};
 use crate::reader::item_leaf;
-use crate::{Distance, ItemId, Node, NodeCodec, NodeId, Side, BEU32};
+use crate::{Distance, ItemId, Metadata, MetadataCodec, Node, NodeCodec, NodeId, Side, BEU32};
 
 pub struct Writer<D: Distance> {
     database: heed::Database<BEU32, NodeCodec<D>>,
@@ -103,11 +102,9 @@ impl<D: Distance + 'static> Writer<D> {
         match self.database.get(wtxn, &u32::MAX)? {
             Some(_) => panic!("The database is full. We cannot write the root nodes ids"),
             None => {
-                self.database.remap_data_type::<ByteSlice>().put(
-                    wtxn,
-                    &u32::MAX,
-                    cast_slice(self.roots.as_slice()),
-                )?;
+                let metadata =
+                    Metadata { dimensions: self.dimensions, root_nodes: Cow::Owned(self.roots) };
+                self.database.remap_data_type::<MetadataCodec>().put(wtxn, &u32::MAX, &metadata)?;
             }
         }
 
