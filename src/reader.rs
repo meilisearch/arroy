@@ -45,6 +45,11 @@ impl<D: Distance + 'static> Reader<D> {
         self.roots.len()
     }
 
+    /// Returns the number of nodes in the index. Useful to run an exhaustive search.
+    pub fn n_nodes(&self, rtxn: &RoTxn) -> heed::Result<Option<NonZeroUsize>> {
+        Ok(NonZeroUsize::new(self.database.len(rtxn)? as usize))
+    }
+
     /// Returns the vector for item `i` that was previously added.
     pub fn item_vector(&self, rtxn: &RoTxn, item: ItemId) -> heed::Result<Option<Vec<f32>>> {
         Ok(item_leaf(self.database, rtxn, item)?.map(|leaf| leaf.vector.into_owned()))

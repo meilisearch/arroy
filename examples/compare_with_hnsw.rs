@@ -1,5 +1,4 @@
 use std::borrow::Cow;
-use std::num::NonZeroUsize;
 use std::time::Instant;
 
 use arroy::{Distance, Euclidean, ItemId, Leaf, Reader, Writer, BEU32};
@@ -8,10 +7,10 @@ use instant_distance::{Builder, HnswMap, MapItem};
 use rand::rngs::StdRng;
 use rand::{Rng, SeedableRng};
 
-const TWENTY_HUNDRED_MIB: usize = 200 * 1024 * 1024;
-const NUMBER_VECTORS: usize = 10_000;
-const VECTOR_DIMENSIONS: usize = 300;
-const NUMBER_FETCHED: usize = 10;
+const TWENTY_HUNDRED_MIB: usize = 2 * 1024 * 1024 * 1024;
+const NUMBER_VECTORS: usize = 60_000;
+const VECTOR_DIMENSIONS: usize = 768;
+const NUMBER_FETCHED: usize = 5;
 
 fn main() -> heed::Result<()> {
     let dir = tempfile::tempdir()?;
@@ -41,8 +40,7 @@ fn main() -> heed::Result<()> {
     // By making it precise we are near the HNSW but
     // we take a lot more time to search than the HNSW.
     let is_precise = false;
-    let search_k =
-        if is_precise { NonZeroUsize::new(NUMBER_FETCHED * reader.n_trees() * 20) } else { None };
+    let search_k = if is_precise { reader.n_nodes(&rtxn).unwrap() } else { None };
 
     for (id, dist) in reader.nns_by_item(&rtxn, 0, NUMBER_FETCHED, search_k)?.unwrap() {
         println!("id({id}): distance({dist})");
