@@ -23,6 +23,10 @@ impl Distance for Manhattan {
         NodeHeaderManhattan { bias: 0.0 }
     }
 
+    fn name() -> &'static str {
+        "manhattan"
+    }
+
     fn distance(p: &Leaf<Self>, q: &Leaf<Self>) -> f32 {
         p.vector.iter().zip(q.vector.iter()).map(|(&p, &q)| (p - q).abs()).sum()
     }

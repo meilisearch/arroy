@@ -19,6 +19,7 @@ pub trait Distance: Sized + Clone + fmt::Debug {
     type Header: Pod + Zeroable + fmt::Debug;
 
     fn new_header(vector: &[f32]) -> Self::Header;
+    fn name() -> &'static str;
 
     /// Returns a non-normalized distance.
     fn distance(p: &Leaf<Self>, q: &Leaf<Self>) -> f32;
