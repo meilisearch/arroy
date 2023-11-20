@@ -15,6 +15,7 @@ pub struct Reader<D: Distance> {
     database: heed::Database<BEU32, NodeCodec<D>>,
     roots: Vec<NodeId>,
     dimensions: usize,
+    n_items: usize,
     _marker: marker::PhantomData<D>,
 }
 
@@ -27,8 +28,9 @@ impl<D: Distance + 'static> Reader<D> {
 
         Ok(Reader {
             database: database.remap_data_type(),
-            roots: metadata.root_nodes.to_vec(),
+            roots: metadata.roots.to_vec(),
             dimensions: metadata.dimensions,
+            n_items: metadata.n_items,
             _marker: marker::PhantomData,
         })
     }
@@ -41,6 +43,11 @@ impl<D: Distance + 'static> Reader<D> {
     /// Returns the number of trees in the index.
     pub fn n_trees(&self) -> usize {
         self.roots.len()
+    }
+
+    /// Returns the number of vectors stored in the index.
+    pub fn n_items(&self) -> usize {
+        self.n_items
     }
 
     /// Returns the number of nodes in the index. Useful to run an exhaustive search.
@@ -99,8 +106,9 @@ impl<D: Distance + 'static> Reader<D> {
         count: usize,
         search_k: Option<NonZeroUsize>,
     ) -> Result<Vec<(ItemId, f32)>> {
-        // TODO define the capacity
-        let mut queue = BinaryHeap::new();
+        // Since the datastructure describes a kind of btree, the capacity is something in the order of:
+        // The number of root nodes + log2 of the total number of vectors.
+        let mut queue = BinaryHeap::with_capacity(self.roots.len() + self.n_items.ilog2() as usize);
         let search_k = search_k.map_or(count * self.roots.len(), NonZeroUsize::get);
 
         // Insert all the root nodes and associate them to the highest distance.

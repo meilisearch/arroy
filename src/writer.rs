@@ -49,7 +49,6 @@ impl<D: Distance + 'static> Writer<D> {
             });
         }
 
-        // TODO find a way to not allocate the vector
         let leaf = Leaf { header: D::new_header(vector), vector: Cow::Borrowed(vector) };
         Ok(self.database.put(wtxn, &item, &Node::Leaf(leaf))?)
     }
@@ -102,8 +101,11 @@ impl<D: Distance + 'static> Writer<D> {
         match self.database.get(wtxn, &u32::MAX)? {
             Some(_) => panic!("The database is full. We cannot write the root nodes ids"),
             None => {
-                let metadata =
-                    Metadata { dimensions: self.dimensions, root_nodes: Cow::Owned(self.roots) };
+                let metadata = Metadata {
+                    dimensions: self.dimensions,
+                    n_items: self.n_items,
+                    roots: Cow::Owned(self.roots),
+                };
                 self.database.remap_data_type::<MetadataCodec>().put(wtxn, &u32::MAX, &metadata)?;
             }
         }
