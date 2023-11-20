@@ -23,10 +23,6 @@ impl Distance for Euclidean {
         NodeHeaderEuclidean { bias: 0.0 }
     }
 
-    fn name() -> &'static str {
-        "euclidean"
-    }
-
     fn distance(p: &Leaf<Self>, q: &Leaf<Self>) -> f32 {
         euclidean_distance(&p.vector, &q.vector)
     }

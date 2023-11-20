@@ -21,6 +21,19 @@ impl Display for NnsRes {
 }
 
 #[test]
+fn open_unfinished_db() {
+    let handle = create_database();
+    let mut wtxn = handle.env.write_txn().unwrap();
+    let writer = Writer::<Euclidean>::prepare(&mut wtxn, handle.database, 2).unwrap();
+    writer.add_item(&mut wtxn, 0, &[0.0, 0.0]).unwrap();
+    wtxn.commit().unwrap();
+
+    let rtxn = handle.env.read_txn().unwrap();
+    let ret = Reader::<Euclidean>::open(&rtxn, handle.database).map(|_| ()).unwrap_err();
+    insta::assert_display_snapshot!(ret, @"Metadata are missing, did you build your database before trying to read it.");
+}
+
+#[test]
 fn open_db_with_wrong_dimension() {
     let handle = create_database();
     let mut wtxn = handle.env.write_txn().unwrap();
@@ -33,7 +46,7 @@ fn open_db_with_wrong_dimension() {
     let rtxn = handle.env.read_txn().unwrap();
     let reader = Reader::<Euclidean>::open(&rtxn, handle.database).unwrap();
     let ret = reader.nns_by_vector(&rtxn, &[1.0, 2.0, 3.0], 5, None).unwrap_err();
-    insta::assert_display_snapshot!(ret, @"Invalid vector dimensions. Got 3 but expected 2");
+    insta::assert_display_snapshot!(ret, @"Invalid vector dimensions. Got 3 but expected 2.");
 }
 
 #[test]

@@ -22,10 +22,6 @@ impl Distance for Angular {
         NodeHeaderAngular { norm: Self::norm(vector) }
     }
 
-    fn name() -> &'static str {
-        "angular"
-    }
-
     fn distance(p: &Leaf<Self>, q: &Leaf<Self>) -> f32 {
         let pp = p.header.norm;
         let qq = q.header.norm;

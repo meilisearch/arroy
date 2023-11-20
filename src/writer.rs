@@ -99,7 +99,7 @@ impl<D: Distance + 'static> Writer<D> {
         // Also, copy the roots into the highest key of the database (u32::MAX).
         // This way we can load them faster without reading the whole database.
         match self.database.get(wtxn, &u32::MAX)? {
-            Some(_) => panic!("The database is full. We cannot write the root nodes ids"),
+            Some(_) => return Err(Error::DatabaseFull),
             None => {
                 let metadata = Metadata {
                     dimensions: self.dimensions,
@@ -136,7 +136,7 @@ impl<D: Distance + 'static> Writer<D> {
             && (!is_root || self.n_items <= max_descendants || indices.len() == 1)
         {
             let item_id = match self.last_node_id(wtxn)? {
-                Some(last_id) => last_id.checked_add(1).unwrap(),
+                Some(last_id) => last_id.checked_add(1).ok_or(Error::DatabaseFull)?,
                 None => 0,
             };
 

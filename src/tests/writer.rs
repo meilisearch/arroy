@@ -4,6 +4,28 @@ use super::{create_database, rng};
 use crate::{Euclidean, Writer};
 
 #[test]
+fn use_u32_max_minus_one_for_a_vec() {
+    let handle = create_database();
+    let mut wtxn = handle.env.write_txn().unwrap();
+    let writer = Writer::<Euclidean>::prepare(&mut wtxn, handle.database, 3).unwrap();
+    writer.add_item(&mut wtxn, u32::MAX - 1, &[0.0, 1.0, 2.0]).unwrap();
+
+    let err = writer.build(&mut wtxn, rng(), Some(1)).unwrap_err();
+    insta::assert_display_snapshot!(err, @"Database full. Try to use lower vector IDs.");
+}
+
+#[test]
+fn use_u32_max_for_a_vec() {
+    let handle = create_database();
+    let mut wtxn = handle.env.write_txn().unwrap();
+    let writer = Writer::<Euclidean>::prepare(&mut wtxn, handle.database, 3).unwrap();
+    writer.add_item(&mut wtxn, u32::MAX, &[0.0, 1.0, 2.0]).unwrap();
+
+    let err = writer.build(&mut wtxn, rng(), Some(1)).unwrap_err();
+    insta::assert_display_snapshot!(err, @"Database full. Try to use lower vector IDs.");
+}
+
+#[test]
 fn write_one_vector_in_one_tree() {
     let handle = create_database();
     let mut wtxn = handle.env.write_txn().unwrap();

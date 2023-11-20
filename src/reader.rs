@@ -9,7 +9,7 @@ use heed::{Database, RoTxn};
 use ordered_float::OrderedFloat;
 
 use crate::node::{Descendants, Leaf, SplitPlaneNormal};
-use crate::{Distance, ItemId, MetadataCodec, Node, NodeCodec, NodeId, Result, Side, BEU32};
+use crate::{Distance, Error, ItemId, MetadataCodec, Node, NodeCodec, NodeId, Result, Side, BEU32};
 
 pub struct Reader<D: Distance> {
     database: heed::Database<BEU32, NodeCodec<D>>,
@@ -23,7 +23,7 @@ impl<D: Distance + 'static> Reader<D> {
     pub fn open<U>(rtxn: &RoTxn, database: Database<BEU32, U>) -> Result<Reader<D>> {
         let metadata = match database.remap_data_type::<MetadataCodec>().get(rtxn, &u32::MAX)? {
             Some(metadata) => metadata,
-            None => todo!("Invalid database"),
+            None => return Err(Error::MissingMetadata),
         };
 
         Ok(Reader {
@@ -89,7 +89,7 @@ impl<D: Distance + 'static> Reader<D> {
         search_k: Option<NonZeroUsize>,
     ) -> Result<Vec<(ItemId, f32)>> {
         if vector.len() != self.dimensions {
-            return Err(crate::Error::InvalidVecDimension {
+            return Err(Error::InvalidVecDimension {
                 expected: self.dimensions(),
                 received: vector.len(),
             });
