@@ -31,7 +31,6 @@ fn two_db_with_wrong_dimension() {
     wtxn.commit().unwrap();
 
     let rtxn = handle.env.read_txn().unwrap();
-    // TODO: Should get an error
     let reader = Reader::<Angular>::open(&rtxn, handle.database, 4).unwrap();
     let ret = reader.nns_by_item(&rtxn, 0, 5, None).unwrap();
 
@@ -42,6 +41,50 @@ fn two_db_with_wrong_dimension() {
 
 #[test]
 fn two_dimension_on_a_line() {
+    let handle = create_database();
+    let mut wtxn = handle.env.write_txn().unwrap();
+    let writer = Writer::<Angular>::prepare(&mut wtxn, handle.database, 2).unwrap();
+    // We'll draw a simple line over the y as seen below
+    // (0,0) # # # # # # ...
+    for i in 0..100 {
+        writer.add_item(&mut wtxn, i, &[i as f32, 0.0]).unwrap();
+    }
+
+    writer.build(&mut wtxn, rng(), Some(50)).unwrap();
+    wtxn.commit().unwrap();
+
+    let rtxn = handle.env.read_txn().unwrap();
+    let reader = Reader::<Angular>::open(&rtxn, handle.database, 2).unwrap();
+
+    // if we can't look into enough nodes we find some random points
+    let ret = reader.nns_by_item(&rtxn, 0, 5, NonZeroUsize::new(1)).unwrap();
+    insta::assert_display_snapshot!(NnsRes(ret), @r###"
+    id(9): distance(1.4142135)
+    id(70): distance(1.4142135)
+    "###);
+
+    // if we can look into all the node there is no inifinite loop and it works
+    let ret = reader.nns_by_item(&rtxn, 0, 5, NonZeroUsize::new(usize::MAX)).unwrap();
+    insta::assert_display_snapshot!(NnsRes(ret), @r###"
+    id(0): distance(1.4142135)
+    id(1): distance(1.4142135)
+    id(2): distance(1.4142135)
+    id(3): distance(1.4142135)
+    id(4): distance(1.4142135)
+    "###);
+
+    let ret = reader.nns_by_item(&rtxn, 0, 5, None).unwrap();
+    insta::assert_display_snapshot!(NnsRes(ret), @r###"
+    id(0): distance(1.4142135)
+    id(1): distance(1.4142135)
+    id(2): distance(1.4142135)
+    id(3): distance(1.4142135)
+    id(4): distance(1.4142135)
+    "###);
+}
+
+#[test]
+fn two_dimension_on_a_column() {
     let handle = create_database();
     let mut wtxn = handle.env.write_txn().unwrap();
     let writer = Writer::<Angular>::prepare(&mut wtxn, handle.database, 2).unwrap();
@@ -60,56 +103,8 @@ fn two_dimension_on_a_line() {
 
     let rtxn = handle.env.read_txn().unwrap();
     let reader = Reader::<Angular>::open(&rtxn, handle.database, 2).unwrap();
-
-    // if we can't look into enough nodes we find some random points
-    let ret = reader.nns_by_item(&rtxn, 0, 5, NonZeroUsize::new(1)).unwrap();
-    // TODO: The distances are wrong
-    insta::assert_display_snapshot!(NnsRes(ret), @r###"
-    id(9): distance(1.4142135)
-    id(70): distance(1.4142135)
-    "###);
-
-    // if we can look into all the node there is no inifinite loop and it works
-    let ret = reader.nns_by_item(&rtxn, 0, 5, NonZeroUsize::new(usize::MAX)).unwrap();
-    // TODO: The distances are wrong
-    insta::assert_display_snapshot!(NnsRes(ret), @r###"
-    id(0): distance(1.4142135)
-    id(1): distance(1.4142135)
-    id(2): distance(1.4142135)
-    id(3): distance(1.4142135)
-    id(4): distance(1.4142135)
-    "###);
-
-    let ret = reader.nns_by_item(&rtxn, 0, 5, None).unwrap();
-    // TODO: The distances are wrong
-    insta::assert_display_snapshot!(NnsRes(ret), @r###"
-    id(0): distance(1.4142135)
-    id(1): distance(1.4142135)
-    id(2): distance(1.4142135)
-    id(3): distance(1.4142135)
-    id(4): distance(1.4142135)
-    "###);
-}
-
-#[test]
-fn two_dimension_on_a_column() {
-    let handle = create_database();
-    let mut wtxn = handle.env.write_txn().unwrap();
-    let writer = Writer::<Angular>::prepare(&mut wtxn, handle.database, 2).unwrap();
-    // We'll draw a simple line over the y as seen below
-    // (0,0) # # # # # # ...
-    for i in 0..100 {
-        writer.add_item(&mut wtxn, i, &[i as f32, 0.0]).unwrap();
-    }
-
-    writer.build(&mut wtxn, rng(), Some(50)).unwrap();
-    wtxn.commit().unwrap();
-
-    let rtxn = handle.env.read_txn().unwrap();
-    let reader = Reader::<Angular>::open(&rtxn, handle.database, 2).unwrap();
     let ret = reader.nns_by_item(&rtxn, 0, 5, None).unwrap();
 
-    // TODO: The distances are wrong
     insta::assert_display_snapshot!(NnsRes(ret), @r###"
     id(0): distance(1.4142135)
     id(1): distance(1.4142135)
