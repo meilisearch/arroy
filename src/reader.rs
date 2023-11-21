@@ -9,19 +9,20 @@ use heed::{Database, RoTxn};
 use ordered_float::OrderedFloat;
 
 use crate::item_iter::ItemIter;
-use crate::node::{Descendants, Leaf, SplitPlaneNormal};
-use crate::{Distance, Error, ItemId, MetadataCodec, Node, NodeCodec, NodeId, Result, Side, BEU32};
+use crate::node::{Descendants, Leaf, NodeIds, SplitPlaneNormal};
+use crate::{Distance, Error, ItemId, MetadataCodec, Node, NodeCodec, Result, Side, BEU32};
 
-pub struct Reader<D: Distance> {
+#[derive(Debug)]
+pub struct Reader<'t, D: Distance> {
     database: heed::Database<BEU32, NodeCodec<D>>,
-    roots: Vec<NodeId>,
+    roots: NodeIds<'t>,
     dimensions: usize,
     n_items: usize,
     _marker: marker::PhantomData<D>,
 }
 
-impl<D: Distance> Reader<D> {
-    pub fn open<U>(rtxn: &RoTxn, database: Database<BEU32, U>) -> Result<Reader<D>> {
+impl<'t, D: Distance> Reader<'t, D> {
+    pub fn open<U>(rtxn: &'t RoTxn, database: Database<BEU32, U>) -> Result<Reader<'t, D>> {
         let metadata = match database.remap_data_type::<MetadataCodec>().get(rtxn, &u32::MAX)? {
             Some(metadata) => metadata,
             None => return Err(Error::MissingMetadata),
@@ -29,7 +30,7 @@ impl<D: Distance> Reader<D> {
 
         Ok(Reader {
             database: database.remap_data_type(),
-            roots: metadata.roots.to_vec(),
+            roots: metadata.roots,
             dimensions: metadata.dimensions,
             n_items: metadata.n_items,
             _marker: marker::PhantomData,
@@ -52,17 +53,17 @@ impl<D: Distance> Reader<D> {
     }
 
     /// Returns the number of nodes in the index. Useful to run an exhaustive search.
-    pub fn n_nodes(&self, rtxn: &RoTxn) -> Result<Option<NonZeroUsize>> {
+    pub fn n_nodes(&self, rtxn: &'t RoTxn) -> Result<Option<NonZeroUsize>> {
         Ok(NonZeroUsize::new(self.database.len(rtxn)? as usize))
     }
 
     /// Returns the vector for item `i` that was previously added.
-    pub fn item_vector(&self, rtxn: &RoTxn, item: ItemId) -> Result<Option<Vec<f32>>> {
+    pub fn item_vector(&self, rtxn: &'t RoTxn, item: ItemId) -> Result<Option<Vec<f32>>> {
         Ok(item_leaf(self.database, rtxn, item)?.map(|leaf| leaf.vector.into_owned()))
     }
 
     /// Returns an iterator over the items vector.
-    pub fn iter<'t>(&self, rtxn: &'t RoTxn) -> Result<ItemIter<'t, D>> {
+    pub fn iter(&self, rtxn: &'t RoTxn) -> Result<ItemIter<'t, D>> {
         self.database.iter(rtxn).map(|inner| ItemIter { inner }).map_err(Into::into)
     }
 
@@ -73,7 +74,7 @@ impl<D: Distance> Reader<D> {
     /// tradeoff between better accuracy and speed.
     pub fn nns_by_item(
         &self,
-        rtxn: &RoTxn,
+        rtxn: &'t RoTxn,
         item: ItemId,
         count: usize,
         search_k: Option<NonZeroUsize>,
@@ -89,7 +90,7 @@ impl<D: Distance> Reader<D> {
     /// See [`Reader::nns_by_item`] for more details.
     pub fn nns_by_vector(
         &self,
-        rtxn: &RoTxn,
+        rtxn: &'t RoTxn,
         vector: &[f32],
         count: usize,
         search_k: Option<NonZeroUsize>,
@@ -107,7 +108,7 @@ impl<D: Distance> Reader<D> {
 
     fn nns_by_leaf(
         &self,
-        rtxn: &RoTxn,
+        rtxn: &'t RoTxn,
         query_leaf: &Leaf<D>,
         count: usize,
         search_k: Option<NonZeroUsize>,
@@ -118,7 +119,7 @@ impl<D: Distance> Reader<D> {
         let search_k = search_k.map_or(count * self.roots.len(), NonZeroUsize::get);
 
         // Insert all the root nodes and associate them to the highest distance.
-        queue.extend(repeat(OrderedFloat(f32::INFINITY)).zip(self.roots.iter().copied()));
+        queue.extend(repeat(OrderedFloat(f32::INFINITY)).zip(self.roots.iter()));
 
         let mut nns = Vec::<ItemId>::new();
         while nns.len() < search_k {
@@ -129,7 +130,7 @@ impl<D: Distance> Reader<D> {
 
             match self.database.get(rtxn, &item)?.unwrap() {
                 Node::Leaf(_) => nns.push(item),
-                Node::Descendants(Descendants { descendants }) => nns.extend(descendants),
+                Node::Descendants(Descendants { descendants }) => nns.extend(descendants.iter()),
                 Node::SplitPlaneNormal(SplitPlaneNormal { normal, left, right }) => {
                     let margin = D::margin_no_header(&normal, &query_leaf.vector);
                     queue.push((OrderedFloat(D::pq_distance(dist, margin, Side::Left)), left));

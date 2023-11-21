@@ -1,11 +1,9 @@
 use std::borrow::Cow;
-use std::error::Error;
 use std::mem::size_of;
-use std::slice::ChunksExact;
 
 use bytemuck::{bytes_of, cast_slice, pod_read_unaligned};
 use byteorder::{BigEndian, ByteOrder, NativeEndian};
-use heed::{BytesDecode, BytesEncode};
+use heed::{BoxedError, BytesDecode, BytesEncode};
 
 use crate::{aligned_or_collect_vec, Distance, NodeId};
 
@@ -44,34 +42,33 @@ impl<D: Distance> Leaf<'_, D> {
 
 #[derive(Debug, Clone)]
 pub struct Descendants<'a> {
-    pub descendants: NodeIdIter<'a>,
+    pub descendants: NodeIds<'a>,
 }
 
 #[derive(Debug, Clone)]
-pub struct NodeIdIter<'a> {
-    raw_bytes: &'a [u8],
-    chunks: ChunksExact<'a, u8>,
+pub struct NodeIds<'a> {
+    bytes: &'a [u8],
 }
 
-impl NodeIdIter<'_> {
-    pub fn from_slice(slice: &[u32]) -> NodeIdIter<'_> {
-        NodeIdIter::from_bytes(cast_slice(slice))
+impl<'a> NodeIds<'a> {
+    pub fn from_slice(slice: &[u32]) -> NodeIds<'_> {
+        NodeIds::from_bytes(cast_slice(slice))
     }
 
-    fn from_bytes(slice: &[u8]) -> NodeIdIter<'_> {
-        NodeIdIter { raw_bytes: slice, chunks: slice.chunks_exact(size_of::<NodeId>()) }
+    pub fn from_bytes(bytes: &[u8]) -> NodeIds<'_> {
+        NodeIds { bytes }
     }
 
-    fn raw_bytes(&self) -> &[u8] {
-        self.raw_bytes
+    pub fn raw_bytes(&self) -> &[u8] {
+        self.bytes
     }
-}
 
-impl Iterator for NodeIdIter<'_> {
-    type Item = NodeId;
+    pub fn len(&self) -> usize {
+        self.bytes.len() / size_of::<NodeId>()
+    }
 
-    fn next(&mut self) -> Option<Self::Item> {
-        self.chunks.next().map(NativeEndian::read_u32)
+    pub fn iter(&self) -> impl Iterator<Item = NodeId> + 'a {
+        self.bytes.chunks_exact(size_of::<NodeId>()).map(NativeEndian::read_u32)
     }
 }
 
@@ -87,7 +84,7 @@ pub struct NodeCodec<D>(D);
 impl<'a, D: Distance> BytesEncode<'a> for NodeCodec<D> {
     type EItem = Node<'a, D>;
 
-    fn bytes_encode(item: &Self::EItem) -> Result<Cow<'a, [u8]>, Box<dyn Error + Send + Sync>> {
+    fn bytes_encode(item: &Self::EItem) -> Result<Cow<'a, [u8]>, BoxedError> {
         let mut bytes = Vec::new();
         match item {
             Node::Leaf(Leaf { header, vector }) => {
@@ -113,7 +110,7 @@ impl<'a, D: Distance> BytesEncode<'a> for NodeCodec<D> {
 impl<'a, D: Distance> BytesDecode<'a> for NodeCodec<D> {
     type DItem = Node<'a, D>;
 
-    fn bytes_decode(bytes: &'a [u8]) -> Result<Self::DItem, Box<dyn Error + Send + Sync>> {
+    fn bytes_decode(bytes: &'a [u8]) -> Result<Self::DItem, BoxedError> {
         match bytes {
             [LEAF_TAG, bytes @ ..] => {
                 let (header_bytes, remaining) = bytes.split_at(size_of::<D::Header>());
@@ -133,7 +130,7 @@ impl<'a, D: Distance> BytesDecode<'a> for NodeCodec<D> {
                 }))
             }
             [DESCENDANTS_TAG, bytes @ ..] => {
-                Ok(Node::Descendants(Descendants { descendants: NodeIdIter::from_bytes(bytes) }))
+                Ok(Node::Descendants(Descendants { descendants: NodeIds::from_bytes(bytes) }))
             }
             unknown => panic!("What the fuck is an {unknown:?}"),
         }

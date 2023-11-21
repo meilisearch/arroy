@@ -6,12 +6,14 @@ use heed::{Database, PutFlags, RoTxn, RwTxn};
 use rand::Rng;
 
 use crate::item_iter::ItemIter;
-use crate::node::{Descendants, Leaf, NodeIdIter};
+use crate::node::{Descendants, Leaf, NodeIds};
 use crate::reader::item_leaf;
 use crate::{
-    Distance, Error, ItemId, Metadata, MetadataCodec, Node, NodeCodec, NodeId, Result, Side, BEU32,
+    Distance, Error, ItemId, Metadata, MetadataCodec, Node, NodeCodec, NodeId, Reader, Result,
+    Side, BEU32,
 };
 
+#[derive(Debug)]
 pub struct Writer<D: Distance> {
     database: heed::Database<BEU32, NodeCodec<D>>,
     dimensions: usize,
@@ -86,12 +88,12 @@ impl<D: Distance> Writer<D> {
         Ok(self.database.clear(wtxn)?)
     }
 
-    pub fn build<R: Rng>(
+    pub fn build<'t, R: Rng>(
         mut self,
-        wtxn: &mut RwTxn,
+        wtxn: &'t mut RwTxn,
         mut rng: R,
         n_trees: Option<usize>,
-    ) -> Result<()> {
+    ) -> Result<Reader<'t, D>> {
         // D::template preprocess<T, S, Node>(_nodes, _s, _n_items, _f);
 
         self.n_items = self.database.len(wtxn)? as usize;
@@ -129,7 +131,7 @@ impl<D: Distance> Writer<D> {
                 let metadata = Metadata {
                     dimensions: self.dimensions,
                     n_items: self.n_items,
-                    roots: Cow::Owned(self.roots),
+                    roots: NodeIds::from_slice(&self.roots),
                 };
                 self.database.remap_data_type::<MetadataCodec>().put(wtxn, &u32::MAX, &metadata)?;
             }
@@ -137,7 +139,7 @@ impl<D: Distance> Writer<D> {
 
         // D::template postprocess<T, S, Node>(_nodes, _s, _n_items, _f);
 
-        Ok(())
+        Reader::open(wtxn, self.database)
     }
 
     /// Creates a tree of nodes from the items the user provided
@@ -166,7 +168,7 @@ impl<D: Distance> Writer<D> {
             };
 
             let item =
-                Node::Descendants(Descendants { descendants: NodeIdIter::from_slice(&indices) });
+                Node::Descendants(Descendants { descendants: NodeIds::from_slice(&indices) });
             self.database.put(wtxn, &item_id, &item)?;
             return Ok(item_id);
         }
