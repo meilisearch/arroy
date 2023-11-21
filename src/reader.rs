@@ -8,6 +8,7 @@ use std::num::NonZeroUsize;
 use heed::{Database, RoTxn};
 use ordered_float::OrderedFloat;
 
+use crate::item_iter::ItemIter;
 use crate::node::{Descendants, Leaf, SplitPlaneNormal};
 use crate::{Distance, Error, ItemId, MetadataCodec, Node, NodeCodec, NodeId, Result, Side, BEU32};
 
@@ -19,7 +20,7 @@ pub struct Reader<D: Distance> {
     _marker: marker::PhantomData<D>,
 }
 
-impl<D: Distance + 'static> Reader<D> {
+impl<D: Distance> Reader<D> {
     pub fn open<U>(rtxn: &RoTxn, database: Database<BEU32, U>) -> Result<Reader<D>> {
         let metadata = match database.remap_data_type::<MetadataCodec>().get(rtxn, &u32::MAX)? {
             Some(metadata) => metadata,
@@ -60,7 +61,12 @@ impl<D: Distance + 'static> Reader<D> {
         Ok(item_leaf(self.database, rtxn, item)?.map(|leaf| leaf.vector.into_owned()))
     }
 
-    /// Returns the `count` closest items from `item`.
+    /// Returns an iterator over the items vector.
+    pub fn iter<'t>(&self, rtxn: &'t RoTxn) -> Result<ItemIter<'t, D>> {
+        self.database.iter(rtxn).map(|inner| ItemIter { inner }).map_err(Into::into)
+    }
+
+    /// Returns the `count` closests items from `item`.
     ///
     /// During the query it will inspect up to `search_k` nodes which defaults
     /// to `n_trees * count` if not provided. `search_k` gives you a run-time
@@ -165,7 +171,7 @@ impl<D: Distance + 'static> Reader<D> {
     }
 }
 
-pub fn item_leaf<'a, D: Distance + 'static>(
+pub fn item_leaf<'a, D: Distance>(
     database: Database<BEU32, NodeCodec<D>>,
     rtxn: &'a RoTxn,
     item: ItemId,

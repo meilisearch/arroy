@@ -55,7 +55,7 @@ pub struct SplitPlaneNormal<'a> {
 
 pub struct NodeCodec<D>(D);
 
-impl<'a, D: Distance + 'static> BytesEncode<'a> for NodeCodec<D> {
+impl<'a, D: Distance> BytesEncode<'a> for NodeCodec<D> {
     type EItem = Node<'a, D>;
 
     fn bytes_encode(item: &Self::EItem) -> Result<Cow<'a, [u8]>, Box<dyn Error + Send + Sync>> {
@@ -81,7 +81,7 @@ impl<'a, D: Distance + 'static> BytesEncode<'a> for NodeCodec<D> {
     }
 }
 
-impl<'a, D: Distance + 'static> BytesDecode<'a> for NodeCodec<D> {
+impl<'a, D: Distance> BytesDecode<'a> for NodeCodec<D> {
     type DItem = Node<'a, D>;
 
     fn bytes_decode(bytes: &'a [u8]) -> Result<Self::DItem, Box<dyn Error + Send + Sync>> {

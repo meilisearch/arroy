@@ -5,6 +5,7 @@ use heed::types::DecodeIgnore;
 use heed::{Database, PutFlags, RoTxn, RwTxn};
 use rand::Rng;
 
+use crate::item_iter::ItemIter;
 use crate::node::{Descendants, Leaf};
 use crate::reader::item_leaf;
 use crate::{
@@ -20,7 +21,7 @@ pub struct Writer<D: Distance> {
     _marker: marker::PhantomData<D>,
 }
 
-impl<D: Distance + 'static> Writer<D> {
+impl<D: Distance> Writer<D> {
     pub fn prepare<U>(
         wtxn: &mut RwTxn,
         database: Database<BEU32, U>,
@@ -39,6 +40,11 @@ impl<D: Distance + 'static> Writer<D> {
 
     pub fn item_vector(&self, rtxn: &RoTxn, item: ItemId) -> Result<Option<Vec<f32>>> {
         Ok(item_leaf(self.database, rtxn, item)?.map(|leaf| leaf.vector.into_owned()))
+    }
+
+    /// Returns an iterator over the items vector.
+    pub fn iter<'t>(&self, rtxn: &'t RoTxn) -> Result<ItemIter<'t, D>> {
+        self.database.iter(rtxn).map(|inner| ItemIter { inner }).map_err(Into::into)
     }
 
     /// Add an item associated to a vector in the database.
@@ -235,7 +241,7 @@ impl<D: Distance + 'static> Writer<D> {
 
 /// Clears everything but the leafs nodes (items).
 /// Starts from the last node and stops at the first leaf.
-fn clear_tree_nodes<D: Distance + 'static>(
+fn clear_tree_nodes<D: Distance>(
     wtxn: &mut RwTxn,
     database: Database<BEU32, NodeCodec<D>>,
 ) -> Result<()> {

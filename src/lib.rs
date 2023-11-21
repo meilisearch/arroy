@@ -1,5 +1,6 @@
 mod distance;
 mod error;
+mod item_iter;
 mod node;
 mod reader;
 mod spaces;

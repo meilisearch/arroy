@@ -15,7 +15,7 @@ mod angular;
 mod euclidean;
 mod manhattan;
 
-pub trait Distance: Sized + Clone + fmt::Debug {
+pub trait Distance: Sized + Clone + fmt::Debug + 'static {
     type Header: Pod + Zeroable + fmt::Debug;
 
     fn new_header(vector: &[f32]) -> Self::Header;
