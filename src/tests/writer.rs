@@ -37,7 +37,7 @@ fn write_one_vector_in_one_tree() {
 
     insta::assert_display_snapshot!(handle, @r###"
     0: Leaf(Leaf { header: NodeHeaderAngular { norm: 0.0 }, vector: [0.0, 1.0, 2.0] })
-    1: Descendants(Descendants { descendants: [0] })
+    1: Descendants(Descendants { descendants: NodeIdIter { raw_bytes: [0, 0, 0, 0], chunks: ChunksExact { v: [0, 0, 0, 0], rem: [], chunk_size: 4 } } })
 
     u32::MAX: Metadata { dimensions: 3, n_items: 1, roots: [1] }
     "###);
@@ -55,16 +55,16 @@ fn write_one_vector_in_multiple_trees() {
 
     insta::assert_display_snapshot!(handle, @r###"
     0: Leaf(Leaf { header: NodeHeaderAngular { norm: 0.0 }, vector: [0.0, 1.0, 2.0] })
-    1: Descendants(Descendants { descendants: [0] })
-    2: Descendants(Descendants { descendants: [0] })
-    3: Descendants(Descendants { descendants: [0] })
-    4: Descendants(Descendants { descendants: [0] })
-    5: Descendants(Descendants { descendants: [0] })
-    6: Descendants(Descendants { descendants: [0] })
-    7: Descendants(Descendants { descendants: [0] })
-    8: Descendants(Descendants { descendants: [0] })
-    9: Descendants(Descendants { descendants: [0] })
-    10: Descendants(Descendants { descendants: [0] })
+    1: Descendants(Descendants { descendants: NodeIdIter { raw_bytes: [0, 0, 0, 0], chunks: ChunksExact { v: [0, 0, 0, 0], rem: [], chunk_size: 4 } } })
+    2: Descendants(Descendants { descendants: NodeIdIter { raw_bytes: [0, 0, 0, 0], chunks: ChunksExact { v: [0, 0, 0, 0], rem: [], chunk_size: 4 } } })
+    3: Descendants(Descendants { descendants: NodeIdIter { raw_bytes: [0, 0, 0, 0], chunks: ChunksExact { v: [0, 0, 0, 0], rem: [], chunk_size: 4 } } })
+    4: Descendants(Descendants { descendants: NodeIdIter { raw_bytes: [0, 0, 0, 0], chunks: ChunksExact { v: [0, 0, 0, 0], rem: [], chunk_size: 4 } } })
+    5: Descendants(Descendants { descendants: NodeIdIter { raw_bytes: [0, 0, 0, 0], chunks: ChunksExact { v: [0, 0, 0, 0], rem: [], chunk_size: 4 } } })
+    6: Descendants(Descendants { descendants: NodeIdIter { raw_bytes: [0, 0, 0, 0], chunks: ChunksExact { v: [0, 0, 0, 0], rem: [], chunk_size: 4 } } })
+    7: Descendants(Descendants { descendants: NodeIdIter { raw_bytes: [0, 0, 0, 0], chunks: ChunksExact { v: [0, 0, 0, 0], rem: [], chunk_size: 4 } } })
+    8: Descendants(Descendants { descendants: NodeIdIter { raw_bytes: [0, 0, 0, 0], chunks: ChunksExact { v: [0, 0, 0, 0], rem: [], chunk_size: 4 } } })
+    9: Descendants(Descendants { descendants: NodeIdIter { raw_bytes: [0, 0, 0, 0], chunks: ChunksExact { v: [0, 0, 0, 0], rem: [], chunk_size: 4 } } })
+    10: Descendants(Descendants { descendants: NodeIdIter { raw_bytes: [0, 0, 0, 0], chunks: ChunksExact { v: [0, 0, 0, 0], rem: [], chunk_size: 4 } } })
 
     u32::MAX: Metadata { dimensions: 3, n_items: 1, roots: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10] }
     "###);
@@ -88,7 +88,7 @@ fn write_vectors_until_there_is_a_descendants() {
     0: Leaf(Leaf { header: NodeHeaderAngular { norm: 0.0 }, vector: [0.0, 0.0, 0.0] })
     1: Leaf(Leaf { header: NodeHeaderAngular { norm: 0.0 }, vector: [1.0, 1.0, 1.0] })
     2: Leaf(Leaf { header: NodeHeaderAngular { norm: 0.0 }, vector: [2.0, 2.0, 2.0] })
-    3: Descendants(Descendants { descendants: [0, 1, 2] })
+    3: Descendants(Descendants { descendants: NodeIdIter { raw_bytes: [0, 0, 0, 0, 1, 0, 0, 0, 2, 0, 0, 0], chunks: ChunksExact { v: [0, 0, 0, 0, 1, 0, 0, 0, 2, 0, 0, 0], rem: [], chunk_size: 4 } } })
 
     u32::MAX: Metadata { dimensions: 3, n_items: 3, roots: [3] }
     "###);
@@ -113,7 +113,7 @@ fn write_vectors_until_there_is_a_split() {
     1: Leaf(Leaf { header: NodeHeaderAngular { norm: 0.0 }, vector: [1.0, 1.0, 1.0] })
     2: Leaf(Leaf { header: NodeHeaderAngular { norm: 0.0 }, vector: [2.0, 2.0, 2.0] })
     3: Leaf(Leaf { header: NodeHeaderAngular { norm: 0.0 }, vector: [3.0, 3.0, 3.0] })
-    4: Descendants(Descendants { descendants: [1, 2, 3] })
+    4: Descendants(Descendants { descendants: NodeIdIter { raw_bytes: [1, 0, 0, 0, 2, 0, 0, 0, 3, 0, 0, 0], chunks: ChunksExact { v: [1, 0, 0, 0, 2, 0, 0, 0, 3, 0, 0, 0], rem: [], chunk_size: 4 } } })
     5: SplitPlaneNormal(SplitPlaneNormal { normal: [0.57735026, 0.57735026, 0.57735026], left: 0, right: 4 })
 
     u32::MAX: Metadata { dimensions: 3, n_items: 4, roots: [5] }

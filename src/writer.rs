@@ -6,7 +6,7 @@ use heed::{Database, PutFlags, RoTxn, RwTxn};
 use rand::Rng;
 
 use crate::item_iter::ItemIter;
-use crate::node::{Descendants, Leaf};
+use crate::node::{Descendants, Leaf, NodeIdIter};
 use crate::reader::item_leaf;
 use crate::{
     Distance, Error, ItemId, Metadata, MetadataCodec, Node, NodeCodec, NodeId, Result, Side, BEU32,
@@ -165,7 +165,8 @@ impl<D: Distance> Writer<D> {
                 None => 0,
             };
 
-            let item = Node::Descendants(Descendants { descendants: Cow::Owned(indices) });
+            let item =
+                Node::Descendants(Descendants { descendants: NodeIdIter::from_slice(&indices) });
             self.database.put(wtxn, &item_id, &item)?;
             return Ok(item_id);
         }

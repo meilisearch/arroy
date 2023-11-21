@@ -1,9 +1,10 @@
 use std::borrow::Cow;
 use std::error::Error;
 use std::mem::size_of;
+use std::slice::ChunksExact;
 
 use bytemuck::{bytes_of, cast_slice, pod_read_unaligned};
-use byteorder::{BigEndian, ByteOrder};
+use byteorder::{BigEndian, ByteOrder, NativeEndian};
 use heed::{BytesDecode, BytesEncode};
 
 use crate::{aligned_or_collect_vec, Distance, NodeId};
@@ -43,7 +44,35 @@ impl<D: Distance> Leaf<'_, D> {
 
 #[derive(Debug, Clone)]
 pub struct Descendants<'a> {
-    pub descendants: Cow<'a, [NodeId]>,
+    pub descendants: NodeIdIter<'a>,
+}
+
+#[derive(Debug, Clone)]
+pub struct NodeIdIter<'a> {
+    raw_bytes: &'a [u8],
+    chunks: ChunksExact<'a, u8>,
+}
+
+impl NodeIdIter<'_> {
+    pub fn from_slice(slice: &[u32]) -> NodeIdIter<'_> {
+        NodeIdIter::from_bytes(cast_slice(slice))
+    }
+
+    fn from_bytes(slice: &[u8]) -> NodeIdIter<'_> {
+        NodeIdIter { raw_bytes: slice, chunks: slice.chunks_exact(size_of::<NodeId>()) }
+    }
+
+    fn raw_bytes(&self) -> &[u8] {
+        self.raw_bytes
+    }
+}
+
+impl Iterator for NodeIdIter<'_> {
+    type Item = NodeId;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        self.chunks.next().map(NativeEndian::read_u32)
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -74,7 +103,7 @@ impl<'a, D: Distance> BytesEncode<'a> for NodeCodec<D> {
             }
             Node::Descendants(Descendants { descendants }) => {
                 bytes.push(DESCENDANTS_TAG);
-                bytes.extend_from_slice(cast_slice(descendants));
+                bytes.extend_from_slice(descendants.raw_bytes());
             }
         }
         Ok(Cow::Owned(bytes))
@@ -104,7 +133,7 @@ impl<'a, D: Distance> BytesDecode<'a> for NodeCodec<D> {
                 }))
             }
             [DESCENDANTS_TAG, bytes @ ..] => {
-                Ok(Node::Descendants(Descendants { descendants: aligned_or_collect_vec(bytes) }))
+                Ok(Node::Descendants(Descendants { descendants: NodeIdIter::from_bytes(bytes) }))
             }
             unknown => panic!("What the fuck is an {unknown:?}"),
         }

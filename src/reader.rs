@@ -129,11 +129,7 @@ impl<D: Distance> Reader<D> {
 
             match self.database.get(rtxn, &item)?.unwrap() {
                 Node::Leaf(_) => nns.push(item),
-                // TODO introduce an iterator method to avoid deserializing into a vector
-                Node::Descendants(Descendants { mut descendants }) => match descendants {
-                    Cow::Borrowed(descendants) => nns.extend_from_slice(descendants),
-                    Cow::Owned(ref mut descendants) => nns.append(descendants),
-                },
+                Node::Descendants(Descendants { descendants }) => nns.extend(descendants),
                 Node::SplitPlaneNormal(SplitPlaneNormal { normal, left, right }) => {
                     let margin = D::margin_no_header(&normal, &query_leaf.vector);
                     queue.push((OrderedFloat(D::pq_distance(dist, margin, Side::Left)), left));
