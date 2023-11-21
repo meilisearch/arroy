@@ -2,7 +2,7 @@ use std::borrow::Cow;
 use std::marker;
 
 use heed::types::DecodeIgnore;
-use heed::{Database, RoTxn, RwTxn};
+use heed::{Database, PutFlags, RoTxn, RwTxn};
 use rand::Rng;
 
 use crate::node::{Descendants, Leaf};
@@ -41,7 +41,25 @@ impl<D: Distance + 'static> Writer<D> {
         Ok(item_leaf(self.database, rtxn, item)?.map(|leaf| leaf.vector.into_owned()))
     }
 
+    /// Add an item associated to a vector in the database.
     pub fn add_item(&self, wtxn: &mut RwTxn, item: ItemId, vector: &[f32]) -> Result<()> {
+        self.insert_item(wtxn, false, item, vector)
+    }
+
+    /// Append an item associated to a vector in the database.
+    ///
+    /// The item id must be greater than the highest one.
+    pub fn append_item(&self, wtxn: &mut RwTxn, item: ItemId, vector: &[f32]) -> Result<()> {
+        self.insert_item(wtxn, true, item, vector)
+    }
+
+    fn insert_item(
+        &self,
+        wtxn: &mut RwTxn,
+        append: bool,
+        item: ItemId,
+        vector: &[f32],
+    ) -> Result<()> {
         if vector.len() != self.dimensions {
             return Err(Error::InvalidVecDimension {
                 expected: self.dimensions,
@@ -50,7 +68,8 @@ impl<D: Distance + 'static> Writer<D> {
         }
 
         let leaf = Leaf { header: D::new_header(vector), vector: Cow::Borrowed(vector) };
-        Ok(self.database.put(wtxn, &item, &Node::Leaf(leaf))?)
+        let flags = if append { PutFlags::APPEND } else { PutFlags::empty() };
+        Ok(self.database.put_with_flags(wtxn, flags, &item, &Node::Leaf(leaf))?)
     }
 
     pub fn del_item(&self, wtxn: &mut RwTxn, item: ItemId) -> Result<bool> {
