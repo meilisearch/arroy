@@ -1,6 +1,7 @@
 mod distance;
 mod error;
 mod item_iter;
+mod measurements;
 mod node;
 mod reader;
 mod spaces;
@@ -11,7 +12,6 @@ mod tests;
 
 use std::borrow::Cow;
 use std::mem::size_of;
-use std::sync::atomic::{AtomicUsize, Ordering};
 
 use bytemuck::{pod_collect_to_vec, try_cast_slice, Pod, Zeroable};
 use byteorder::{BigEndian, ByteOrder};
@@ -21,6 +21,8 @@ pub use distance::{
 };
 pub use error::Error;
 use heed::BoxedError;
+#[cfg(feature = "measurements")]
+pub use measurements::{get_and_reset_measurements, Measurements};
 use node::NodeIds;
 pub use node::{Leaf, Node, NodeCodec};
 use rand::Rng;
@@ -54,18 +56,15 @@ impl Side {
     }
 }
 
-pub static ALIGNED_VECTOR: AtomicUsize = AtomicUsize::new(0);
-pub static NON_ALIGNED_VECTOR: AtomicUsize = AtomicUsize::new(0);
-
 fn aligned_or_collect_vec<T: Pod + Zeroable>(bytes: &[u8]) -> Cow<[T]> {
     use bytemuck::PodCastError::TargetAlignmentGreaterAndInputNotAligned;
     match try_cast_slice(bytes) {
         Ok(casted) => {
-            ALIGNED_VECTOR.fetch_add(1, Ordering::SeqCst);
+            measurements::increment_aligned_vectors();
             Cow::Borrowed(casted)
         }
         Err(TargetAlignmentGreaterAndInputNotAligned) => {
-            NON_ALIGNED_VECTOR.fetch_add(1, Ordering::SeqCst);
+            measurements::increment_unaligned_vectors();
             Cow::Owned(pod_collect_to_vec(bytes))
         }
         Err(e) => panic!("casting slices failed: {e}"),
