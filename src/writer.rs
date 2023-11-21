@@ -2,7 +2,7 @@ use std::borrow::Cow;
 use std::marker;
 
 use heed::types::DecodeIgnore;
-use heed::{Database, PutFlags, RoTxn, RwTxn};
+use heed::{Database, MdbError, PutFlags, RoTxn, RwTxn};
 use rand::Rng;
 
 use crate::item_iter::ItemIter;
@@ -125,16 +125,20 @@ impl<D: Distance> Writer<D> {
 
         // Also, copy the roots into the highest key of the database (u32::MAX).
         // This way we can load them faster without reading the whole database.
-        match self.database.get(wtxn, &u32::MAX)? {
-            Some(_) => return Err(Error::DatabaseFull),
-            None => {
-                let metadata = Metadata {
-                    dimensions: self.dimensions,
-                    n_items: self.n_items,
-                    roots: NodeIds::from_slice(&self.roots),
-                };
-                self.database.remap_data_type::<MetadataCodec>().put(wtxn, &u32::MAX, &metadata)?;
-            }
+        let metadata = Metadata {
+            dimensions: self.dimensions.try_into().unwrap(),
+            n_items: self.n_items.try_into().unwrap(),
+            roots: NodeIds::from_slice(&self.roots),
+        };
+        match self.database.remap_data_type::<MetadataCodec>().put_with_flags(
+            wtxn,
+            PutFlags::NO_OVERWRITE,
+            &u32::MAX,
+            &metadata,
+        ) {
+            Ok(_) => (),
+            Err(heed::Error::Mdb(MdbError::KeyExist)) => return Err(Error::DatabaseFull),
+            Err(e) => return Err(e.into()),
         }
 
         // D::template postprocess<T, S, Node>(_nodes, _s, _n_items, _f);

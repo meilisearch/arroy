@@ -31,8 +31,8 @@ impl<'t, D: Distance> Reader<'t, D> {
         Ok(Reader {
             database: database.remap_data_type(),
             roots: metadata.roots,
-            dimensions: metadata.dimensions,
-            n_items: metadata.n_items,
+            dimensions: metadata.dimensions.try_into().unwrap(),
+            n_items: metadata.n_items.try_into().unwrap(),
             _marker: marker::PhantomData,
         })
     }

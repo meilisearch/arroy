@@ -64,8 +64,8 @@ fn aligned_or_collect_vec<T: Pod + Zeroable>(bytes: &[u8]) -> Cow<[T]> {
 
 #[derive(Debug)]
 struct Metadata<'a> {
-    dimensions: usize,
-    n_items: usize,
+    dimensions: u32,
+    n_items: u32,
     roots: NodeIds<'a>,
 }
 
@@ -76,8 +76,8 @@ impl<'a> heed::BytesEncode<'a> for MetadataCodec {
 
     fn bytes_encode(item: &'a Self::EItem) -> Result<Cow<'a, [u8]>, BoxedError> {
         let mut output = Vec::with_capacity(size_of::<u32>() + item.roots.len() * size_of::<u32>());
-        output.extend_from_slice(&(item.dimensions as u32).to_be_bytes());
-        output.extend_from_slice(&(item.n_items as u32).to_be_bytes());
+        output.extend_from_slice(&item.dimensions.to_be_bytes());
+        output.extend_from_slice(&item.n_items.to_be_bytes());
         output.extend_from_slice(item.roots.raw_bytes());
 
         Ok(Cow::Owned(output))
@@ -90,13 +90,9 @@ impl<'a> heed::BytesDecode<'a> for MetadataCodec {
     fn bytes_decode(bytes: &'a [u8]) -> Result<Self::DItem, BoxedError> {
         let dimensions = BigEndian::read_u32(bytes);
         let bytes = &bytes[size_of::<u32>()..];
-        let nb_items = BigEndian::read_u32(bytes);
+        let n_items = BigEndian::read_u32(bytes);
         let bytes = &bytes[size_of::<u32>()..];
 
-        Ok(Metadata {
-            dimensions: dimensions as usize,
-            n_items: nb_items as usize,
-            roots: NodeIds::from_bytes(bytes),
-        })
+        Ok(Metadata { dimensions, n_items, roots: NodeIds::from_bytes(bytes) })
     }
 }
