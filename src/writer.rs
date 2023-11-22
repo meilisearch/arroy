@@ -1,3 +1,4 @@
+use std::any::TypeId;
 use std::borrow::Cow;
 use std::marker;
 
@@ -36,6 +37,39 @@ impl<D: Distance> Writer<D> {
             dimensions,
             n_items: 0,
             roots: Vec::new(),
+            _marker: marker::PhantomData,
+        })
+    }
+
+    pub fn prepare_changing_distance<ND: Distance>(self, wtxn: &mut RwTxn) -> Result<Writer<ND>> {
+        if TypeId::of::<ND>() != TypeId::of::<D>() {
+            clear_tree_nodes(wtxn, self.database)?;
+
+            let mut cursor = self.database.iter_mut(wtxn)?;
+            while let Some((item_id, node)) = cursor.next().transpose()? {
+                match node {
+                    Node::Leaf(Leaf { header: _, vector }) => {
+                        let new_leaf = Node::Leaf(Leaf {
+                            header: ND::new_header(&vector),
+                            vector: Cow::Owned(vector.into_owned()),
+                        });
+                        unsafe {
+                            // safety: We do not keep a reference to the current value, we own it.
+                            cursor
+                                .put_current_with_data_codec::<NodeCodec<ND>>(&item_id, &new_leaf)?
+                        };
+                    }
+                    Node::Descendants(_) | Node::SplitPlaneNormal(_) => panic!(),
+                }
+            }
+        }
+
+        let Writer { database, dimensions, n_items, roots, _marker: _ } = self;
+        Ok(Writer {
+            database: database.remap_data_type(),
+            dimensions,
+            n_items,
+            roots,
             _marker: marker::PhantomData,
         })
     }
