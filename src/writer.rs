@@ -6,6 +6,7 @@ use heed::{Database, MdbError, PutFlags, RoTxn, RwTxn};
 use rand::Rng;
 
 use crate::item_iter::ItemIter;
+use crate::measurements::increment_make_trees;
 use crate::node::{Descendants, Leaf, NodeIds};
 use crate::reader::item_leaf;
 use crate::{
@@ -155,6 +156,8 @@ impl<D: Distance> Writer<D> {
         is_root: bool,
         rng: &mut R,
     ) -> Result<NodeId> {
+        increment_make_trees();
+
         // we simplify the max descendants (_K) thing by considering
         // that we can fit as much descendants as the number of dimensions
         let max_descendants = self.dimensions;

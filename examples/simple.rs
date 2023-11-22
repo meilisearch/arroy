@@ -1,6 +1,6 @@
 use std::time::Instant;
 
-use arroy::{Euclidean, Measurements, Reader, Result, Writer, BEU32};
+use arroy::{Euclidean, Reader, Result, Writer, BEU32};
 use heed::{Database, EnvOpenOptions, Unspecified};
 use rand::rngs::StdRng;
 use rand::{Rng, SeedableRng};
@@ -35,11 +35,11 @@ fn main() -> Result<()> {
     wtxn.commit()?;
     eprintln!("took {:.02?} to load into arroy", before.elapsed());
 
-    let Measurements { aligned_slices_read, unaligned_slices_read } =
-        arroy::get_and_reset_measurements();
+    let m = arroy::get_and_reset_measurements();
     eprintln!(
         "(insertion) which means {:.02?}% of aligned reads",
-        aligned_slices_read as f64 / (aligned_slices_read + unaligned_slices_read) as f64 * 100.0
+        m.aligned_slices_read as f64 / (m.aligned_slices_read + m.unaligned_slices_read) as f64
+            * 100.0
     );
 
     let before = Instant::now();
@@ -56,11 +56,11 @@ fn main() -> Result<()> {
     }
     eprintln!("took {:.02?} to find into arroy", before.elapsed());
 
-    let Measurements { aligned_slices_read, unaligned_slices_read } =
-        arroy::get_and_reset_measurements();
+    let m = arroy::get_and_reset_measurements();
     eprintln!(
         "(search) which means {:.02?}% of aligned reads",
-        aligned_slices_read as f64 / (aligned_slices_read + unaligned_slices_read) as f64 * 100.0
+        m.aligned_slices_read as f64 / (m.aligned_slices_read + m.unaligned_slices_read) as f64
+            * 100.0
     );
 
     Ok(())

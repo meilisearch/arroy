@@ -10,6 +10,8 @@ pub struct Measurements {
     /// Represents the number of time we were forced to allocate memory into
     /// a `Vec` to make sure it is correctly aligned and can be used safely.
     pub unaligned_slices_read: usize,
+    /// The number of calls to the internal `make_tree` function.
+    pub calls_to_make_tree: usize,
 }
 
 /// Returns the measurements done during the set of operations measured.
@@ -21,31 +23,25 @@ pub fn get_and_reset_measurements() -> Measurements {
     Measurements {
         aligned_slices_read: ALIGNED_VECTOR.swap(0, Ordering::SeqCst),
         unaligned_slices_read: UNALIGNED_VECTOR.swap(0, Ordering::SeqCst),
+        calls_to_make_tree: MAKE_TREES.swap(0, Ordering::SeqCst),
     }
 }
 
-// -----
+macro_rules! increment {
+    ($static_name:ident, $function_name:ident) => {
+        #[cfg(feature = "measurements")]
+        pub static $static_name: AtomicUsize = AtomicUsize::new(0);
 
-#[cfg(feature = "measurements")]
-pub static ALIGNED_VECTOR: AtomicUsize = AtomicUsize::new(0);
+        #[cfg(feature = "measurements")]
+        pub fn $function_name() {
+            $static_name.fetch_add(1, Ordering::SeqCst);
+        }
 
-#[cfg(feature = "measurements")]
-pub fn increment_aligned_vectors() {
-    ALIGNED_VECTOR.fetch_add(1, Ordering::SeqCst);
+        #[cfg(not(feature = "measurements"))]
+        pub fn $function_name() {}
+    };
 }
 
-#[cfg(not(feature = "measurements"))]
-pub fn increment_aligned_vectors() {}
-
-// -----
-
-#[cfg(feature = "measurements")]
-pub static UNALIGNED_VECTOR: AtomicUsize = AtomicUsize::new(0);
-
-#[cfg(feature = "measurements")]
-pub fn increment_unaligned_vectors() {
-    UNALIGNED_VECTOR.fetch_add(1, Ordering::SeqCst);
-}
-
-#[cfg(not(feature = "measurements"))]
-pub fn increment_unaligned_vectors() {}
+increment!(ALIGNED_VECTOR, increment_aligned_vectors);
+increment!(UNALIGNED_VECTOR, increment_unaligned_vectors);
+increment!(MAKE_TREES, increment_make_trees);
