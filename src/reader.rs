@@ -5,16 +5,20 @@ use std::iter::repeat;
 use std::marker;
 use std::num::NonZeroUsize;
 
-use heed::{Database, RoTxn};
+use heed::RoTxn;
 use ordered_float::OrderedFloat;
 
 use crate::item_iter::ItemIter;
 use crate::node::{Descendants, Leaf, NodeIds, SplitPlaneNormal};
-use crate::{Distance, Error, ItemId, MetadataCodec, Node, NodeCodec, Result, Side, BEU32};
+use crate::{
+    Database, Distance, Error, ItemId, Key, KeyCodec, MetadataCodec, Node, Prefix, PrefixCodec,
+    Result, Side,
+};
 
 #[derive(Debug)]
 pub struct Reader<'t, D: Distance> {
-    database: heed::Database<BEU32, NodeCodec<D>>,
+    database: Database<D>,
+    prefix: u16,
     roots: NodeIds<'t>,
     dimensions: usize,
     n_items: usize,
@@ -22,14 +26,20 @@ pub struct Reader<'t, D: Distance> {
 }
 
 impl<'t, D: Distance> Reader<'t, D> {
-    pub fn open<U>(rtxn: &'t RoTxn, database: Database<BEU32, U>) -> Result<Reader<'t, D>> {
-        let metadata = match database.remap_data_type::<MetadataCodec>().get(rtxn, &u32::MAX)? {
-            Some(metadata) => metadata,
-            None => return Err(Error::MissingMetadata),
-        };
+    pub fn open<U>(
+        rtxn: &'t RoTxn,
+        prefix: u16,
+        database: heed::Database<KeyCodec, U>,
+    ) -> Result<Reader<'t, D>> {
+        let metadata =
+            match database.remap_data_type::<MetadataCodec>().get(rtxn, &Key::root(prefix))? {
+                Some(metadata) => metadata,
+                None => return Err(Error::MissingMetadata),
+            };
 
         Ok(Reader {
             database: database.remap_data_type(),
+            prefix,
             roots: metadata.roots,
             dimensions: metadata.dimensions.try_into().unwrap(),
             n_items: metadata.n_items.try_into().unwrap(),
@@ -59,12 +69,18 @@ impl<'t, D: Distance> Reader<'t, D> {
 
     /// Returns the vector for item `i` that was previously added.
     pub fn item_vector(&self, rtxn: &'t RoTxn, item: ItemId) -> Result<Option<Vec<f32>>> {
-        Ok(item_leaf(self.database, rtxn, item)?.map(|leaf| leaf.vector.into_owned()))
+        Ok(item_leaf(self.database, self.prefix, rtxn, item)?.map(|leaf| leaf.vector.into_owned()))
     }
 
     /// Returns an iterator over the items vector.
     pub fn iter(&self, rtxn: &'t RoTxn) -> Result<ItemIter<'t, D>> {
-        self.database.iter(rtxn).map(|inner| ItemIter { inner }).map_err(Into::into)
+        Ok(ItemIter {
+            inner: self
+                .database
+                .remap_key_type::<PrefixCodec>()
+                .prefix_iter(rtxn, &Prefix::all(self.prefix))?
+                .remap_key_type::<KeyCodec>(),
+        })
     }
 
     /// Returns the `count` closests items from `item`.
@@ -79,7 +95,7 @@ impl<'t, D: Distance> Reader<'t, D> {
         count: usize,
         search_k: Option<NonZeroUsize>,
     ) -> Result<Option<Vec<(ItemId, f32)>>> {
-        match item_leaf(self.database, rtxn, item)? {
+        match item_leaf(self.database, self.prefix, rtxn, item)? {
             Some(leaf) => self.nns_by_leaf(rtxn, &leaf, count, search_k).map(Some),
             None => Ok(None),
         }
@@ -128,7 +144,7 @@ impl<'t, D: Distance> Reader<'t, D> {
                 None => break,
             };
 
-            match self.database.get(rtxn, &item)?.unwrap() {
+            match self.database.get(rtxn, &Key::item(self.prefix, item))?.unwrap() {
                 Node::Leaf(_) => nns.push(item),
                 Node::Descendants(Descendants { descendants }) => nns.extend(descendants.iter()),
                 Node::SplitPlaneNormal(SplitPlaneNormal { normal, left, right }) => {
@@ -146,7 +162,7 @@ impl<'t, D: Distance> Reader<'t, D> {
 
         let mut nns_distances = Vec::with_capacity(nns.len());
         for nn in nns {
-            let leaf = match self.database.get(rtxn, &nn)?.unwrap() {
+            let leaf = match self.database.get(rtxn, &Key::item(self.prefix, nn))?.unwrap() {
                 Node::Leaf(leaf) => leaf,
                 Node::Descendants(_) | Node::SplitPlaneNormal(_) => panic!("Shouldn't happen"),
             };
@@ -169,11 +185,12 @@ impl<'t, D: Distance> Reader<'t, D> {
 }
 
 pub fn item_leaf<'a, D: Distance>(
-    database: Database<BEU32, NodeCodec<D>>,
+    database: Database<D>,
+    prefix: u16,
     rtxn: &'a RoTxn,
     item: ItemId,
 ) -> Result<Option<Leaf<'a, D>>> {
-    match database.get(rtxn, &item)? {
+    match database.get(rtxn, &Key::item(prefix, item))? {
         Some(Node::Leaf(leaf)) => Ok(Some(leaf)),
         Some(Node::SplitPlaneNormal(_)) => Ok(None),
         Some(Node::Descendants(_)) => Ok(None),

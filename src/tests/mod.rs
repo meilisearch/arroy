@@ -6,14 +6,14 @@ use rand::rngs::StdRng;
 use rand::SeedableRng;
 use tempfile::TempDir;
 
-use crate::{Angular, MetadataCodec, NodeCodec, BEU32};
+use crate::{Angular, KeyCodec, MetadataCodec, NodeCodec, NodeMode};
 
 mod reader;
 mod writer;
 
 pub struct DatabaseHandle {
     pub env: Env,
-    pub database: Database<BEU32, Unspecified>,
+    pub database: Database<KeyCodec, Unspecified>,
     #[allow(unused)]
     pub tempdir: TempDir,
 }
@@ -24,18 +24,25 @@ impl fmt::Display for DatabaseHandle {
         for result in
             self.database.remap_data_type::<LazyDecode<NodeCodec<Angular>>>().iter(&rtxn).unwrap()
         {
-            let (i, lazy_node) = result.unwrap();
-            if i != u32::MAX {
-                let node = lazy_node.decode().unwrap();
-                writeln!(f, "{i}: {node:?}")?;
-            } else {
-                let metadata = self
-                    .database
-                    .remap_data_type::<MetadataCodec>()
-                    .get(&rtxn, &i)
-                    .unwrap()
-                    .unwrap();
-                writeln!(f, "\nu32::MAX: {metadata:?}")?;
+            let (key, lazy_node) = result.unwrap();
+            match key.mode {
+                NodeMode::Item => {
+                    let node = lazy_node.decode().unwrap();
+                    writeln!(f, "Item {}: {node:?}", key.item)?;
+                }
+                NodeMode::Tree => {
+                    let node = lazy_node.decode().unwrap();
+                    writeln!(f, "Tree {}: {node:?}", key.item)?;
+                }
+                NodeMode::Root => {
+                    let metadata = self
+                        .database
+                        .remap_data_type::<MetadataCodec>()
+                        .get(&rtxn, &key)
+                        .unwrap()
+                        .unwrap();
+                    writeln!(f, "\nroot node: {metadata:?}")?;
+                }
             }
         }
         Ok(())
@@ -46,7 +53,7 @@ fn create_database() -> DatabaseHandle {
     let dir = tempfile::tempdir().unwrap();
     let env = EnvOpenOptions::new().map_size(200 * 1024 * 1024).open(dir.path()).unwrap();
     let mut wtxn = env.write_txn().unwrap();
-    let database: Database<BEU32, Unspecified> = env.create_database(&mut wtxn, None).unwrap();
+    let database: Database<KeyCodec, Unspecified> = env.create_database(&mut wtxn, None).unwrap();
     wtxn.commit().unwrap();
     DatabaseHandle { env, database, tempdir: dir }
 }

@@ -4,14 +4,14 @@ pub use angular::{Angular, NodeHeaderAngular};
 use bytemuck::{Pod, Zeroable};
 pub use dot_product::{DotProduct, NodeHeaderDotProduct};
 pub use euclidean::{Euclidean, NodeHeaderEuclidean};
-use heed::{RwIter, RwTxn};
+use heed::{RwPrefix, RwTxn};
 pub use manhattan::{Manhattan, NodeHeaderManhattan};
 use rand::seq::SliceRandom;
 use rand::Rng;
 
 use crate::node::{Leaf, SplitPlaneNormal};
 use crate::spaces::simple::dot_product;
-use crate::{NodeCodec, Side, BEU32};
+use crate::{KeyCodec, NodeCodec, Side};
 
 mod angular;
 mod dot_product;
@@ -88,7 +88,9 @@ pub trait Distance: Sized + Clone + fmt::Debug + 'static {
 
     fn preprocess(
         _wtxn: &mut RwTxn,
-        _new_iter: impl for<'a> Fn(&'a mut RwTxn) -> heed::Result<RwIter<'a, BEU32, NodeCodec<Self>>>,
+        _new_iter: impl for<'a> Fn(
+            &'a mut RwTxn,
+        ) -> heed::Result<RwPrefix<'a, KeyCodec, NodeCodec<Self>>>,
     ) -> heed::Result<()> {
         Ok(())
     }

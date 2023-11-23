@@ -1,11 +1,11 @@
 use bytemuck::{Pod, Zeroable};
-use heed::{RwIter, RwTxn};
+use heed::{RwPrefix, RwTxn};
 use rand::Rng;
 
 use super::two_means;
 use crate::node::{Leaf, SplitPlaneNormal};
 use crate::spaces::simple::dot_product;
-use crate::{Distance, Node, NodeCodec, BEU32};
+use crate::{Distance, KeyCodec, Node, NodeCodec};
 
 #[derive(Debug, Clone)]
 pub enum DotProduct {}
@@ -88,7 +88,9 @@ impl Distance for DotProduct {
 
     fn preprocess(
         wtxn: &mut RwTxn,
-        new_iter: impl for<'a> Fn(&'a mut RwTxn) -> heed::Result<RwIter<'a, BEU32, NodeCodec<Self>>>,
+        new_iter: impl for<'a> Fn(
+            &'a mut RwTxn,
+        ) -> heed::Result<RwPrefix<'a, KeyCodec, NodeCodec<Self>>>,
     ) -> heed::Result<()> {
         // Highly inspired by the DotProduct::preprocess function:
         // https://github.com/spotify/annoy/blob/2be37c9e015544be2cf60c431f0cccc076151a2d/src/annoylib.h#L661-L694
