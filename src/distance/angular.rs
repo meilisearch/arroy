@@ -2,7 +2,7 @@ use bytemuck::{Pod, Zeroable};
 use rand::Rng;
 
 use super::two_means;
-use crate::node::{Leaf, SplitPlaneNormal};
+use crate::node::Leaf;
 use crate::spaces::simple::dot_product;
 use crate::Distance;
 
@@ -38,13 +38,13 @@ impl Distance for Angular {
         node.header.norm = dot_product(&node.vector, &node.vector);
     }
 
-    fn create_split<R: Rng>(children: &[Leaf<Self>], rng: &mut R) -> SplitPlaneNormal<'static> {
+    fn create_split<R: Rng>(children: &[Leaf<Self>], rng: &mut R) -> Vec<f32> {
         let [node_p, node_q] = two_means(rng, children, true);
         let vector = node_p.vector.iter().zip(node_q.vector.iter()).map(|(&p, &q)| p - q).collect();
         let mut normal = Leaf { header: NodeHeaderAngular { norm: 0.0 }, vector };
         Self::normalize(&mut normal);
-        // TODO we are returning invalid left and rights
-        SplitPlaneNormal { normal: normal.vector, left: u32::MAX, right: u32::MAX }
+
+        normal.vector.into_owned()
     }
 
     fn margin_no_header(p: &[f32], q: &[f32]) -> f32 {

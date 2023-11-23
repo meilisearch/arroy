@@ -2,7 +2,7 @@ use bytemuck::{Pod, Zeroable};
 use rand::Rng;
 
 use super::two_means;
-use crate::node::{Leaf, SplitPlaneNormal};
+use crate::node::Leaf;
 use crate::spaces::simple::{dot_product, euclidean_distance};
 use crate::Distance;
 
@@ -29,7 +29,7 @@ impl Distance for Euclidean {
 
     fn init(_node: &mut Leaf<Self>) {}
 
-    fn create_split<R: Rng>(children: &[Leaf<Self>], rng: &mut R) -> SplitPlaneNormal<'static> {
+    fn create_split<R: Rng>(children: &[Leaf<Self>], rng: &mut R) -> Vec<f32> {
         let [node_p, node_q] = two_means(rng, children, false);
         let vector = node_p.vector.iter().zip(node_q.vector.iter()).map(|(&p, &q)| p - q).collect();
         let mut normal = Leaf { header: NodeHeaderEuclidean { bias: 0.0 }, vector };
@@ -43,8 +43,7 @@ impl Distance for Euclidean {
             .map(|((&n, &p), &q)| -n * (p + q) / 2.0)
             .sum();
 
-        // TODO we are returning invalid left and rights
-        SplitPlaneNormal { normal: normal.vector, left: u32::MAX, right: u32::MAX }
+        normal.vector.into_owned()
     }
 
     fn margin(p: &Leaf<Self>, q: &Leaf<Self>) -> f32 {

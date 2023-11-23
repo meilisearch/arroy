@@ -24,12 +24,12 @@ impl Display for NnsRes {
 fn open_unfinished_db() {
     let handle = create_database();
     let mut wtxn = handle.env.write_txn().unwrap();
-    let writer = Writer::<Euclidean>::prepare(&mut wtxn, handle.database, 2).unwrap();
+    let writer = Writer::<Euclidean>::prepare(&mut wtxn, handle.database, 0, 2).unwrap();
     writer.add_item(&mut wtxn, 0, &[0.0, 0.0]).unwrap();
     wtxn.commit().unwrap();
 
     let rtxn = handle.env.read_txn().unwrap();
-    let ret = Reader::<Euclidean>::open(&rtxn, handle.database).map(|_| ()).unwrap_err();
+    let ret = Reader::<Euclidean>::open(&rtxn, 0, handle.database).map(|_| ()).unwrap_err();
     insta::assert_display_snapshot!(ret, @"Metadata are missing, did you build your database before trying to read it.");
 }
 
@@ -37,14 +37,14 @@ fn open_unfinished_db() {
 fn open_db_with_wrong_dimension() {
     let handle = create_database();
     let mut wtxn = handle.env.write_txn().unwrap();
-    let writer = Writer::<Euclidean>::prepare(&mut wtxn, handle.database, 2).unwrap();
+    let writer = Writer::<Euclidean>::prepare(&mut wtxn, handle.database, 0, 2).unwrap();
     writer.add_item(&mut wtxn, 0, &[0.0, 0.0]).unwrap();
 
     writer.build(&mut wtxn, rng(), Some(1)).unwrap();
     wtxn.commit().unwrap();
 
     let rtxn = handle.env.read_txn().unwrap();
-    let reader = Reader::<Euclidean>::open(&rtxn, handle.database).unwrap();
+    let reader = Reader::<Euclidean>::open(&rtxn, 0, handle.database).unwrap();
     let ret = reader.nns_by_vector(&rtxn, &[1.0, 2.0, 3.0], 5, None).unwrap_err();
     insta::assert_display_snapshot!(ret, @"Invalid vector dimensions. Got 3 but expected 2.");
 }
@@ -53,26 +53,24 @@ fn open_db_with_wrong_dimension() {
 fn open_db_with_wrong_distance() {
     let handle = create_database();
     let mut wtxn = handle.env.write_txn().unwrap();
-    let writer = Writer::<Euclidean>::prepare(&mut wtxn, handle.database, 2).unwrap();
+    let writer = Writer::<Euclidean>::prepare(&mut wtxn, handle.database, 0, 2).unwrap();
     writer.add_item(&mut wtxn, 0, &[0.0, 0.0]).unwrap();
 
     writer.build(&mut wtxn, rng(), Some(1)).unwrap();
     wtxn.commit().unwrap();
 
     let rtxn = handle.env.read_txn().unwrap();
-    let reader = Reader::<Manhattan>::open(&rtxn, handle.database).unwrap();
+    let reader = Reader::<Manhattan>::open(&rtxn, 0, handle.database).unwrap();
     // TODO: This should fail
     let ret = reader.nns_by_vector(&rtxn, &[1.0, 2.0], 5, None).unwrap();
-    insta::assert_display_snapshot!(NnsRes(Some(ret)), @r###"
-    id(0): distance(3)
-    "###);
+    insta::assert_display_snapshot!(NnsRes(Some(ret)), @"");
 }
 
 #[test]
 fn two_dimension_on_a_line() {
     let handle = create_database();
     let mut wtxn = handle.env.write_txn().unwrap();
-    let writer = Writer::<Euclidean>::prepare(&mut wtxn, handle.database, 2).unwrap();
+    let writer = Writer::<Euclidean>::prepare(&mut wtxn, handle.database, 0, 2).unwrap();
     // We'll draw a simple line over the y as seen below
     // (0,0) # # # # # # ...
     for i in 0..100 {
@@ -83,7 +81,7 @@ fn two_dimension_on_a_line() {
     wtxn.commit().unwrap();
 
     let rtxn = handle.env.read_txn().unwrap();
-    let reader = Reader::<Euclidean>::open(&rtxn, handle.database).unwrap();
+    let reader = Reader::<Euclidean>::open(&rtxn, 0, handle.database).unwrap();
 
     // if we can't look into enough nodes we find some random points
     let ret = reader.nns_by_item(&rtxn, 0, 5, NonZeroUsize::new(1)).unwrap();
@@ -116,7 +114,7 @@ fn two_dimension_on_a_line() {
 fn two_dimension_on_a_column() {
     let handle = create_database();
     let mut wtxn = handle.env.write_txn().unwrap();
-    let writer = Writer::<Euclidean>::prepare(&mut wtxn, handle.database, 2).unwrap();
+    let writer = Writer::<Euclidean>::prepare(&mut wtxn, handle.database, 0, 2).unwrap();
     // We'll draw a simple line over the y as seen below
     // (0,0) # . . . . .
     // (0,1) # . . . . .
@@ -131,7 +129,7 @@ fn two_dimension_on_a_column() {
     wtxn.commit().unwrap();
 
     let rtxn = handle.env.read_txn().unwrap();
-    let reader = Reader::<Euclidean>::open(&rtxn, handle.database).unwrap();
+    let reader = Reader::<Euclidean>::open(&rtxn, 0, handle.database).unwrap();
     let ret = reader.nns_by_item(&rtxn, 0, 5, None).unwrap();
 
     insta::assert_display_snapshot!(NnsRes(ret), @r###"

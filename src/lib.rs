@@ -1,7 +1,9 @@
 mod distance;
 mod error;
 mod item_iter;
+mod key;
 mod node;
+mod node_id;
 mod reader;
 mod spaces;
 mod writer;
@@ -20,22 +22,24 @@ pub use distance::{
 };
 pub use error::Error;
 use heed::BoxedError;
-use node::NodeIds;
+pub use key::{Key, KeyCodec, Prefix, PrefixCodec};
+use node::ItemIds;
 pub use node::{Leaf, Node, NodeCodec};
+pub use node_id::{NodeId, NodeMode};
 use rand::Rng;
 pub use reader::Reader;
 pub use writer::Writer;
 
 pub type Result<T, E = Error> = std::result::Result<T, E>;
 
+/// The database required by arroy for reading or writing operations.
+pub type Database<D> = heed::Database<KeyCodec, NodeCodec<D>>;
+
 /// An big endian-encoded u32.
 pub type BEU32 = heed::types::U32<heed::byteorder::BE>;
 
 /// An external item id.
 pub type ItemId = u32;
-
-/// An internal node id.
-type NodeId = u32;
 
 #[derive(Debug, Copy, Clone)]
 pub enum Side {
@@ -66,7 +70,7 @@ fn aligned_or_collect_vec<T: Pod + Zeroable>(bytes: &[u8]) -> Cow<[T]> {
 struct Metadata<'a> {
     dimensions: u32,
     n_items: u32,
-    roots: NodeIds<'a>,
+    roots: ItemIds<'a>,
 }
 
 enum MetadataCodec {}
@@ -93,6 +97,6 @@ impl<'a> heed::BytesDecode<'a> for MetadataCodec {
         let n_items = BigEndian::read_u32(bytes);
         let bytes = &bytes[size_of::<u32>()..];
 
-        Ok(Metadata { dimensions, n_items, roots: NodeIds::from_bytes(bytes) })
+        Ok(Metadata { dimensions, n_items, roots: ItemIds::from_bytes(bytes) })
     }
 }

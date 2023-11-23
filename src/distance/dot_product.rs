@@ -1,11 +1,11 @@
 use bytemuck::{Pod, Zeroable};
-use heed::{RwIter, RwTxn};
+use heed::{RwPrefix, RwTxn};
 use rand::Rng;
 
 use super::two_means;
-use crate::node::{Leaf, SplitPlaneNormal};
+use crate::node::Leaf;
 use crate::spaces::simple::dot_product;
-use crate::{Distance, Node, NodeCodec, BEU32};
+use crate::{Distance, KeyCodec, Node, NodeCodec};
 
 #[derive(Debug, Clone)]
 pub enum DotProduct {}
@@ -67,15 +67,15 @@ impl Distance for DotProduct {
         node.header.norm = dot_product(&node.vector, &node.vector);
     }
 
-    fn create_split<R: Rng>(children: &[Leaf<Self>], rng: &mut R) -> SplitPlaneNormal<'static> {
+    fn create_split<R: Rng>(children: &[Leaf<Self>], rng: &mut R) -> Vec<f32> {
         let [node_p, node_q] = two_means(rng, children, true);
         let vector = node_p.vector.iter().zip(node_q.vector.iter()).map(|(&p, &q)| p - q).collect();
         let mut normal =
             Leaf::<Self> { header: NodeHeaderDotProduct { norm: 0.0, extra_dim: 0.0 }, vector };
         normal.header.extra_dim = node_p.header.extra_dim - node_q.header.extra_dim;
         Self::normalize(&mut normal);
-        // TODO we are returning invalid left and rights
-        SplitPlaneNormal { normal: normal.vector, left: u32::MAX, right: u32::MAX }
+
+        normal.vector.into_owned()
     }
 
     fn margin(p: &Leaf<Self>, q: &Leaf<Self>) -> f32 {
@@ -88,7 +88,9 @@ impl Distance for DotProduct {
 
     fn preprocess(
         wtxn: &mut RwTxn,
-        new_iter: impl for<'a> Fn(&'a mut RwTxn) -> heed::Result<RwIter<'a, BEU32, NodeCodec<Self>>>,
+        new_iter: impl for<'a> Fn(
+            &'a mut RwTxn,
+        ) -> heed::Result<RwPrefix<'a, KeyCodec, NodeCodec<Self>>>,
     ) -> heed::Result<()> {
         // Highly inspired by the DotProduct::preprocess function:
         // https://github.com/spotify/annoy/blob/2be37c9e015544be2cf60c431f0cccc076151a2d/src/annoylib.h#L661-L694

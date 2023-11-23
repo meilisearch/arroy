@@ -4,14 +4,14 @@ pub use angular::{Angular, NodeHeaderAngular};
 use bytemuck::{Pod, Zeroable};
 pub use dot_product::{DotProduct, NodeHeaderDotProduct};
 pub use euclidean::{Euclidean, NodeHeaderEuclidean};
-use heed::{RwIter, RwTxn};
+use heed::{RwPrefix, RwTxn};
 pub use manhattan::{Manhattan, NodeHeaderManhattan};
 use rand::seq::SliceRandom;
 use rand::Rng;
 
-use crate::node::{Leaf, SplitPlaneNormal};
+use crate::node::Leaf;
 use crate::spaces::simple::dot_product;
-use crate::{NodeCodec, Side, BEU32};
+use crate::{KeyCodec, NodeCodec, Side};
 
 mod angular;
 mod dot_product;
@@ -67,7 +67,7 @@ pub trait Distance: Sized + Clone + fmt::Debug + 'static {
             .for_each(|(x, n)| *x = (*x * c + *n / norm) / (c + 1.0));
     }
 
-    fn create_split<R: Rng>(children: &[Leaf<Self>], rng: &mut R) -> SplitPlaneNormal<'static>;
+    fn create_split<R: Rng>(children: &[Leaf<Self>], rng: &mut R) -> Vec<f32>;
 
     fn margin(p: &Leaf<Self>, q: &Leaf<Self>) -> f32 {
         Self::margin_no_header(&p.vector, &q.vector)
@@ -75,8 +75,8 @@ pub trait Distance: Sized + Clone + fmt::Debug + 'static {
 
     fn margin_no_header(p: &[f32], q: &[f32]) -> f32;
 
-    fn side<R: Rng>(plane: &SplitPlaneNormal, node: &Leaf<Self>, rng: &mut R) -> Side {
-        let dot = Self::margin_no_header(&node.vector, &plane.normal);
+    fn side<R: Rng>(normal_plane: &[f32], node: &Leaf<Self>, rng: &mut R) -> Side {
+        let dot = Self::margin_no_header(&node.vector, normal_plane);
         if dot > 0.0 {
             Side::Right
         } else if dot < 0.0 {
@@ -88,7 +88,9 @@ pub trait Distance: Sized + Clone + fmt::Debug + 'static {
 
     fn preprocess(
         _wtxn: &mut RwTxn,
-        _new_iter: impl for<'a> Fn(&'a mut RwTxn) -> heed::Result<RwIter<'a, BEU32, NodeCodec<Self>>>,
+        _new_iter: impl for<'a> Fn(
+            &'a mut RwTxn,
+        ) -> heed::Result<RwPrefix<'a, KeyCodec, NodeCodec<Self>>>,
     ) -> heed::Result<()> {
         Ok(())
     }

@@ -1,4 +1,4 @@
-use arroy::{DotProduct, NodeCodec, Reader, Result, Writer, BEU32};
+use arroy::{DotProduct, KeyCodec, NodeCodec, NodeMode, Reader, Result, Writer};
 use heed::types::LazyDecode;
 use heed::{Database, EnvOpenOptions, Unspecified};
 
@@ -11,8 +11,8 @@ fn main() -> Result<()> {
     // we will open the default unnamed database
     let mut wtxn = env.write_txn()?;
     let dimensions = 2;
-    let database: Database<BEU32, Unspecified> = env.create_database(&mut wtxn, None)?;
-    let writer = Writer::<DotProduct>::prepare(&mut wtxn, database, dimensions)?;
+    let database: Database<KeyCodec, Unspecified> = env.create_database(&mut wtxn, None)?;
+    let writer = Writer::<DotProduct>::prepare(&mut wtxn, database, 0, dimensions)?;
 
     for i in 0..5 {
         let f = i as f32;
@@ -23,16 +23,16 @@ fn main() -> Result<()> {
     writer.build(&mut wtxn, rng, Some(1))?;
 
     for result in database.remap_data_type::<LazyDecode<NodeCodec<DotProduct>>>().iter(&wtxn)? {
-        let (i, lazy_node) = result?;
-        if i != u32::MAX {
+        let (key, lazy_node) = result?;
+        if key.node.mode != NodeMode::Metadata {
             let node = lazy_node.decode().unwrap();
-            println!("{i}: {node:?}");
+            println!("{}: {node:?}", key.node.item);
         }
     }
     wtxn.commit()?;
 
     let rtxn = env.read_txn()?;
-    let reader = Reader::<DotProduct>::open(&rtxn, database)?;
+    let reader = Reader::<DotProduct>::open(&rtxn, 0, database)?;
     for (id, dist) in reader.nns_by_item(&rtxn, 0, 10, None)?.unwrap() {
         println!("id({id}): distance({dist})");
     }

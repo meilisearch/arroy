@@ -2,10 +2,10 @@ use std::borrow::Cow;
 use std::mem::size_of;
 
 use bytemuck::{bytes_of, cast_slice, pod_read_unaligned};
-use byteorder::{BigEndian, ByteOrder, NativeEndian};
+use byteorder::{ByteOrder, NativeEndian};
 use heed::{BoxedError, BytesDecode, BytesEncode};
 
-use crate::{aligned_or_collect_vec, Distance, NodeId};
+use crate::{aligned_or_collect_vec, Distance, ItemId, NodeId};
 
 #[derive(Debug, Clone)]
 pub enum Node<'a, D: Distance> {
@@ -42,21 +42,23 @@ impl<D: Distance> Leaf<'_, D> {
 
 #[derive(Debug, Clone)]
 pub struct Descendants<'a> {
-    pub descendants: NodeIds<'a>,
+    // A descendants node can only contains references to the leaf nodes.
+    // We can get and store their ids directly without the `Mode`.
+    pub descendants: ItemIds<'a>,
 }
 
 #[derive(Debug, Clone)]
-pub struct NodeIds<'a> {
+pub struct ItemIds<'a> {
     bytes: &'a [u8],
 }
 
-impl<'a> NodeIds<'a> {
-    pub fn from_slice(slice: &[u32]) -> NodeIds<'_> {
-        NodeIds::from_bytes(cast_slice(slice))
+impl<'a> ItemIds<'a> {
+    pub fn from_slice(slice: &[u32]) -> ItemIds<'_> {
+        ItemIds::from_bytes(cast_slice(slice))
     }
 
-    pub fn from_bytes(bytes: &[u8]) -> NodeIds<'_> {
-        NodeIds { bytes }
+    pub fn from_bytes(bytes: &[u8]) -> ItemIds<'_> {
+        ItemIds { bytes }
     }
 
     pub fn raw_bytes(&self) -> &[u8] {
@@ -67,8 +69,8 @@ impl<'a> NodeIds<'a> {
         self.bytes.len() / size_of::<NodeId>()
     }
 
-    pub fn iter(&self) -> impl Iterator<Item = NodeId> + 'a {
-        self.bytes.chunks_exact(size_of::<NodeId>()).map(NativeEndian::read_u32)
+    pub fn iter(&self) -> impl Iterator<Item = ItemId> + 'a {
+        self.bytes.chunks_exact(size_of::<ItemId>()).map(NativeEndian::read_u32)
     }
 }
 
@@ -94,8 +96,8 @@ impl<'a, D: Distance> BytesEncode<'a> for NodeCodec<D> {
             }
             Node::SplitPlaneNormal(SplitPlaneNormal { normal, left, right }) => {
                 bytes.push(SPLIT_PLANE_NORMAL_TAG);
-                bytes.extend_from_slice(&left.to_be_bytes());
-                bytes.extend_from_slice(&right.to_be_bytes());
+                bytes.extend_from_slice(&left.to_bytes());
+                bytes.extend_from_slice(&right.to_bytes());
                 bytes.extend_from_slice(cast_slice(normal));
             }
             Node::Descendants(Descendants { descendants }) => {
@@ -119,10 +121,8 @@ impl<'a, D: Distance> BytesDecode<'a> for NodeCodec<D> {
                 Ok(Node::Leaf(Leaf { header, vector }))
             }
             [SPLIT_PLANE_NORMAL_TAG, bytes @ ..] => {
-                let left = BigEndian::read_u32(bytes);
-                let bytes = &bytes[size_of::<u32>()..];
-                let right = BigEndian::read_u32(bytes);
-                let bytes = &bytes[size_of::<u32>()..];
+                let (left, bytes) = NodeId::from_bytes(bytes);
+                let (right, bytes) = NodeId::from_bytes(bytes);
                 Ok(Node::SplitPlaneNormal(SplitPlaneNormal {
                     normal: aligned_or_collect_vec(bytes),
                     left,
@@ -130,7 +130,7 @@ impl<'a, D: Distance> BytesDecode<'a> for NodeCodec<D> {
                 }))
             }
             [DESCENDANTS_TAG, bytes @ ..] => {
-                Ok(Node::Descendants(Descendants { descendants: NodeIds::from_bytes(bytes) }))
+                Ok(Node::Descendants(Descendants { descendants: ItemIds::from_bytes(bytes) }))
             }
             unknown => panic!("What the fuck is an {unknown:?}"),
         }
