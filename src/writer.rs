@@ -147,7 +147,8 @@ impl<D: Distance> Writer<D> {
                 .remap_key_type::<KeyCodec>())
         })?;
 
-        self.n_items = self.n_items(wtxn)? as usize;
+        let item_indices = self.item_indices(wtxn)?;
+        self.n_items = item_indices.len();
 
         let mut thread_roots = Vec::new();
         loop {
@@ -157,20 +158,7 @@ impl<D: Distance> Writer<D> {
                 _ => (),
             }
 
-            let mut indices = Vec::new();
-            // Only fetch the item's ids, not the tree nodes ones
-            // TODO move this our of the box
-            for result in self
-                .database
-                .remap_types::<PrefixCodec, DecodeIgnore>()
-                .prefix_iter(wtxn, &Prefix::item(self.index))?
-                .remap_key_type::<KeyCodec>()
-            {
-                let (i, _) = result?;
-                indices.push(i.node.unwrap_item());
-            }
-
-            let tree_root_id = self.make_tree(wtxn, indices, true, &mut rng)?;
+            let tree_root_id = self.make_tree(wtxn, &item_indices, true, &mut rng)?;
             // make_tree must NEVER return a leaf when called as root
             thread_roots.push(tree_root_id.unwrap_tree());
         }
@@ -296,13 +284,20 @@ impl<D: Distance> Writer<D> {
         Ok(old)
     }
 
-    fn n_items(&self, rtxn: &RoTxn) -> Result<u64> {
-        self.database
+    // Fetches the item's ids, not the tree nodes ones.
+    fn item_indices(&self, wtxn: &mut RwTxn<'_>) -> heed::Result<Vec<ItemId>> {
+        let mut indices = Vec::new();
+        for result in self
+            .database
             .remap_types::<PrefixCodec, DecodeIgnore>()
-            .prefix_iter(rtxn, &Prefix::item(self.index))?
-            .remap_key_type::<DecodeIgnore>()
-            .try_fold(0, |acc, el| el.map(|_| acc + 1))
-            .map_err(Into::into)
+            .prefix_iter(wtxn, &Prefix::item(self.index))?
+            .remap_key_type::<KeyCodec>()
+        {
+            let (i, _) = result?;
+            indices.push(i.node.unwrap_item());
+        }
+
+        Ok(indices)
     }
 }
 
