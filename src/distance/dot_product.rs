@@ -5,7 +5,7 @@ use rand::Rng;
 use super::two_means;
 use crate::node::{Leaf, SplitPlaneNormal};
 use crate::spaces::simple::dot_product;
-use crate::{Distance, KeyCodec, Node, NodeCodec};
+use crate::{Distance, KeyCodec, Node, NodeCodec, NodeId};
 
 #[derive(Debug, Clone)]
 pub enum DotProduct {}
@@ -75,7 +75,11 @@ impl Distance for DotProduct {
         normal.header.extra_dim = node_p.header.extra_dim - node_q.header.extra_dim;
         Self::normalize(&mut normal);
         // TODO we are returning invalid left and rights
-        SplitPlaneNormal { normal: normal.vector, left: u32::MAX, right: u32::MAX }
+        SplitPlaneNormal {
+            normal: normal.vector,
+            left: NodeId::uninitialized(),
+            right: NodeId::uninitialized(),
+        }
     }
 
     fn margin(p: &Leaf<Self>, q: &Leaf<Self>) -> f32 {

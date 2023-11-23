@@ -9,17 +9,17 @@ use heed::RoTxn;
 use ordered_float::OrderedFloat;
 
 use crate::item_iter::ItemIter;
-use crate::node::{Descendants, Leaf, NodeIds, SplitPlaneNormal};
+use crate::node::{Descendants, ItemIds, Leaf, SplitPlaneNormal};
 use crate::{
-    Database, Distance, Error, ItemId, Key, KeyCodec, MetadataCodec, Node, Prefix, PrefixCodec,
-    Result, Side,
+    Database, Distance, Error, ItemId, Key, KeyCodec, MetadataCodec, Node, NodeId, NodeMode,
+    Prefix, PrefixCodec, Result, Side,
 };
 
 #[derive(Debug)]
 pub struct Reader<'t, D: Distance> {
     database: Database<D>,
     prefix: u16,
-    roots: NodeIds<'t>,
+    roots: ItemIds<'t>,
     dimensions: usize,
     n_items: usize,
     _marker: marker::PhantomData<D>,
@@ -135,18 +135,23 @@ impl<'t, D: Distance> Reader<'t, D> {
         let search_k = search_k.map_or(count * self.roots.len(), NonZeroUsize::get);
 
         // Insert all the root nodes and associate them to the highest distance.
-        queue.extend(repeat(OrderedFloat(f32::INFINITY)).zip(self.roots.iter()));
+        queue.extend(
+            repeat(OrderedFloat(f32::INFINITY))
+                .zip(self.roots.iter().map(|item| NodeId { mode: NodeMode::Tree, item })),
+        );
 
-        let mut nns = Vec::<ItemId>::new();
+        let mut nns = Vec::<NodeId>::new();
         while nns.len() < search_k {
             let (OrderedFloat(dist), item) = match queue.pop() {
                 Some(out) => out,
                 None => break,
             };
 
-            match self.database.get(rtxn, &Key::item(self.prefix, item))?.unwrap() {
+            match self.database.get(rtxn, &Key::new(self.prefix, item))?.unwrap() {
                 Node::Leaf(_) => nns.push(item),
-                Node::Descendants(Descendants { descendants }) => nns.extend(descendants.iter()),
+                Node::Descendants(Descendants { descendants }) => {
+                    nns.extend(descendants.iter().map(NodeId::item))
+                }
                 Node::SplitPlaneNormal(SplitPlaneNormal { normal, left, right }) => {
                     let margin = D::margin_no_header(&normal, &query_leaf.vector);
                     queue.push((OrderedFloat(D::pq_distance(dist, margin, Side::Left)), left));
@@ -162,7 +167,7 @@ impl<'t, D: Distance> Reader<'t, D> {
 
         let mut nns_distances = Vec::with_capacity(nns.len());
         for nn in nns {
-            let leaf = match self.database.get(rtxn, &Key::item(self.prefix, nn))?.unwrap() {
+            let leaf = match self.database.get(rtxn, &Key::new(self.prefix, nn))?.unwrap() {
                 Node::Leaf(leaf) => leaf,
                 Node::Descendants(_) | Node::SplitPlaneNormal(_) => panic!("Shouldn't happen"),
             };
@@ -177,7 +182,7 @@ impl<'t, D: Distance> Reader<'t, D> {
             if output.len() == capacity {
                 break;
             }
-            output.push((item, D::normalized_distance(dist)));
+            output.push((item.unwrap_item(), D::normalized_distance(dist)));
         }
 
         Ok(output)

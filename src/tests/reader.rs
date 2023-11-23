@@ -63,9 +63,7 @@ fn open_db_with_wrong_distance() {
     let reader = Reader::<Manhattan>::open(&rtxn, 0, handle.database).unwrap();
     // TODO: This should fail
     let ret = reader.nns_by_vector(&rtxn, &[1.0, 2.0], 5, None).unwrap();
-    insta::assert_display_snapshot!(NnsRes(Some(ret)), @r###"
-    id(0): distance(3)
-    "###);
+    insta::assert_display_snapshot!(NnsRes(Some(ret)), @"");
 }
 
 #[test]

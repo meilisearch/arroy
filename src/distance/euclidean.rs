@@ -4,7 +4,7 @@ use rand::Rng;
 use super::two_means;
 use crate::node::{Leaf, SplitPlaneNormal};
 use crate::spaces::simple::{dot_product, euclidean_distance};
-use crate::Distance;
+use crate::{Distance, NodeId};
 
 #[derive(Debug, Clone)]
 pub enum Euclidean {}
@@ -44,7 +44,11 @@ impl Distance for Euclidean {
             .sum();
 
         // TODO we are returning invalid left and rights
-        SplitPlaneNormal { normal: normal.vector, left: u32::MAX, right: u32::MAX }
+        SplitPlaneNormal {
+            normal: normal.vector,
+            left: NodeId::uninitialized(),
+            right: NodeId::uninitialized(),
+        }
     }
 
     fn margin(p: &Leaf<Self>, q: &Leaf<Self>) -> f32 {

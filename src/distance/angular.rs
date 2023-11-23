@@ -4,7 +4,7 @@ use rand::Rng;
 use super::two_means;
 use crate::node::{Leaf, SplitPlaneNormal};
 use crate::spaces::simple::dot_product;
-use crate::Distance;
+use crate::{Distance, NodeId};
 
 #[derive(Debug, Clone)]
 pub enum Angular {}
@@ -44,7 +44,11 @@ impl Distance for Angular {
         let mut normal = Leaf { header: NodeHeaderAngular { norm: 0.0 }, vector };
         Self::normalize(&mut normal);
         // TODO we are returning invalid left and rights
-        SplitPlaneNormal { normal: normal.vector, left: u32::MAX, right: u32::MAX }
+        SplitPlaneNormal {
+            normal: normal.vector,
+            left: NodeId::uninitialized(),
+            right: NodeId::uninitialized(),
+        }
     }
 
     fn margin_no_header(p: &[f32], q: &[f32]) -> f32 {

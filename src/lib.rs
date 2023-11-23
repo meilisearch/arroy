@@ -20,7 +20,7 @@ pub use distance::{
 };
 pub use error::Error;
 use heed::BoxedError;
-use node::NodeIds;
+use node::ItemIds;
 pub use node::{Leaf, Node, NodeCodec};
 use rand::Rng;
 pub use reader::Reader;
@@ -37,8 +37,68 @@ pub type BEU32 = heed::types::U32<heed::byteorder::BE>;
 /// An external item id.
 pub type ItemId = u32;
 
-/// An internal node id.
-type NodeId = u32;
+/// Point to a node in the tree. Can be any kind of node.
+/// /!\ This must fit on exactly 5 bytes without padding.
+#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord)]
+pub struct NodeId {
+    // Indicate what the item represent.
+    pub mode: NodeMode,
+    /// The item we want to get.
+    pub item: ItemId,
+}
+
+impl NodeId {
+    pub const fn uninitialized() -> Self {
+        Self { mode: NodeMode::Uninitialized, item: 0 }
+    }
+
+    pub const fn root() -> Self {
+        Self { mode: NodeMode::Root, item: 0 }
+    }
+
+    pub const fn tree(item: u32) -> Self {
+        Self { mode: NodeMode::Tree, item }
+    }
+
+    pub const fn item(item: u32) -> Self {
+        Self { mode: NodeMode::Item, item }
+    }
+
+    /// Return the underlying `ItemId` if it is an item.
+    /// Panic otherwise.
+    pub fn unwrap_item(&self) -> ItemId {
+        assert_eq!(self.mode, NodeMode::Item);
+        self.item
+    }
+
+    /// Return the underlying `ItemId` if it is a tree node.
+    /// Panic otherwise.
+    pub fn unwrap_tree(&self) -> ItemId {
+        assert_eq!(self.mode, NodeMode::Tree);
+        self.item
+    }
+
+    pub fn to_bytes(&self) -> [u8; 5] {
+        let mut output = [0; 5];
+        output[0] = self.mode as u8;
+
+        let item_bytes = self.item.to_be_bytes();
+        debug_assert_eq!(item_bytes.len(), output.len() - 1);
+
+        output.iter_mut().skip(1).zip(item_bytes).for_each(|(output, item)| {
+            *output = item;
+        });
+
+        output
+    }
+
+    pub fn from_bytes(bytes: &[u8]) -> (Self, &[u8]) {
+        let mode = NodeMode::try_from(bytes[0]).expect("Could not parse the node mode");
+        let item = BigEndian::read_u32(&bytes[1..]);
+
+        (Self { mode, item }, &bytes[size_of::<NodeMode>() + size_of::<ItemId>()..])
+    }
+}
 
 #[derive(Debug, Copy, Clone)]
 pub enum Side {
@@ -66,12 +126,13 @@ fn aligned_or_collect_vec<T: Pod + Zeroable>(bytes: &[u8]) -> Cow<[T]> {
 }
 
 /// /!\ Changing the value of the enum can be DB-breaking /!\
-#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord)]
 #[repr(u8)]
 pub enum NodeMode {
     Item = 0,
     Tree = 1,
     Root = 2,
+    Uninitialized = 3,
 }
 
 impl TryFrom<u8> for NodeMode {
@@ -99,29 +160,26 @@ impl TryFrom<u8> for NodeMode {
 pub struct Key {
     /// The prefix specified by the user.
     pub prefix: u16,
-    // Indicate what the item represent.
-    pub mode: NodeMode,
-    /// The item we want to get.
-    pub item: u32,
+    pub node: NodeId,
     /// Unused space.
     _padding: u8,
 }
 
 impl Key {
-    pub const fn new(prefix: u16, mode: NodeMode, item: u32) -> Self {
-        Self { prefix, mode, item, _padding: 0 }
+    pub const fn new(prefix: u16, node: NodeId) -> Self {
+        Self { prefix, node, _padding: 0 }
     }
 
     pub const fn root(prefix: u16) -> Self {
-        Self::new(prefix, NodeMode::Root, 0)
+        Self::new(prefix, NodeId::root())
     }
 
     pub const fn item(prefix: u16, item: u32) -> Self {
-        Self::new(prefix, NodeMode::Item, item)
+        Self::new(prefix, NodeId::item(item))
     }
 
     pub const fn tree(prefix: u16, item: u32) -> Self {
-        Self::new(prefix, NodeMode::Tree, item)
+        Self::new(prefix, NodeId::tree(item))
     }
 }
 
@@ -133,8 +191,8 @@ impl<'a> heed::BytesEncode<'a> for KeyCodec {
     fn bytes_encode(item: &'a Self::EItem) -> Result<Cow<'a, [u8]>, BoxedError> {
         let mut output = Vec::with_capacity(size_of::<u64>());
         output.extend_from_slice(&item.prefix.to_be_bytes());
-        output.extend_from_slice(&(item.mode as u8).to_be_bytes());
-        output.extend_from_slice(&item.item.to_be_bytes());
+        output.extend_from_slice(&(item.node.mode as u8).to_be_bytes());
+        output.extend_from_slice(&item.node.item.to_be_bytes());
         output.extend_from_slice(&item._padding.to_be_bytes());
 
         Ok(Cow::Owned(output))
@@ -152,7 +210,7 @@ impl heed::BytesDecode<'_> for KeyCodec {
         let item = BigEndian::read_u32(bytes);
         // We don't need to deserialize the unused space
 
-        Ok(Key { prefix, mode, item, _padding: 0 })
+        Ok(Key { prefix, node: NodeId { mode, item }, _padding: 0 })
     }
 }
 
@@ -201,7 +259,7 @@ impl<'a> heed::BytesEncode<'a> for PrefixCodec {
 struct Metadata<'a> {
     dimensions: u32,
     n_items: u32,
-    roots: NodeIds<'a>,
+    roots: ItemIds<'a>,
 }
 
 enum MetadataCodec {}
@@ -228,6 +286,40 @@ impl<'a> heed::BytesDecode<'a> for MetadataCodec {
         let n_items = BigEndian::read_u32(bytes);
         let bytes = &bytes[size_of::<u32>()..];
 
-        Ok(Metadata { dimensions, n_items, roots: NodeIds::from_bytes(bytes) })
+        Ok(Metadata { dimensions, n_items, roots: ItemIds::from_bytes(bytes) })
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use heed::BytesEncode;
+
+    use super::*;
+
+    #[test]
+    fn check_size_of_types() {
+        let key = Key::root(0);
+        let encoded = KeyCodec::bytes_encode(&key).unwrap();
+        assert_eq!(encoded.len(), size_of::<u64>());
+    }
+
+    #[test]
+    fn check_node_id_ordering() {
+        assert!(NodeId::item(0) == NodeId::item(0));
+        assert!(NodeId::item(1) > NodeId::item(0));
+        assert!(NodeId::item(0) < NodeId::item(1));
+
+        assert!(NodeId::tree(0) == NodeId::tree(0));
+        assert!(NodeId::tree(1) > NodeId::tree(0));
+        assert!(NodeId::tree(0) < NodeId::tree(1));
+
+        // tree > item whatever is the value
+        assert!(NodeId::tree(0) > NodeId::item(1));
+
+        assert!(NodeId::root() == NodeId::root());
+        assert!(NodeId::root() > NodeId::tree(12));
+        assert!(NodeId::root() > NodeId::item(12));
+
+        assert!(NodeId::uninitialized() > NodeId::root());
     }
 }

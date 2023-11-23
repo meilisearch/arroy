@@ -7,7 +7,7 @@ use heed::{MdbError, PutFlags, RoTxn, RwTxn};
 use rand::Rng;
 
 use crate::item_iter::ItemIter;
-use crate::node::{Descendants, Leaf, NodeIds};
+use crate::node::{Descendants, ItemIds, Leaf};
 use crate::reader::item_leaf;
 use crate::{
     Database, Distance, Error, ItemId, Key, KeyCodec, Metadata, MetadataCodec, Node, NodeCodec,
@@ -21,7 +21,8 @@ pub struct Writer<D: Distance> {
     dimensions: usize,
     // non-initiliazed until build is called.
     n_items: usize,
-    roots: Vec<NodeId>,
+    // We know the root nodes points to tree-nodes.
+    roots: Vec<ItemId>,
     _marker: marker::PhantomData<D>,
 }
 
@@ -143,7 +144,6 @@ impl<D: Distance> Writer<D> {
         })?;
 
         self.n_items = self.database.len(wtxn)? as usize;
-        let last_item_id = self.last_node_id(wtxn)?;
 
         let mut thread_roots = Vec::new();
         loop {
@@ -162,14 +162,12 @@ impl<D: Distance> Writer<D> {
                 .remap_key_type::<KeyCodec>()
             {
                 let (i, _) = result?;
-                if last_item_id.map_or(true, |last| i.item > last) {
-                    break;
-                }
-                indices.push(i.item);
+                indices.push(i.node);
             }
 
             let tree_root_id = self.make_tree(wtxn, indices, true, &mut rng)?;
-            thread_roots.push(tree_root_id);
+            // make_tree must NEVER return a leaf
+            thread_roots.push(tree_root_id.unwrap_tree());
         }
 
         self.roots.append(&mut thread_roots);
@@ -179,7 +177,7 @@ impl<D: Distance> Writer<D> {
         let metadata = Metadata {
             dimensions: self.dimensions.try_into().unwrap(),
             n_items: self.n_items.try_into().unwrap(),
-            roots: NodeIds::from_slice(&self.roots),
+            roots: ItemIds::from_slice(&self.roots),
         };
         match self.database.remap_data_type::<MetadataCodec>().put_with_flags(
             wtxn,
@@ -200,7 +198,7 @@ impl<D: Distance> Writer<D> {
     fn make_tree<R: Rng>(
         &self,
         wtxn: &mut RwTxn,
-        indices: Vec<u32>,
+        indices: Vec<NodeId>,
         is_root: bool,
         rng: &mut R,
     ) -> Result<NodeId> {
@@ -215,20 +213,23 @@ impl<D: Distance> Writer<D> {
         if indices.len() <= max_descendants
             && (!is_root || self.n_items <= max_descendants || indices.len() == 1)
         {
-            let item_id = match self.last_node_id(wtxn)? {
+            let item_id = match self.last_tree_id(wtxn)? {
                 Some(last_id) => last_id.checked_add(1).ok_or(Error::DatabaseFull)?,
                 None => 0,
             };
 
+            // If we reached this point, we know we only holds leaf in our indices.
+            let indices: Vec<ItemId> =
+                indices.into_iter().map(|node_id| node_id.unwrap_item()).collect();
             let item =
-                Node::Descendants(Descendants { descendants: NodeIds::from_slice(&indices) });
-            self.database.put(wtxn, &Key::item(self.prefix, item_id), &item)?;
-            return Ok(item_id);
+                Node::Descendants(Descendants { descendants: ItemIds::from_slice(&indices) });
+            self.database.put(wtxn, &Key::tree(self.prefix, item_id), &item)?;
+            return Ok(NodeId::tree(item_id));
         }
 
         let mut children = Vec::new();
         for node_id in &indices {
-            let node = self.database.get(wtxn, &Key::item(self.prefix, *node_id))?.unwrap();
+            let node = self.database.get(wtxn, &Key::new(self.prefix, *node_id))?.unwrap();
             let leaf = node.leaf().unwrap();
             children.push(leaf);
         }
@@ -278,22 +279,29 @@ impl<D: Distance> Writer<D> {
         m.left = self.make_tree(wtxn, children_left, false, rng)?;
         m.right = self.make_tree(wtxn, children_right, false, rng)?;
 
-        let new_node_id = match self.last_node_id(wtxn)? {
+        let new_node_id = match self.last_tree_id(wtxn)? {
             Some(last_id) => last_id.checked_add(1).unwrap(),
             None => 0,
         };
 
         self.database.put(
             wtxn,
-            &Key::item(self.prefix, new_node_id),
+            &Key::tree(self.prefix, new_node_id),
             &Node::SplitPlaneNormal(m),
         )?;
-        Ok(new_node_id)
+        Ok(NodeId::tree(new_node_id))
     }
 
-    fn last_node_id(&self, rtxn: &RoTxn) -> Result<Option<NodeId>> {
-        match self.database.remap_data_type::<DecodeIgnore>().last(rtxn)? {
-            Some((last_id, _)) => Ok(Some(last_id.item)),
+    fn last_tree_id(&self, rtxn: &RoTxn) -> Result<Option<ItemId>> {
+        match self
+            .database
+            .remap_types::<PrefixCodec, DecodeIgnore>()
+            .prefix_iter(rtxn, &Prefix::tree(self.prefix))?
+            .remap_key_type::<KeyCodec>()
+            .last()
+            .transpose()?
+        {
+            Some((node_id, _)) => Ok(Some(node_id.node.item)),
             None => Ok(None),
         }
     }

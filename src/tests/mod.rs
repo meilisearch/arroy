@@ -25,14 +25,14 @@ impl fmt::Display for DatabaseHandle {
             self.database.remap_data_type::<LazyDecode<NodeCodec<Angular>>>().iter(&rtxn).unwrap()
         {
             let (key, lazy_node) = result.unwrap();
-            match key.mode {
+            match key.node.mode {
                 NodeMode::Item => {
                     let node = lazy_node.decode().unwrap();
-                    writeln!(f, "Item {}: {node:?}", key.item)?;
+                    writeln!(f, "Item {}: {node:?}", key.node.item)?;
                 }
                 NodeMode::Tree => {
                     let node = lazy_node.decode().unwrap();
-                    writeln!(f, "Tree {}: {node:?}", key.item)?;
+                    writeln!(f, "Tree {}: {node:?}", key.node.item)?;
                 }
                 NodeMode::Root => {
                     let metadata = self
@@ -42,6 +42,10 @@ impl fmt::Display for DatabaseHandle {
                         .unwrap()
                         .unwrap();
                     writeln!(f, "\nroot node: {metadata:?}")?;
+                }
+                NodeMode::Uninitialized => {
+                    let node = lazy_node.decode().unwrap();
+                    writeln!(f, "Unitialized {}: {node:?}", key.node.item)?;
                 }
             }
         }
