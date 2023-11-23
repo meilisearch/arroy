@@ -11,7 +11,14 @@ fn use_u32_max_minus_one_for_a_vec() {
     writer.add_item(&mut wtxn, u32::MAX - 1, &[0.0, 1.0, 2.0]).unwrap();
 
     writer.build(&mut wtxn, rng(), Some(1)).unwrap();
-    insta::assert_display_snapshot!(handle, @"");
+    wtxn.commit().unwrap();
+
+    insta::assert_display_snapshot!(handle, @r###"
+    Item 4294967294: Leaf(Leaf { header: NodeHeaderAngular { norm: 0.0 }, vector: [0.0, 1.0, 2.0] })
+    Tree 0: Descendants(Descendants { descendants: ItemIds { bytes: [254, 255, 255, 255] } })
+
+    root node: Metadata { dimensions: 3, n_items: 1, roots: ItemIds { bytes: [0, 0, 0, 0] } }
+    "###);
 }
 
 #[test]
@@ -22,7 +29,14 @@ fn use_u32_max_for_a_vec() {
     writer.add_item(&mut wtxn, u32::MAX, &[0.0, 1.0, 2.0]).unwrap();
 
     writer.build(&mut wtxn, rng(), Some(1)).unwrap();
-    insta::assert_display_snapshot!(handle, @"");
+    wtxn.commit().unwrap();
+
+    insta::assert_display_snapshot!(handle, @r###"
+    Item 4294967295: Leaf(Leaf { header: NodeHeaderAngular { norm: 0.0 }, vector: [0.0, 1.0, 2.0] })
+    Tree 0: Descendants(Descendants { descendants: ItemIds { bytes: [255, 255, 255, 255] } })
+
+    root node: Metadata { dimensions: 3, n_items: 1, roots: ItemIds { bytes: [0, 0, 0, 0] } }
+    "###);
 }
 
 #[test]
