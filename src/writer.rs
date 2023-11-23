@@ -209,7 +209,7 @@ impl<D: Distance> Writer<D> {
             let item_id = self.create_item_id()?;
 
             let item =
-                Node::Descendants(Descendants { descendants: ItemIds::from_slice(&item_indices) });
+                Node::Descendants(Descendants { descendants: ItemIds::from_slice(item_indices) });
             self.database.put(wtxn, &Key::tree(self.index, item_id), &item)?;
             return Ok(NodeId::tree(item_id));
         }
