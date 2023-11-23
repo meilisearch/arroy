@@ -43,10 +43,6 @@ impl fmt::Display for DatabaseHandle {
                         .unwrap();
                     writeln!(f, "\nroot node: {metadata:?}")?;
                 }
-                NodeMode::Uninitialized => {
-                    let node = lazy_node.decode().unwrap();
-                    writeln!(f, "Unitialized {}: {node:?}", key.node.item)?;
-                }
             }
         }
         Ok(())

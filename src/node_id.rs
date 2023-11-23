@@ -11,7 +11,6 @@ pub enum NodeMode {
     Item = 0,
     Tree = 1,
     Root = 2,
-    Uninitialized = 3,
 }
 
 impl TryFrom<u8> for NodeMode {
@@ -38,10 +37,6 @@ pub struct NodeId {
 }
 
 impl NodeId {
-    pub const fn uninitialized() -> Self {
-        Self { mode: NodeMode::Uninitialized, item: 0 }
-    }
-
     pub const fn root() -> Self {
         Self { mode: NodeMode::Root, item: 0 }
     }
@@ -110,7 +105,5 @@ mod test {
         assert!(NodeId::root() == NodeId::root());
         assert!(NodeId::root() > NodeId::tree(12));
         assert!(NodeId::root() > NodeId::item(12));
-
-        assert!(NodeId::uninitialized() > NodeId::root());
     }
 }

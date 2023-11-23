@@ -7,7 +7,7 @@ use heed::{MdbError, PutFlags, RoTxn, RwTxn};
 use rand::Rng;
 
 use crate::item_iter::ItemIter;
-use crate::node::{Descendants, ItemIds, Leaf};
+use crate::node::{Descendants, ItemIds, Leaf, SplitPlaneNormal};
 use crate::reader::item_leaf;
 use crate::{
     Database, Distance, Error, ItemId, Key, KeyCodec, Metadata, MetadataCodec, Node, NodeCodec,
@@ -240,13 +240,13 @@ impl<D: Distance> Writer<D> {
         let mut children_right = Vec::new();
         let mut remaining_attempts = 3;
 
-        let mut m = loop {
+        let mut normal = loop {
             children_left.clear();
             children_right.clear();
 
-            let m = D::create_split(&children, rng);
+            let normal = D::create_split(&children, rng);
             for (&node_id, node) in indices.iter().zip(&children) {
-                match D::side(&m, node, rng) {
+                match D::side(&normal, node, rng) {
                     Side::Left => children_left.push(node_id),
                     Side::Right => children_right.push(node_id),
                 }
@@ -255,7 +255,7 @@ impl<D: Distance> Writer<D> {
             if split_imbalance(children_left.len(), children_right.len()) < 0.95
                 || remaining_attempts == 0
             {
-                break m;
+                break normal;
             }
 
             remaining_attempts -= 1;
@@ -266,8 +266,7 @@ impl<D: Distance> Writer<D> {
         while split_imbalance(children_left.len(), children_right.len()) > 0.99 {
             children_left.clear();
             children_right.clear();
-
-            m.normal.to_mut().fill(0.0);
+            normal.fill(0.0);
 
             for &node_id in &indices {
                 match Side::random(rng) {
@@ -277,16 +276,17 @@ impl<D: Distance> Writer<D> {
             }
         }
 
-        // TODO make sure to run _make_tree for the smallest child first (for cache locality)
-        m.left = self.make_tree(wtxn, children_left, false, rng)?;
-        m.right = self.make_tree(wtxn, children_right, false, rng)?;
-
+        let normal = SplitPlaneNormal {
+            normal: Cow::Owned(normal),
+            left: self.make_tree(wtxn, children_left, false, rng)?,
+            right: self.make_tree(wtxn, children_right, false, rng)?,
+        };
         let new_node_id = self.create_item_id()?;
 
         self.database.put(
             wtxn,
             &Key::tree(self.prefix, new_node_id),
-            &Node::SplitPlaneNormal(m),
+            &Node::SplitPlaneNormal(normal),
         )?;
         Ok(NodeId::tree(new_node_id))
     }

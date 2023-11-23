@@ -9,7 +9,7 @@ pub use manhattan::{Manhattan, NodeHeaderManhattan};
 use rand::seq::SliceRandom;
 use rand::Rng;
 
-use crate::node::{Leaf, SplitPlaneNormal};
+use crate::node::Leaf;
 use crate::spaces::simple::dot_product;
 use crate::{KeyCodec, NodeCodec, Side};
 
@@ -67,7 +67,7 @@ pub trait Distance: Sized + Clone + fmt::Debug + 'static {
             .for_each(|(x, n)| *x = (*x * c + *n / norm) / (c + 1.0));
     }
 
-    fn create_split<R: Rng>(children: &[Leaf<Self>], rng: &mut R) -> SplitPlaneNormal<'static>;
+    fn create_split<R: Rng>(children: &[Leaf<Self>], rng: &mut R) -> Vec<f32>;
 
     fn margin(p: &Leaf<Self>, q: &Leaf<Self>) -> f32 {
         Self::margin_no_header(&p.vector, &q.vector)
@@ -75,8 +75,8 @@ pub trait Distance: Sized + Clone + fmt::Debug + 'static {
 
     fn margin_no_header(p: &[f32], q: &[f32]) -> f32;
 
-    fn side<R: Rng>(plane: &SplitPlaneNormal, node: &Leaf<Self>, rng: &mut R) -> Side {
-        let dot = Self::margin_no_header(&node.vector, &plane.normal);
+    fn side<R: Rng>(normal_plane: &[f32], node: &Leaf<Self>, rng: &mut R) -> Side {
+        let dot = Self::margin_no_header(&node.vector, normal_plane);
         if dot > 0.0 {
             Side::Right
         } else if dot < 0.0 {
