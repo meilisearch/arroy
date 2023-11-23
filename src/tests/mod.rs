@@ -21,10 +21,29 @@ pub struct DatabaseHandle {
 impl fmt::Display for DatabaseHandle {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let rtxn = self.env.read_txn().unwrap();
+
+        let mut old_index;
+        let mut current_index = None;
+        let mut last_mode = NodeMode::Item;
+
         for result in
             self.database.remap_data_type::<LazyDecode<NodeCodec<Angular>>>().iter(&rtxn).unwrap()
         {
             let (key, lazy_node) = result.unwrap();
+
+            old_index = current_index;
+            current_index = Some(key.prefix);
+
+            if old_index != current_index {
+                writeln!(f, "==================")?;
+                writeln!(f, "Dumping index {}", current_index.unwrap())?;
+            }
+
+            if last_mode != key.node.mode && key.node.mode == NodeMode::Item {
+                writeln!(f)?;
+                last_mode = key.node.mode;
+            }
+
             match key.node.mode {
                 NodeMode::Item => {
                     let node = lazy_node.decode().unwrap();
@@ -41,7 +60,7 @@ impl fmt::Display for DatabaseHandle {
                         .get(&rtxn, &key)
                         .unwrap()
                         .unwrap();
-                    writeln!(f, "\nroot node: {metadata:?}")?;
+                    writeln!(f, "root node: {metadata:?}")?;
                 }
             }
         }
