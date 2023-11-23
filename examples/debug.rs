@@ -24,7 +24,7 @@ fn main() -> Result<()> {
 
     for result in database.remap_data_type::<LazyDecode<NodeCodec<DotProduct>>>().iter(&wtxn)? {
         let (key, lazy_node) = result?;
-        if key.node.mode != NodeMode::Root {
+        if key.node.mode != NodeMode::Metadata {
             let node = lazy_node.decode().unwrap();
             println!("{}: {node:?}", key.node.item);
         }

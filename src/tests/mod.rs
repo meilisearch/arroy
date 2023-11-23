@@ -32,7 +32,7 @@ impl fmt::Display for DatabaseHandle {
             let (key, lazy_node) = result.unwrap();
 
             old_index = current_index;
-            current_index = Some(key.prefix);
+            current_index = Some(key.index);
 
             if old_index != current_index {
                 writeln!(f, "==================")?;
@@ -53,7 +53,7 @@ impl fmt::Display for DatabaseHandle {
                     let node = lazy_node.decode().unwrap();
                     writeln!(f, "Tree {}: {node:?}", key.node.item)?;
                 }
-                NodeMode::Root => {
+                NodeMode::Metadata => {
                     let metadata = self
                         .database
                         .remap_data_type::<MetadataCodec>()

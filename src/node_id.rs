@@ -10,7 +10,7 @@ use crate::ItemId;
 pub enum NodeMode {
     Item = 0,
     Tree = 1,
-    Root = 2,
+    Metadata = 2,
 }
 
 impl TryFrom<u8> for NodeMode {
@@ -20,7 +20,7 @@ impl TryFrom<u8> for NodeMode {
         match v {
             v if v == NodeMode::Item as u8 => Ok(NodeMode::Item),
             v if v == NodeMode::Tree as u8 => Ok(NodeMode::Tree),
-            v if v == NodeMode::Root as u8 => Ok(NodeMode::Root),
+            v if v == NodeMode::Metadata as u8 => Ok(NodeMode::Metadata),
             v => Err(format!("Could not convert {v} as a `NodeMode`.")),
         }
     }
@@ -37,8 +37,8 @@ pub struct NodeId {
 }
 
 impl NodeId {
-    pub const fn root() -> Self {
-        Self { mode: NodeMode::Root, item: 0 }
+    pub const fn metadata() -> Self {
+        Self { mode: NodeMode::Metadata, item: 0 }
     }
 
     pub const fn tree(item: u32) -> Self {
@@ -70,9 +70,7 @@ impl NodeId {
         let item_bytes = self.item.to_be_bytes();
         debug_assert_eq!(item_bytes.len(), output.len() - 1);
 
-        output.iter_mut().skip(1).zip(item_bytes).for_each(|(output, item)| {
-            *output = item;
-        });
+        output[1..].copy_from_slice(&item_bytes);
 
         output
     }
@@ -102,8 +100,8 @@ mod test {
         // tree > item whatever is the value
         assert!(NodeId::tree(0) > NodeId::item(1));
 
-        assert!(NodeId::root() == NodeId::root());
-        assert!(NodeId::root() > NodeId::tree(12));
-        assert!(NodeId::root() > NodeId::item(12));
+        assert!(NodeId::metadata() == NodeId::metadata());
+        assert!(NodeId::metadata() > NodeId::tree(12));
+        assert!(NodeId::metadata() > NodeId::item(12));
     }
 }
