@@ -148,13 +148,13 @@ impl<D: Distance> Writer<D> {
                 .remap_key_type::<KeyCodec>())
         })?;
 
-        self.n_items = self.database.len(wtxn)? as usize;
+        self.n_items = self.n_items(wtxn)? as usize;
 
         let mut thread_roots = Vec::new();
         loop {
             match n_trees {
                 Some(n_trees) if thread_roots.len() >= n_trees => break,
-                None if self.database.len(wtxn)? >= 2 * self.n_items as u64 => break,
+                None if self.next_tree_id as usize >= self.n_items => break,
                 _ => (),
             }
 
@@ -296,6 +296,17 @@ impl<D: Distance> Writer<D> {
         self.next_tree_id = self.next_tree_id.checked_add(1).ok_or(Error::DatabaseFull)?;
 
         Ok(old)
+    }
+
+    fn n_items(&self, rtxn: &RoTxn) -> Result<u64> {
+        self.database
+            .remap_types::<PrefixCodec, DecodeIgnore>()
+            .prefix_iter(rtxn, &Prefix::item(self.prefix))?
+            .remap_key_type::<DecodeIgnore>()
+            .try_fold(0, |acc, el| -> Result<u64> {
+                el?;
+                Ok(acc + 1)
+            })
     }
 }
 
