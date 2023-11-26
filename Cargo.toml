@@ -6,7 +6,7 @@ edition = "2021"
 [dependencies]
 bytemuck = { version = "1.14.0", features = ["derive", "extern_crate_alloc"] }
 byteorder = "1.5.0"
-heed = "0.20.0-alpha.7"
+heed = "0.20.0-alpha.8"
 ordered-float = "4.1.1"
 rand = { version = "0.8.5", features = ["alloc"] }
 thiserror = "1.0.50"

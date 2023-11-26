@@ -25,9 +25,11 @@ fn main() -> Result<()> {
     eprintln!("took {:.02?} to generate the {NUMBER_VECTORS} random points", before.elapsed());
 
     let mut wtxn = env.write_txn()?;
-    let mut options = env.database_options();
-    options.flags(DatabaseFlags::INTEGER_KEY);
-    let database = options.types::<KeyCodec, Unspecified>().create(&mut wtxn)?;
+    let database = env
+        .database_options()
+        .flags(DatabaseFlags::INTEGER_KEY)
+        .types::<KeyCodec, Unspecified>()
+        .create(&mut wtxn)?;
     let before = Instant::now();
     load_into_arroy(rng_arroy, wtxn, database, VECTOR_DIMENSIONS, &points)?;
     eprintln!("took {:.02?} to load into arroy", before.elapsed());

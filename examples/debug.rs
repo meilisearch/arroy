@@ -1,6 +1,6 @@
 use arroy::{DotProduct, KeyCodec, NodeCodec, NodeMode, Reader, Result, Writer};
 use heed::types::LazyDecode;
-use heed::{Database, EnvOpenOptions, Unspecified};
+use heed::{DatabaseFlags, EnvOpenOptions, Unspecified};
 
 const TWENTY_HUNDRED_MIB: usize = 200 * 1024 * 1024;
 
@@ -11,7 +11,11 @@ fn main() -> Result<()> {
     // we will open the default unnamed database
     let mut wtxn = env.write_txn()?;
     let dimensions = 2;
-    let database: Database<KeyCodec, Unspecified> = env.create_database(&mut wtxn, None)?;
+    let database = env
+        .database_options()
+        .types::<KeyCodec, Unspecified>()
+        .flags(DatabaseFlags::INTEGER_KEY)
+        .create(&mut wtxn)?;
     let writer = Writer::<DotProduct>::prepare(&mut wtxn, database, 0, dimensions)?;
 
     for i in 0..5 {
