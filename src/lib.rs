@@ -1,3 +1,10 @@
+#![doc(
+    html_favicon_url = "https://raw.githubusercontent.com/meilisearch/arroy/main/assets/arroy-electric-clusters.ico?raw=true"
+)]
+#![doc(
+    html_logo_url = "https://raw.githubusercontent.com/meilisearch/arroy/main/assets/arroy-electric-clusters-logo.png?raw=true"
+)]
+
 mod distance;
 mod error;
 mod item_iter;
