@@ -1,4 +1,5 @@
-# arroy
+<p align="center"><img width="280px" title="The arroy logo is electric like LMDB and made up of colored clusters (of vectors)" src="https://raw.githubusercontent.com/meilisearch/arroy/main/assets/arroy-electric-clusters-logo.png"></a>
+<h1 align="center">arroy</h1>
 
 [![License](https://img.shields.io/badge/license-MIT-green)](#LICENSE)
 [![Crates.io](https://img.shields.io/crates/v/arroy)](https://crates.io/crates/arroy)
