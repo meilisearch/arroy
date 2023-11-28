@@ -33,7 +33,6 @@ pub use key::{Key, KeyCodec, Prefix, PrefixCodec};
 use node::ItemIds;
 pub use node::{Leaf, Node, NodeCodec};
 pub use node_id::{NodeId, NodeMode};
-use rand::Rng;
 pub use reader::Reader;
 pub use writer::Writer;
 
@@ -55,8 +54,8 @@ pub enum Side {
 }
 
 impl Side {
-    pub fn random<R: Rng>(rng: &mut R) -> Side {
-        if rng.gen() {
+    pub fn from_bool(random_bool: bool) -> Side {
+        if random_bool {
             Side::Left
         } else {
             Side::Right

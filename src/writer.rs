@@ -5,6 +5,7 @@ use std::marker;
 use heed::types::DecodeIgnore;
 use heed::{MdbError, PutFlags, RoTxn, RwTxn};
 use rand::Rng;
+use rayon::iter::{Either, IntoParallelIterator, ParallelIterator};
 
 use crate::item_iter::ItemIter;
 use crate::node::{Descendants, ItemIds, Leaf, SplitPlaneNormal};
@@ -250,26 +251,24 @@ impl<D: Distance> Writer<D> {
             children.push(leaf);
         }
 
-        let mut children_left = Vec::new();
-        let mut children_right = Vec::new();
         let mut remaining_attempts = 3;
-
-        let mut normal = loop {
-            children_left.clear();
-            children_right.clear();
-
+        let (mut normal, mut children_left, mut children_right) = loop {
             let normal = D::create_split(&children, rng);
-            for (&node_id, node) in item_indices.iter().zip(&children) {
-                match D::side(&normal, node, rng) {
-                    Side::Left => children_left.push(node_id),
-                    Side::Right => children_right.push(node_id),
-                }
-            }
+            let mut prerandom = vec![false; item_indices.len()];
+            rng.try_fill(&mut prerandom[..]).unwrap();
+
+            let (children_left, children_right): (Vec<_>, Vec<_>) =
+                (item_indices, &children, prerandom).into_par_iter().partition_map(
+                    |(&node_id, node, rand_bool)| match D::side(&normal, node, rand_bool) {
+                        Side::Left => Either::Left(node_id),
+                        Side::Right => Either::Right(node_id),
+                    },
+                );
 
             if split_imbalance(children_left.len(), children_right.len()) < 0.95
                 || remaining_attempts == 0
             {
-                break normal;
+                break (normal, children_left, children_right);
             }
 
             remaining_attempts -= 1;
@@ -282,8 +281,10 @@ impl<D: Distance> Writer<D> {
             children_right.clear();
             normal.fill(0.0);
 
-            for &node_id in item_indices {
-                match Side::random(rng) {
+            let mut prerandom = vec![false; item_indices.len()];
+            rng.try_fill(&mut prerandom[..]).unwrap();
+            for (&node_id, rand_bool) in item_indices.iter().zip(prerandom) {
+                match Side::from_bool(rand_bool) {
                     Side::Left => children_left.push(node_id),
                     Side::Right => children_right.push(node_id),
                 }

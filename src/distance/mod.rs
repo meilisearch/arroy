@@ -19,7 +19,7 @@ mod euclidean;
 mod manhattan;
 
 pub trait Distance: Sized + Clone + fmt::Debug + 'static {
-    type Header: Pod + Zeroable + fmt::Debug;
+    type Header: Pod + Zeroable + fmt::Debug + Sync;
 
     fn new_header(vector: &[f32]) -> Self::Header;
 
@@ -75,14 +75,14 @@ pub trait Distance: Sized + Clone + fmt::Debug + 'static {
 
     fn margin_no_header(p: &[f32], q: &[f32]) -> f32;
 
-    fn side<R: Rng>(normal_plane: &[f32], node: &Leaf<Self>, rng: &mut R) -> Side {
+    fn side(normal_plane: &[f32], node: &Leaf<Self>, random_bool: bool) -> Side {
         let dot = Self::margin_no_header(&node.vector, normal_plane);
         if dot > 0.0 {
             Side::Right
         } else if dot < 0.0 {
             Side::Left
         } else {
-            Side::random(rng)
+            Side::from_bool(random_bool)
         }
     }
 
