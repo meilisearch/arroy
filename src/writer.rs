@@ -19,10 +19,14 @@ pub struct Writer<D: Distance> {
     database: Database<D>,
     index: u16,
     dimensions: usize,
-    // non-initiliazed until build is called.
+    // uninitialized until build is called.
     n_items: usize,
-    // non-initiliazed until build is called.
+    // uninitialized until build is called.
     next_tree_id: u32,
+    // uninitialized until build is called.
+    /// Wether we can append at the end of the database
+    /// because we are the latest index in it.
+    can_append: PutFlags,
     // We know the root nodes points to tree-nodes.
     roots: Vec<ItemId>,
     _marker: marker::PhantomData<D>,
@@ -43,6 +47,7 @@ impl<D: Distance> Writer<D> {
             dimensions,
             n_items: 0,
             next_tree_id: 0,
+            can_append: PutFlags::empty(),
             roots: Vec::new(),
             _marker: marker::PhantomData,
         })
@@ -74,13 +79,24 @@ impl<D: Distance> Writer<D> {
             }
         }
 
-        let Writer { database, index, dimensions, n_items, next_tree_id, roots, _marker: _ } = self;
+        let Writer {
+            database,
+            index,
+            dimensions,
+            n_items,
+            next_tree_id,
+            can_append,
+            roots,
+            _marker: _,
+        } = self;
+
         Ok(Writer {
             database: database.remap_data_type(),
             index,
             dimensions,
             n_items,
             next_tree_id,
+            can_append,
             roots,
             _marker: marker::PhantomData,
         })
@@ -139,6 +155,14 @@ impl<D: Distance> Writer<D> {
         mut rng: R,
         n_trees: Option<usize>,
     ) -> Result<()> {
+        let can_append = self
+            .database
+            .remap_data_type::<DecodeIgnore>()
+            .last(wtxn)?
+            .map_or(true, |(key, _)| key.index == self.index);
+
+        self.can_append = if can_append { PutFlags::APPEND } else { PutFlags::empty() };
+
         D::preprocess(wtxn, |wtxn| {
             Ok(self
                 .database
@@ -174,7 +198,7 @@ impl<D: Distance> Writer<D> {
         };
         match self.database.remap_data_type::<MetadataCodec>().put_with_flags(
             wtxn,
-            PutFlags::NO_OVERWRITE,
+            PutFlags::NO_OVERWRITE | self.can_append,
             &Key::metadata(self.index),
             &metadata,
         ) {
@@ -210,7 +234,12 @@ impl<D: Distance> Writer<D> {
 
             let item =
                 Node::Descendants(Descendants { descendants: ItemIds::from_slice(item_indices) });
-            self.database.put(wtxn, &Key::tree(self.index, item_id), &item)?;
+            self.database.put_with_flags(
+                wtxn,
+                self.can_append,
+                &Key::tree(self.index, item_id),
+                &item,
+            )?;
             return Ok(NodeId::tree(item_id));
         }
 
@@ -268,8 +297,9 @@ impl<D: Distance> Writer<D> {
         };
 
         let new_node_id = self.create_item_id()?;
-        self.database.put(
+        self.database.put_with_flags(
             wtxn,
+            self.can_append,
             &Key::tree(self.index, new_node_id),
             &Node::SplitPlaneNormal(normal),
         )?;
