@@ -40,6 +40,23 @@ impl<D: Distance> Leaf<'_, D> {
     }
 }
 
+/// A wrapper struct that is used to read unaligned floats directly from memory.
+pub struct UnalignedF32Slice<'a>(&'a [u8]);
+
+impl<'a> UnalignedF32Slice<'a> {
+    pub fn from_bytes(bytes: &'a [u8]) -> Option<UnalignedF32Slice<'a>> {
+        if bytes.len() % size_of::<f32>() == 0 {
+            Some(UnalignedF32Slice(bytes))
+        } else {
+            None
+        }
+    }
+
+    pub fn iter(&self) -> impl Iterator<Item = f32> + 'a {
+        self.0.chunks_exact(size_of::<f32>()).map(NativeEndian::read_f32)
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct Descendants<'a> {
     // A descendants node can only contains references to the leaf nodes.
