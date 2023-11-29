@@ -22,7 +22,7 @@ Arroy was built by [@Kerollmops](https://github.com/Kerollmops) and [@irevoire](
 ## Summary of features
 
 - [Euclidean distance](https://en.wikipedia.org/wiki/Euclidean_distance), [Manhattan distance](https://en.wikipedia.org/wiki/Taxicab_geometry), [cosine distance](https://en.wikipedia.org/wiki/Cosine_similarity), or [Dot (Inner) Product distance](https://en.wikipedia.org/wiki/Dot_product)
-- Cosine distance is equivalent to Euclidean distance of normalized vectors = sqrt(2-2*cos(u, v))
+- Cosine distance is equivalent to Euclidean distance of normalized vectors i.e., `sqrt(2-2*cos(u, v))`
 - Works better if you don't have too many dimensions (like <100) but seems to perform surprisingly well even up to 1,000 dimensions
 - Small memory usage
 - Lets you share memory between multiple processes using LMDB
