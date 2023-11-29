@@ -60,7 +60,7 @@ impl fmt::Display for DatabaseHandle {
                         .get(&rtxn, &key)
                         .unwrap()
                         .unwrap();
-                    writeln!(f, "root node: {metadata:?}")?;
+                    writeln!(f, "Root: {metadata:?}")?;
                 }
             }
         }

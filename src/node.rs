@@ -100,11 +100,18 @@ impl Borrow<UnalignedF32Slice> for Vec<f32> {
 
 impl fmt::Debug for UnalignedF32Slice {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let mut dbg = f.debug_list();
+        struct SmallF32(f32);
+        impl fmt::Debug for SmallF32 {
+            fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+                f.write_fmt(format_args!("{:.5?}", self.0))
+            }
+        }
+
+        let mut list = f.debug_list();
         self.iter().for_each(|float| {
-            dbg.entry(&float);
+            list.entry(&SmallF32(float));
         });
-        dbg.finish()
+        list.finish()
     }
 }
 
@@ -115,7 +122,7 @@ pub struct Descendants<'a> {
     pub descendants: ItemIds<'a>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct ItemIds<'a> {
     bytes: &'a [u8],
 }
@@ -139,6 +146,16 @@ impl<'a> ItemIds<'a> {
 
     pub fn iter(&self) -> impl Iterator<Item = ItemId> + 'a {
         self.bytes.chunks_exact(size_of::<ItemId>()).map(NativeEndian::read_u32)
+    }
+}
+
+impl fmt::Debug for ItemIds<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let mut list = f.debug_list();
+        self.iter().for_each(|integer| {
+            list.entry(&integer);
+        });
+        list.finish()
     }
 }
 
