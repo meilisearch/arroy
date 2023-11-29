@@ -7,7 +7,7 @@ use heed::{MdbError, PutFlags, RoTxn, RwTxn};
 use rand::Rng;
 
 use crate::item_iter::ItemIter;
-use crate::node::{Descendants, ItemIds, Leaf, SplitPlaneNormal};
+use crate::node::{Descendants, ItemIds, Leaf, SplitPlaneNormal, UnalignedF32Slice};
 use crate::reader::item_leaf;
 use crate::{
     Database, Distance, Error, ItemId, Key, KeyCodec, Metadata, MetadataCodec, Node, NodeCodec,
@@ -110,6 +110,7 @@ impl<D: Distance> Writer<D> {
             });
         }
 
+        let vector = UnalignedF32Slice::from_slice(vector);
         let leaf = Leaf { header: D::new_header(vector), vector: Cow::Borrowed(vector) };
         Ok(self.database.put(wtxn, &Key::item(self.index, item), &Node::Leaf(leaf))?)
     }
@@ -231,7 +232,7 @@ impl<D: Distance> Writer<D> {
 
             let normal = D::create_split(&children, rng);
             for (&node_id, node) in item_indices.iter().zip(&children) {
-                match D::side(&normal, node, rng) {
+                match D::side(UnalignedF32Slice::from_slice(&normal), node, rng) {
                     Side::Left => children_left.push(node_id),
                     Side::Right => children_right.push(node_id),
                 }

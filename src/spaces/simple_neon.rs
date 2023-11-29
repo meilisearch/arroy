@@ -1,12 +1,14 @@
 #[cfg(target_feature = "neon")]
 use std::arch::aarch64::*;
 
+use crate::node::UnalignedF32Slice;
+
 #[cfg(target_feature = "neon")]
-pub(crate) unsafe fn euclid_similarity_neon(v1: &[f32], v2: &[f32]) -> f32 {
+pub(crate) unsafe fn euclid_similarity_neon(v1: &UnalignedF32Slice, v2: &UnalignedF32Slice) -> f32 {
     let n = v1.len();
     let m = n - (n % 16);
-    let mut ptr1: *const f32 = v1.as_ptr();
-    let mut ptr2: *const f32 = v2.as_ptr();
+    let mut ptr1 = v1.as_ptr() as *const f32; // TODO check doc vld1q_f32
+    let mut ptr2 = v2.as_ptr() as *const f32; // TODO check doc vld1q_f32
     let mut sum1 = vdupq_n_f32(0.);
     let mut sum2 = vdupq_n_f32(0.);
     let mut sum3 = vdupq_n_f32(0.);
@@ -32,17 +34,19 @@ pub(crate) unsafe fn euclid_similarity_neon(v1: &[f32], v2: &[f32]) -> f32 {
     }
     let mut result = vaddvq_f32(sum1) + vaddvq_f32(sum2) + vaddvq_f32(sum3) + vaddvq_f32(sum4);
     for i in 0..n - m {
-        result += (*ptr1.add(i) - *ptr2.add(i)).powi(2);
+        let a = read_unaligned(ptr1.add(i));
+        let b = read_unaligned(ptr2.add(i));
+        result += (a - b).powi(2);
     }
     result
 }
 
 #[cfg(target_feature = "neon")]
-pub(crate) unsafe fn dot_similarity_neon(v1: &[f32], v2: &[f32]) -> f32 {
+pub(crate) unsafe fn dot_similarity_neon(v1: &UnalignedF32Slice, v2: &UnalignedF32Slice) -> f32 {
     let n = v1.len();
     let m = n - (n % 16);
-    let mut ptr1: *const f32 = v1.as_ptr();
-    let mut ptr2: *const f32 = v2.as_ptr();
+    let mut ptr1 = v1.as_ptr() as *const f32; // TODO check doc vld1q_f32
+    let mut ptr2 = v2.as_ptr() as *const f32; // TODO check doc vld1q_f32
     let mut sum1 = vdupq_n_f32(0.);
     let mut sum2 = vdupq_n_f32(0.);
     let mut sum3 = vdupq_n_f32(0.);
@@ -60,7 +64,9 @@ pub(crate) unsafe fn dot_similarity_neon(v1: &[f32], v2: &[f32]) -> f32 {
     }
     let mut result = vaddvq_f32(sum1) + vaddvq_f32(sum2) + vaddvq_f32(sum3) + vaddvq_f32(sum4);
     for i in 0..n - m {
-        result += (*ptr1.add(i)) * (*ptr2.add(i));
+        let a = read_unaligned(ptr1.add(i));
+        let b = read_unaligned(ptr2.add(i));
+        result += a * b;
     }
     result
 }
@@ -82,6 +88,9 @@ mod tests {
                 40., 41., 42., 43., 44., 45., 46., 47., 48., 49., 50., 51., 52., 53., 54., 55.,
                 56., 57., 58., 59., 60., 61.,
             ];
+
+            let v1 = UnalignedF32Slice::from_slice(&v1[..]);
+            let v2 = UnalignedF32Slice::from_slice(&v2[..]);
 
             let euclid_simd = unsafe { euclid_similarity_neon(&v1, &v2) };
             let euclid = euclidean_distance_non_optimized(&v1, &v2);
