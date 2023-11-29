@@ -15,9 +15,9 @@ There are some other libraries to do nearest neighbor search. However most of th
 
 Why is this useful? If you want to find nearest neighbors and you have many CPU's, you only need to build the index once. Any thread will be able to query the LMDB-based index and will be able to do lookups immediately even while another index is modifying it.
 
-We use it inside @meilisearch. This library helps our users searching for similar documents. Our users have many millions of them in a high-dimensional space (i.e. 768 on average and 1536 for OpenAI), so memory usage is a prime concern.
+We use it inside [@meilisearch](https://github.com/meilisearch). This library helps our users searching for similar documents. Our users have many millions of them in a high-dimensional space (i.e. 768 on average and 1536 for OpenAI), so memory usage is a prime concern.
 
-Arroy was built by @Kerollmops and @irevoire with the help of @dureuill in a week by porting the original C++ source code of annoy.
+Arroy was built by [@Kerollmops](https://github.com/Kerollmops) and [@irevoire](https://github.com/irevoire) with the help of [@dureuill](https://github.com/dureuill) in a week by porting the original C++ source code of annoy.
 
 ## Summary of features
 
@@ -59,7 +59,7 @@ Using [random projections](http://en.wikipedia.org/wiki/Locality-sensitive_hashi
 
 We do this k times so that we get a forest of trees. k has to be tuned to your need, by looking at what tradeoff you have between precision and performance.
 
-Dot Product distance (originally contributed by @psobot and @pkorobov) reduces the provided vectors from dot (or "inner-product") space to a more query-friendly cosine space using [a method by Bachrach et al., at Microsoft Research, published in 2014](https://www.microsoft.com/en-us/research/wp-content/uploads/2016/02/XboxInnerProduct.pdf).
+Dot Product distance (originally contributed by [@psobot](https://github.com/psobot) and [@pkorobov](https://github.com/pkorobov)) reduces the provided vectors from dot (or "inner-product") space to a more query-friendly cosine space using [a method by Bachrach et al., at Microsoft Research, published in 2014](https://www.microsoft.com/en-us/research/wp-content/uploads/2016/02/XboxInnerProduct.pdf).
 
 ## Source code
 
