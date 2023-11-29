@@ -17,8 +17,8 @@ unsafe fn hsum256_ps_avx(x: __m256) -> f32 {
 pub(crate) unsafe fn euclid_similarity_avx(v1: &UnalignedF32Slice, v2: &UnalignedF32Slice) -> f32 {
     let n = v1.len();
     let m = n - (n % 32);
-    let mut ptr1: *const f32 = v1.as_ptr() as _; // TODO check doc _mm256_loadu_ps
-    let mut ptr2: *const f32 = v2.as_ptr() as _; // TODO check doc _mm256_loadu_ps
+    let mut ptr1 = v1.as_ptr() as *const f32; // TODO check doc _mm256_loadu_ps
+    let mut ptr2 = v2.as_ptr() as *const f32; // TODO check doc _mm256_loadu_ps
     let mut sum256_1: __m256 = _mm256_setzero_ps();
     let mut sum256_2: __m256 = _mm256_setzero_ps();
     let mut sum256_3: __m256 = _mm256_setzero_ps();
@@ -63,8 +63,8 @@ pub(crate) unsafe fn euclid_similarity_avx(v1: &UnalignedF32Slice, v2: &Unaligne
 pub(crate) unsafe fn dot_similarity_avx(v1: &UnalignedF32Slice, v2: &UnalignedF32Slice) -> f32 {
     let n = v1.len();
     let m = n - (n % 32);
-    let mut ptr1: *const f32 = v1.as_ptr() as _; // TODO check doc _mm256_loadu_ps
-    let mut ptr2: *const f32 = v2.as_ptr() as _; // TODO check doc _mm256_loadu_ps
+    let mut ptr1 = v1.as_ptr() as *const f32; // TODO check doc _mm256_loadu_ps
+    let mut ptr2 = v2.as_ptr() as *const f32; // TODO check doc _mm256_loadu_ps
     let mut sum256_1: __m256 = _mm256_setzero_ps();
     let mut sum256_2: __m256 = _mm256_setzero_ps();
     let mut sum256_3: __m256 = _mm256_setzero_ps();

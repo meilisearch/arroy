@@ -2,7 +2,7 @@ use std::borrow::{Borrow, Cow};
 use std::fmt;
 use std::mem::{size_of, transmute};
 
-use bytemuck::{bytes_of, cast_slice, pod_collect_to_vec, pod_read_unaligned, PodCastError};
+use bytemuck::{bytes_of, cast_slice, pod_collect_to_vec, pod_read_unaligned};
 use byteorder::{ByteOrder, NativeEndian};
 use heed::{BoxedError, BytesDecode, BytesEncode};
 
@@ -46,11 +46,11 @@ impl<D: Distance> Leaf<'_, D> {
 pub struct UnalignedF32Slice([u8]);
 
 impl UnalignedF32Slice {
-    pub fn from_bytes(bytes: &[u8]) -> Result<&Self, PodCastError> {
+    pub fn from_bytes(bytes: &[u8]) -> Result<&Self, SizeMismatch> {
         if bytes.len() % size_of::<f32>() == 0 {
             Ok(unsafe { transmute(bytes) })
         } else {
-            Err(PodCastError::SizeMismatch)
+            Err(SizeMismatch)
         }
     }
 
@@ -79,6 +79,10 @@ impl UnalignedF32Slice {
         self.0.as_ptr()
     }
 }
+
+#[derive(Debug, thiserror::Error)]
+#[error("invalid slice of float dimension")]
+pub struct SizeMismatch;
 
 impl ToOwned for UnalignedF32Slice {
     type Owned = Vec<f32>;

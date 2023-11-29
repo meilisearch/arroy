@@ -30,7 +30,7 @@ pub use error::Error;
 use heed::BoxedError;
 pub use key::{Key, KeyCodec, Prefix, PrefixCodec};
 use node::ItemIds;
-pub use node::{Leaf, Node, NodeCodec, UnalignedF32Slice};
+pub use node::{Leaf, Node, NodeCodec, SizeMismatch, UnalignedF32Slice};
 pub use node_id::{NodeId, NodeMode};
 use rand::Rng;
 pub use reader::Reader;
