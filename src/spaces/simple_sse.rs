@@ -15,10 +15,13 @@ unsafe fn hsum128_ps_sse(x: __m128) -> f32 {
 
 #[target_feature(enable = "sse")]
 pub(crate) unsafe fn euclid_similarity_sse(v1: &UnalignedF32Slice, v2: &UnalignedF32Slice) -> f32 {
+    // It is safe to load unaligned floats from a pointer.
+    // <https://www.intel.com/content/www/us/en/docs/intrinsics-guide/index.html#text=_mm_loadu_ps&ig_expand=4131>
+
     let n = v1.len();
     let m = n - (n % 16);
-    let mut ptr1 = v1.as_ptr() as *const f32; // TODO check doc _mm_loadu_ps
-    let mut ptr2 = v2.as_ptr() as *const f32; // TODO check doc _mm_loadu_ps
+    let mut ptr1 = v1.as_ptr() as *const f32;
+    let mut ptr2 = v2.as_ptr() as *const f32;
     let mut sum128_1: __m128 = _mm_setzero_ps();
     let mut sum128_2: __m128 = _mm_setzero_ps();
     let mut sum128_3: __m128 = _mm_setzero_ps();
@@ -56,10 +59,13 @@ pub(crate) unsafe fn euclid_similarity_sse(v1: &UnalignedF32Slice, v2: &Unaligne
 
 #[target_feature(enable = "sse")]
 pub(crate) unsafe fn dot_similarity_sse(v1: &UnalignedF32Slice, v2: &UnalignedF32Slice) -> f32 {
+    // It is safe to load unaligned floats from a pointer.
+    // <https://www.intel.com/content/www/us/en/docs/intrinsics-guide/index.html#text=_mm_loadu_ps&ig_expand=4131>
+
     let n = v1.len();
     let m = n - (n % 16);
-    let mut ptr1 = v1.as_ptr() as *const f32; // TODO check doc _mm_loadu_ps
-    let mut ptr2 = v2.as_ptr() as *const f32; // TODO check doc _mm_loadu_ps
+    let mut ptr1 = v1.as_ptr() as *const f32;
+    let mut ptr2 = v2.as_ptr() as *const f32;
     let mut sum128_1: __m128 = _mm_setzero_ps();
     let mut sum128_2: __m128 = _mm_setzero_ps();
     let mut sum128_3: __m128 = _mm_setzero_ps();
