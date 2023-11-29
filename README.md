@@ -15,7 +15,7 @@ There are some other libraries to do nearest neighbor search. However most of th
 
 Why is this useful? If you want to find nearest neighbors and you have many CPU's, you only need to build the index once. Any thread will be able to query the LMDB-based index and will be able to do lookups immediately even while another index is modifying it.
 
-We use it inside [@meilisearch](https://github.com/meilisearch). This library helps our users searching for similar documents. Our users have many millions of them in a high-dimensional space (i.e. 768 on average and 1536 for OpenAI), so memory usage is a prime concern.
+We use it inside [@meilisearch](https://github.com/meilisearch/meilisearch). This library helps our users searching for similar documents. Our users have many millions of them in a high-dimensional space (i.e. 768 on average and 1536 for OpenAI), so memory usage is a prime concern.
 
 Arroy was built by [@Kerollmops](https://github.com/Kerollmops) and [@irevoire](https://github.com/irevoire) with the help of [@dureuill](https://github.com/dureuill) in a week by porting the original C++ source code of annoy.
 
