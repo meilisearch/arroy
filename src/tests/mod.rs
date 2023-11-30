@@ -6,7 +6,7 @@ use rand::rngs::StdRng;
 use rand::SeedableRng;
 use tempfile::TempDir;
 
-use crate::{Angular, KeyCodec, MetadataCodec, NodeCodec, NodeMode};
+use crate::{Angular, ItemId, KeyCodec, MetadataCodec, NodeCodec};
 
 mod reader;
 mod writer;
@@ -24,7 +24,7 @@ impl fmt::Display for DatabaseHandle {
 
         let mut old_index;
         let mut current_index = None;
-        let mut last_mode = NodeMode::Item;
+        let mut last_mode = 0;
 
         for result in
             self.database.remap_data_type::<LazyDecode<NodeCodec<Angular>>>().iter(&rtxn).unwrap()
@@ -32,28 +32,24 @@ impl fmt::Display for DatabaseHandle {
             let (key, lazy_node) = result.unwrap();
 
             old_index = current_index;
-            current_index = Some(key.index);
+            current_index = Some(key.index & 0b1111_1110);
 
             if old_index != current_index {
                 writeln!(f, "==================")?;
                 writeln!(f, "Dumping index {}", current_index.unwrap())?;
             }
 
-            if last_mode != key.node.mode && key.node.mode == NodeMode::Item {
+            if last_mode != key.index && key.index & 1 == 0 {
                 writeln!(f)?;
-                last_mode = key.node.mode;
+                last_mode = key.index;
             }
 
-            match key.node.mode {
-                NodeMode::Item => {
+            match key.index & 1 {
+                0 => {
                     let node = lazy_node.decode().unwrap();
-                    writeln!(f, "Item {}: {node:?}", key.node.item)?;
+                    writeln!(f, "Item {}: {node:?}", key.item)?;
                 }
-                NodeMode::Tree => {
-                    let node = lazy_node.decode().unwrap();
-                    writeln!(f, "Tree {}: {node:?}", key.node.item)?;
-                }
-                NodeMode::Metadata => {
+                1 if key.item == ItemId::MAX => {
                     let metadata = self
                         .database
                         .remap_data_type::<MetadataCodec>()
@@ -62,6 +58,11 @@ impl fmt::Display for DatabaseHandle {
                         .unwrap();
                     writeln!(f, "Root: {metadata:?}")?;
                 }
+                1 => {
+                    let node = lazy_node.decode().unwrap();
+                    writeln!(f, "Tree {}: {node:?}", key.item)?;
+                }
+                _ => unreachable!("Impossiburuu"),
             }
         }
         Ok(())

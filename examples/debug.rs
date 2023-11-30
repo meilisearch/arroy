@@ -1,4 +1,4 @@
-use arroy::{DotProduct, KeyCodec, NodeCodec, NodeMode, Reader, Result, Writer};
+use arroy::{DotProduct, KeyCodec, NodeCodec, Reader, Result, Writer};
 use heed::types::LazyDecode;
 use heed::{DatabaseFlags, EnvOpenOptions, Unspecified};
 
@@ -28,9 +28,9 @@ fn main() -> Result<()> {
 
     for result in database.remap_data_type::<LazyDecode<NodeCodec<DotProduct>>>().iter(&wtxn)? {
         let (key, lazy_node) = result?;
-        if key.node.mode != NodeMode::Metadata {
+        if key.index & 1 != 1 && key.item != u32::MAX {
             let node = lazy_node.decode().unwrap();
-            println!("{}: {node:?}", key.node.item);
+            println!("{}: {node:?}", key.item);
         }
     }
     wtxn.commit()?;

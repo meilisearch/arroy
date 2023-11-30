@@ -11,13 +11,13 @@ use crate::node::{Descendants, ItemIds, Leaf, SplitPlaneNormal, UnalignedF32Slic
 use crate::reader::item_leaf;
 use crate::{
     Database, Distance, Error, ItemId, Key, KeyCodec, Metadata, MetadataCodec, Node, NodeCodec,
-    NodeId, Prefix, PrefixCodec, Result, Side,
+    Prefix, PrefixCodec, Result, Side,
 };
 
 #[derive(Debug)]
 pub struct Writer<D: Distance> {
     database: Database<D>,
-    index: u16,
+    index: u8,
     dimensions: usize,
     // non-initiliazed until build is called.
     n_items: usize,
@@ -32,9 +32,15 @@ impl<D: Distance> Writer<D> {
     pub fn prepare<U>(
         wtxn: &mut RwTxn,
         database: heed::Database<KeyCodec, U>,
-        index: u16,
+        index: u8,
         dimensions: usize,
     ) -> Result<Writer<D>> {
+        if index > 0b0111_1111 {
+            return Err(Error::InvalidIndex { received: index });
+        }
+        // we keep the lowest bit for our mode
+        let index = index << 1;
+
         let database: Database<D> = database.remap_data_type();
         clear_tree_nodes(wtxn, database, index)?;
         Ok(Writer {
@@ -123,7 +129,19 @@ impl<D: Distance> Writer<D> {
         let mut cursor = self
             .database
             .remap_key_type::<PrefixCodec>()
-            .prefix_iter_mut(wtxn, &Prefix::all(self.index))?
+            .prefix_iter_mut(wtxn, &Prefix::item(self.index))?
+            .remap_key_type::<DecodeIgnore>();
+
+        while let Some((_id, _node)) = cursor.next().transpose()? {
+            // safety: we don't have any reference to the database
+            unsafe { cursor.del_current() }?;
+        }
+        drop(cursor);
+
+        let mut cursor = self
+            .database
+            .remap_key_type::<PrefixCodec>()
+            .prefix_iter_mut(wtxn, &Prefix::tree(self.index))?
             .remap_key_type::<DecodeIgnore>();
 
         while let Some((_id, _node)) = cursor.next().transpose()? {
@@ -195,13 +213,13 @@ impl<D: Distance> Writer<D> {
         item_indices: &[ItemId],
         is_root: bool,
         rng: &mut R,
-    ) -> Result<NodeId> {
+    ) -> Result<Key> {
         // we simplify the max descendants (_K) thing by considering
         // that we can fit as much descendants as the number of dimensions
         let max_descendants = self.dimensions;
 
         if item_indices.len() == 1 && !is_root {
-            return Ok(NodeId::item(item_indices[0]));
+            return Ok(Key::item(self.index, item_indices[0]));
         }
 
         if item_indices.len() <= max_descendants
@@ -212,7 +230,7 @@ impl<D: Distance> Writer<D> {
             let item =
                 Node::Descendants(Descendants { descendants: ItemIds::from_slice(item_indices) });
             self.database.put(wtxn, &Key::tree(self.index, item_id), &item)?;
-            return Ok(NodeId::tree(item_id));
+            return Ok(Key::tree(self.index, item_id));
         }
 
         let mut children = Vec::new();
@@ -275,7 +293,7 @@ impl<D: Distance> Writer<D> {
             &Node::SplitPlaneNormal(normal),
         )?;
 
-        Ok(NodeId::tree(new_node_id))
+        Ok(Key::tree(self.index, new_node_id))
     }
 
     fn create_item_id(&mut self) -> Result<ItemId> {
@@ -283,6 +301,11 @@ impl<D: Distance> Writer<D> {
         self.next_tree_id = self.next_tree_id.checked_add(1).ok_or(Error::DatabaseFull)?;
 
         Ok(old)
+    }
+
+    /// Returns the index this writer was opened with
+    pub fn index(&self) -> u8 {
+        self.index >> 1
     }
 
     // Fetches the item's ids, not the tree nodes ones.
@@ -294,8 +317,8 @@ impl<D: Distance> Writer<D> {
             .prefix_iter(wtxn, &Prefix::item(self.index))?
             .remap_key_type::<KeyCodec>()
         {
-            let (i, _) = result?;
-            indices.push(i.node.unwrap_item());
+            let (key, _) = result?;
+            indices.push(key.unwrap_item());
         }
 
         Ok(indices)
@@ -304,11 +327,7 @@ impl<D: Distance> Writer<D> {
 
 /// Clears everything but the leafs nodes (items).
 /// Starts from the last node and stops at the first leaf.
-fn clear_tree_nodes<D: Distance>(
-    wtxn: &mut RwTxn,
-    database: Database<D>,
-    index: u16,
-) -> Result<()> {
+fn clear_tree_nodes<D: Distance>(wtxn: &mut RwTxn, database: Database<D>, index: u8) -> Result<()> {
     database.delete(wtxn, &Key::metadata(index))?;
     let mut cursor = database
         .remap_types::<PrefixCodec, DecodeIgnore>()

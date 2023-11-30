@@ -136,7 +136,7 @@ fn write_vectors_until_there_is_a_split() {
     Item 2: Leaf(Leaf { header: NodeHeaderAngular { norm: 0.0 }, vector: [2.00000, 2.00000, 2.00000] })
     Item 3: Leaf(Leaf { header: NodeHeaderAngular { norm: 0.0 }, vector: [3.00000, 3.00000, 3.00000] })
     Tree 0: Descendants(Descendants { descendants: [1, 2, 3] })
-    Tree 1: SplitPlaneNormal(SplitPlaneNormal { normal: [0.57735, 0.57735, 0.57735], left: NodeId { mode: Item, item: 0 }, right: NodeId { mode: Tree, item: 0 } })
+    Tree 1: SplitPlaneNormal(SplitPlaneNormal { normal: [0.57735, 0.57735, 0.57735], left: Key { index: 0, mode: Item, item: 0 }, right: Key { index: 0, mode: Tree, item: 0 } })
     Root: Metadata { dimensions: 3, n_items: 4, roots: [1] }
     "###);
 }
@@ -173,26 +173,29 @@ fn write_multiple_indexes() {
     insta::assert_display_snapshot!(handle, @r###"
     ==================
     Dumping index 0
-    Item 0: Leaf(Leaf { header: NodeHeaderAngular { norm: 0.0 }, vector: [0.00000, 1.00000, 2.00000] })
-    Tree 0: Descendants(Descendants { descendants: [0] })
-    Root: Metadata { dimensions: 3, n_items: 1, roots: [0] }
-    ==================
-    Dumping index 1
-    Item 0: Leaf(Leaf { header: NodeHeaderAngular { norm: 0.0 }, vector: [0.00000, 1.00000, 2.00000] })
     Tree 0: Descendants(Descendants { descendants: [0] })
     Root: Metadata { dimensions: 3, n_items: 1, roots: [0] }
     ==================
     Dumping index 2
-    Item 0: Leaf(Leaf { header: NodeHeaderAngular { norm: 0.0 }, vector: [0.00000, 1.00000, 2.00000] })
-    Tree 0: Descendants(Descendants { descendants: [0] })
-    Root: Metadata { dimensions: 3, n_items: 1, roots: [0] }
-    ==================
-    Dumping index 3
+
     Item 0: Leaf(Leaf { header: NodeHeaderAngular { norm: 0.0 }, vector: [0.00000, 1.00000, 2.00000] })
     Tree 0: Descendants(Descendants { descendants: [0] })
     Root: Metadata { dimensions: 3, n_items: 1, roots: [0] }
     ==================
     Dumping index 4
+
+    Item 0: Leaf(Leaf { header: NodeHeaderAngular { norm: 0.0 }, vector: [0.00000, 1.00000, 2.00000] })
+    Tree 0: Descendants(Descendants { descendants: [0] })
+    Root: Metadata { dimensions: 3, n_items: 1, roots: [0] }
+    ==================
+    Dumping index 6
+
+    Item 0: Leaf(Leaf { header: NodeHeaderAngular { norm: 0.0 }, vector: [0.00000, 1.00000, 2.00000] })
+    Tree 0: Descendants(Descendants { descendants: [0] })
+    Root: Metadata { dimensions: 3, n_items: 1, roots: [0] }
+    ==================
+    Dumping index 8
+
     Item 0: Leaf(Leaf { header: NodeHeaderAngular { norm: 0.0 }, vector: [0.00000, 1.00000, 2.00000] })
     Tree 0: Descendants(Descendants { descendants: [0] })
     Root: Metadata { dimensions: 3, n_items: 1, roots: [0] }
@@ -205,7 +208,7 @@ fn write_random_vectors_to_random_indexes() {
     let mut rng = rng();
     let mut wtxn = handle.env.write_txn().unwrap();
 
-    let mut indexes: Vec<u16> = (0..10).collect();
+    let mut indexes: Vec<u8> = (0..10).collect();
     indexes.shuffle(&mut rng);
 
     for index in indexes {

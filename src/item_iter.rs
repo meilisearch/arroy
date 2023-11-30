@@ -11,9 +11,7 @@ impl<'t, D: Distance> Iterator for ItemIter<'t, D> {
     fn next(&mut self) -> Option<Self::Item> {
         match self.inner.next() {
             Some(Ok((key, node))) => match node {
-                Node::Leaf(Leaf { header: _, vector }) => {
-                    Some(Ok((key.node.item, vector.into_owned())))
-                }
+                Node::Leaf(Leaf { header: _, vector }) => Some(Ok((key.item, vector.into_owned()))),
                 Node::Descendants(_) | Node::SplitPlaneNormal(_) => None,
             },
             Some(Err(e)) => Some(Err(e.into())),

@@ -6,7 +6,7 @@ use bytemuck::{bytes_of, cast_slice, pod_collect_to_vec, pod_read_unaligned};
 use byteorder::{ByteOrder, NativeEndian};
 use heed::{BoxedError, BytesDecode, BytesEncode};
 
-use crate::{Distance, ItemId, NodeId};
+use crate::{Distance, ItemId, Key};
 
 #[derive(Debug, Clone)]
 pub enum Node<'a, D: Distance> {
@@ -141,7 +141,7 @@ impl<'a> ItemIds<'a> {
     }
 
     pub fn len(&self) -> usize {
-        self.bytes.len() / size_of::<NodeId>()
+        self.bytes.len() / size_of::<ItemId>()
     }
 
     pub fn iter(&self) -> impl Iterator<Item = ItemId> + 'a {
@@ -162,8 +162,8 @@ impl fmt::Debug for ItemIds<'_> {
 #[derive(Debug, Clone)]
 pub struct SplitPlaneNormal<'a> {
     pub normal: Cow<'a, UnalignedF32Slice>,
-    pub left: NodeId,
-    pub right: NodeId,
+    pub left: Key,
+    pub right: Key,
 }
 
 pub struct NodeCodec<D>(D);
@@ -206,8 +206,8 @@ impl<'a, D: Distance> BytesDecode<'a> for NodeCodec<D> {
                 Ok(Node::Leaf(Leaf { header, vector }))
             }
             [SPLIT_PLANE_NORMAL_TAG, bytes @ ..] => {
-                let (left, bytes) = NodeId::from_bytes(bytes);
-                let (right, bytes) = NodeId::from_bytes(bytes);
+                let (left, bytes) = Key::from_bytes(bytes);
+                let (right, bytes) = Key::from_bytes(bytes);
                 Ok(Node::SplitPlaneNormal(SplitPlaneNormal {
                     normal: UnalignedF32Slice::from_bytes(bytes).map(Cow::Borrowed)?,
                     left,
