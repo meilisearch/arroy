@@ -6,10 +6,14 @@ use crate::node::UnalignedF32Slice;
 
 #[cfg(target_feature = "neon")]
 pub(crate) unsafe fn euclid_similarity_neon(v1: &UnalignedF32Slice, v2: &UnalignedF32Slice) -> f32 {
+    // We use the unaligned_float32x4_t helper function to read f32x4 NEON SIMD types
+    // from potentially unaligned memory locations safely.
+    // https://github.com/meilisearch/arroy/pull/13
+
     let n = v1.len();
     let m = n - (n % 16);
-    let mut ptr1 = v1.as_ptr() as *const f32; // TODO check doc vld1q_f32
-    let mut ptr2 = v2.as_ptr() as *const f32; // TODO check doc vld1q_f32
+    let mut ptr1 = v1.as_ptr() as *const f32;
+    let mut ptr2 = v2.as_ptr() as *const f32;
     let mut sum1 = vdupq_n_f32(0.);
     let mut sum2 = vdupq_n_f32(0.);
     let mut sum3 = vdupq_n_f32(0.);
@@ -17,16 +21,19 @@ pub(crate) unsafe fn euclid_similarity_neon(v1: &UnalignedF32Slice, v2: &Unalign
 
     let mut i: usize = 0;
     while i < m {
-        let sub1 = vsubq_f32(vld1q_f32(ptr1), vld1q_f32(ptr2));
+        let sub1 = vsubq_f32(unaligned_float32x4_t(ptr1), unaligned_float32x4_t(ptr2));
         sum1 = vfmaq_f32(sum1, sub1, sub1);
 
-        let sub2 = vsubq_f32(vld1q_f32(ptr1.add(4)), vld1q_f32(ptr2.add(4)));
+        let sub2 =
+            vsubq_f32(unaligned_float32x4_t(ptr1.add(4)), unaligned_float32x4_t(ptr2.add(4)));
         sum2 = vfmaq_f32(sum2, sub2, sub2);
 
-        let sub3 = vsubq_f32(vld1q_f32(ptr1.add(8)), vld1q_f32(ptr2.add(8)));
+        let sub3 =
+            vsubq_f32(unaligned_float32x4_t(ptr1.add(8)), unaligned_float32x4_t(ptr2.add(8)));
         sum3 = vfmaq_f32(sum3, sub3, sub3);
 
-        let sub4 = vsubq_f32(vld1q_f32(ptr1.add(12)), vld1q_f32(ptr2.add(12)));
+        let sub4 =
+            vsubq_f32(unaligned_float32x4_t(ptr1.add(12)), unaligned_float32x4_t(ptr2.add(12)));
         sum4 = vfmaq_f32(sum4, sub4, sub4);
 
         ptr1 = ptr1.add(16);
@@ -44,10 +51,14 @@ pub(crate) unsafe fn euclid_similarity_neon(v1: &UnalignedF32Slice, v2: &Unalign
 
 #[cfg(target_feature = "neon")]
 pub(crate) unsafe fn dot_similarity_neon(v1: &UnalignedF32Slice, v2: &UnalignedF32Slice) -> f32 {
+    // We use the unaligned_float32x4_t helper function to read f32x4 NEON SIMD types
+    // from potentially unaligned memory locations safely.
+    // https://github.com/meilisearch/arroy/pull/13
+
     let n = v1.len();
     let m = n - (n % 16);
-    let mut ptr1 = v1.as_ptr() as *const f32; // TODO check doc vld1q_f32
-    let mut ptr2 = v2.as_ptr() as *const f32; // TODO check doc vld1q_f32
+    let mut ptr1 = v1.as_ptr() as *const f32;
+    let mut ptr2 = v2.as_ptr() as *const f32;
     let mut sum1 = vdupq_n_f32(0.);
     let mut sum2 = vdupq_n_f32(0.);
     let mut sum3 = vdupq_n_f32(0.);
@@ -55,10 +66,16 @@ pub(crate) unsafe fn dot_similarity_neon(v1: &UnalignedF32Slice, v2: &UnalignedF
 
     let mut i: usize = 0;
     while i < m {
-        sum1 = vfmaq_f32(sum1, vld1q_f32(ptr1), vld1q_f32(ptr2));
-        sum2 = vfmaq_f32(sum2, vld1q_f32(ptr1.add(4)), vld1q_f32(ptr2.add(4)));
-        sum3 = vfmaq_f32(sum3, vld1q_f32(ptr1.add(8)), vld1q_f32(ptr2.add(8)));
-        sum4 = vfmaq_f32(sum4, vld1q_f32(ptr1.add(12)), vld1q_f32(ptr2.add(12)));
+        sum1 = vfmaq_f32(sum1, unaligned_float32x4_t(ptr1), unaligned_float32x4_t(ptr2));
+        sum2 =
+            vfmaq_f32(sum2, unaligned_float32x4_t(ptr1.add(4)), unaligned_float32x4_t(ptr2.add(4)));
+        sum3 =
+            vfmaq_f32(sum3, unaligned_float32x4_t(ptr1.add(8)), unaligned_float32x4_t(ptr2.add(8)));
+        sum4 = vfmaq_f32(
+            sum4,
+            unaligned_float32x4_t(ptr1.add(12)),
+            unaligned_float32x4_t(ptr2.add(12)),
+        );
         ptr1 = ptr1.add(16);
         ptr2 = ptr2.add(16);
         i += 16;
@@ -70,6 +87,11 @@ pub(crate) unsafe fn dot_similarity_neon(v1: &UnalignedF32Slice, v2: &UnalignedF
         result += a * b;
     }
     result
+}
+
+/// Reads 4xf32 in a stack-located array aligned on a f32 and reads a `float32x4_t` from it.
+unsafe fn unaligned_float32x4_t(ptr: *const f32) -> float32x4_t {
+    vld1q_f32(read_unaligned(ptr as *const [f32; 4]).as_ptr())
 }
 
 #[cfg(test)]
@@ -93,12 +115,12 @@ mod tests {
             let v1 = UnalignedF32Slice::from_slice(&v1[..]);
             let v2 = UnalignedF32Slice::from_slice(&v2[..]);
 
-            let euclid_simd = unsafe { euclid_similarity_neon(&v1, &v2) };
-            let euclid = euclidean_distance_non_optimized(&v1, &v2);
+            let euclid_simd = unsafe { euclid_similarity_neon(v1, v2) };
+            let euclid = euclidean_distance_non_optimized(v1, v2);
             assert_eq!(euclid_simd, euclid);
 
-            let dot_simd = unsafe { dot_similarity_neon(&v1, &v2) };
-            let dot = dot_product_non_optimized(&v1, &v2);
+            let dot_simd = unsafe { dot_similarity_neon(v1, v2) };
+            let dot = dot_product_non_optimized(v1, v2);
             assert_eq!(dot_simd, dot);
 
             // let cosine_simd = unsafe { cosine_preprocess_neon(v1.clone()) };
