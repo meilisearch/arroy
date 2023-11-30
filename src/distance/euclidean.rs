@@ -1,8 +1,10 @@
+use std::borrow::Cow;
+
 use bytemuck::{Pod, Zeroable};
 use rand::Rng;
 
 use super::two_means;
-use crate::node::Leaf;
+use crate::node::{Leaf, UnalignedF32Slice};
 use crate::spaces::simple::{dot_product, euclidean_distance};
 use crate::Distance;
 
@@ -19,7 +21,7 @@ pub struct NodeHeaderEuclidean {
 impl Distance for Euclidean {
     type Header = NodeHeaderEuclidean;
 
-    fn new_header(_vector: &[f32]) -> Self::Header {
+    fn new_header(_vector: &UnalignedF32Slice) -> Self::Header {
         NodeHeaderEuclidean { bias: 0.0 }
     }
 
@@ -31,8 +33,9 @@ impl Distance for Euclidean {
 
     fn create_split<R: Rng>(children: &[Leaf<Self>], rng: &mut R) -> Vec<f32> {
         let [node_p, node_q] = two_means(rng, children, false);
-        let vector = node_p.vector.iter().zip(node_q.vector.iter()).map(|(&p, &q)| p - q).collect();
-        let mut normal = Leaf { header: NodeHeaderEuclidean { bias: 0.0 }, vector };
+        let vector = node_p.vector.iter().zip(node_q.vector.iter()).map(|(p, q)| p - q).collect();
+        let mut normal =
+            Leaf { header: NodeHeaderEuclidean { bias: 0.0 }, vector: Cow::Owned(vector) };
         Self::normalize(&mut normal);
 
         normal.header.bias = normal
@@ -40,7 +43,7 @@ impl Distance for Euclidean {
             .iter()
             .zip(node_p.vector.iter())
             .zip(node_q.vector.iter())
-            .map(|((&n, &p), &q)| -n * (p + q) / 2.0)
+            .map(|((n, p), q)| -n * (p + q) / 2.0)
             .sum();
 
         normal.vector.into_owned()
@@ -50,7 +53,7 @@ impl Distance for Euclidean {
         p.header.bias + dot_product(&p.vector, &q.vector)
     }
 
-    fn margin_no_header(p: &[f32], q: &[f32]) -> f32 {
+    fn margin_no_header(p: &UnalignedF32Slice, q: &UnalignedF32Slice) -> f32 {
         dot_product(p, q)
     }
 }

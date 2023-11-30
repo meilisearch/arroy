@@ -21,7 +21,6 @@ mod tests;
 use std::borrow::Cow;
 use std::mem::size_of;
 
-use bytemuck::{pod_collect_to_vec, try_cast_slice, Pod, Zeroable};
 use byteorder::{BigEndian, ByteOrder};
 pub use distance::{
     Angular, Distance, DotProduct, Euclidean, Manhattan, NodeHeaderAngular, NodeHeaderDotProduct,
@@ -31,7 +30,7 @@ pub use error::Error;
 use heed::BoxedError;
 pub use key::{Key, KeyCodec, Prefix, PrefixCodec};
 use node::ItemIds;
-pub use node::{Leaf, Node, NodeCodec};
+pub use node::{Leaf, Node, NodeCodec, SizeMismatch, UnalignedF32Slice};
 pub use node_id::{NodeId, NodeMode};
 use rand::Rng;
 pub use reader::Reader;
@@ -61,15 +60,6 @@ impl Side {
         } else {
             Side::Right
         }
-    }
-}
-
-fn aligned_or_collect_vec<T: Pod + Zeroable>(bytes: &[u8]) -> Cow<[T]> {
-    use bytemuck::PodCastError::TargetAlignmentGreaterAndInputNotAligned;
-    match try_cast_slice(bytes) {
-        Ok(casted) => Cow::Borrowed(casted),
-        Err(TargetAlignmentGreaterAndInputNotAligned) => Cow::Owned(pod_collect_to_vec(bytes)),
-        Err(e) => panic!("casting slices failed: {e}"),
     }
 }
 

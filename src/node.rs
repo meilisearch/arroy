@@ -1,11 +1,12 @@
-use std::borrow::Cow;
-use std::mem::size_of;
+use std::borrow::{Borrow, Cow};
+use std::fmt;
+use std::mem::{size_of, transmute};
 
-use bytemuck::{bytes_of, cast_slice, pod_read_unaligned};
+use bytemuck::{bytes_of, cast_slice, pod_collect_to_vec, pod_read_unaligned};
 use byteorder::{ByteOrder, NativeEndian};
 use heed::{BoxedError, BytesDecode, BytesEncode};
 
-use crate::{aligned_or_collect_vec, Distance, ItemId, NodeId};
+use crate::{Distance, ItemId, NodeId};
 
 #[derive(Debug, Clone)]
 pub enum Node<'a, D: Distance> {
@@ -31,12 +32,86 @@ impl<'a, D: Distance> Node<'a, D> {
 #[derive(Debug, Clone)]
 pub struct Leaf<'a, D: Distance> {
     pub header: D::Header,
-    pub vector: Cow<'a, [f32]>,
+    pub vector: Cow<'a, UnalignedF32Slice>,
 }
 
 impl<D: Distance> Leaf<'_, D> {
     pub fn into_owned(self) -> Leaf<'static, D> {
         Leaf { header: self.header, vector: Cow::Owned(self.vector.into_owned()) }
+    }
+}
+
+/// A wrapper struct that is used to read unaligned floats directly from memory.
+#[repr(transparent)]
+pub struct UnalignedF32Slice([u8]);
+
+impl UnalignedF32Slice {
+    pub fn from_bytes(bytes: &[u8]) -> Result<&Self, SizeMismatch> {
+        if bytes.len() % size_of::<f32>() == 0 {
+            Ok(unsafe { transmute(bytes) })
+        } else {
+            Err(SizeMismatch)
+        }
+    }
+
+    pub fn from_slice(slice: &[f32]) -> &Self {
+        Self::from_bytes(cast_slice(slice)).unwrap()
+    }
+
+    pub fn as_bytes(&self) -> &[u8] {
+        &self.0
+    }
+
+    pub fn len(&self) -> usize {
+        self.0.len() / size_of::<f32>()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.0.is_empty()
+    }
+
+    #[allow(clippy::needless_lifetimes)]
+    pub fn iter<'a>(&'a self) -> impl Iterator<Item = f32> + 'a {
+        self.0.chunks_exact(size_of::<f32>()).map(NativeEndian::read_f32)
+    }
+
+    pub fn as_ptr(&self) -> *const u8 {
+        self.0.as_ptr()
+    }
+}
+
+#[derive(Debug, thiserror::Error)]
+#[error("invalid slice of float dimension")]
+pub struct SizeMismatch;
+
+impl ToOwned for UnalignedF32Slice {
+    type Owned = Vec<f32>;
+
+    fn to_owned(&self) -> Self::Owned {
+        pod_collect_to_vec(&self.0)
+    }
+}
+
+impl Borrow<UnalignedF32Slice> for Vec<f32> {
+    fn borrow(&self) -> &UnalignedF32Slice {
+        UnalignedF32Slice::from_slice(&self[..])
+    }
+}
+
+impl fmt::Debug for UnalignedF32Slice {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        struct SmallF32(f32);
+        impl fmt::Debug for SmallF32 {
+            fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+                f.write_fmt(format_args!("{:.5?}", self.0))
+            }
+        }
+
+        let mut list = f.debug_list();
+        self.iter().for_each(|float| {
+            list.entry(&SmallF32(float));
+        });
+        list.finish()
     }
 }
 
@@ -47,7 +122,7 @@ pub struct Descendants<'a> {
     pub descendants: ItemIds<'a>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct ItemIds<'a> {
     bytes: &'a [u8],
 }
@@ -74,9 +149,19 @@ impl<'a> ItemIds<'a> {
     }
 }
 
+impl fmt::Debug for ItemIds<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let mut list = f.debug_list();
+        self.iter().for_each(|integer| {
+            list.entry(&integer);
+        });
+        list.finish()
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct SplitPlaneNormal<'a> {
-    pub normal: Cow<'a, [f32]>,
+    pub normal: Cow<'a, UnalignedF32Slice>,
     pub left: NodeId,
     pub right: NodeId,
 }
@@ -92,13 +177,13 @@ impl<'a, D: Distance> BytesEncode<'a> for NodeCodec<D> {
             Node::Leaf(Leaf { header, vector }) => {
                 bytes.push(LEAF_TAG);
                 bytes.extend_from_slice(bytes_of(header));
-                bytes.extend_from_slice(cast_slice(vector));
+                bytes.extend_from_slice(vector.as_bytes());
             }
             Node::SplitPlaneNormal(SplitPlaneNormal { normal, left, right }) => {
                 bytes.push(SPLIT_PLANE_NORMAL_TAG);
                 bytes.extend_from_slice(&left.to_bytes());
                 bytes.extend_from_slice(&right.to_bytes());
-                bytes.extend_from_slice(cast_slice(normal));
+                bytes.extend_from_slice(normal.as_bytes());
             }
             Node::Descendants(Descendants { descendants }) => {
                 bytes.push(DESCENDANTS_TAG);
@@ -117,14 +202,14 @@ impl<'a, D: Distance> BytesDecode<'a> for NodeCodec<D> {
             [LEAF_TAG, bytes @ ..] => {
                 let (header_bytes, remaining) = bytes.split_at(size_of::<D::Header>());
                 let header = pod_read_unaligned(header_bytes);
-                let vector = aligned_or_collect_vec(remaining);
+                let vector = UnalignedF32Slice::from_bytes(remaining).map(Cow::Borrowed)?;
                 Ok(Node::Leaf(Leaf { header, vector }))
             }
             [SPLIT_PLANE_NORMAL_TAG, bytes @ ..] => {
                 let (left, bytes) = NodeId::from_bytes(bytes);
                 let (right, bytes) = NodeId::from_bytes(bytes);
                 Ok(Node::SplitPlaneNormal(SplitPlaneNormal {
-                    normal: aligned_or_collect_vec(bytes),
+                    normal: UnalignedF32Slice::from_bytes(bytes).map(Cow::Borrowed)?,
                     left,
                     right,
                 }))

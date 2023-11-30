@@ -4,6 +4,7 @@ use super::simple_avx::*;
 use super::simple_neon::*;
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 use super::simple_sse::*;
+use crate::node::UnalignedF32Slice;
 
 #[cfg(target_arch = "x86_64")]
 const MIN_DIM_SIZE_AVX: usize = 32;
@@ -15,7 +16,7 @@ const MIN_DIM_SIZE_AVX: usize = 32;
 ))]
 const MIN_DIM_SIZE_SIMD: usize = 16;
 
-pub fn euclidean_distance(u: &[f32], v: &[f32]) -> f32 {
+pub fn euclidean_distance(u: &UnalignedF32Slice, v: &UnalignedF32Slice) -> f32 {
     #[cfg(target_arch = "x86_64")]
     {
         if is_x86_feature_detected!("avx")
@@ -45,11 +46,11 @@ pub fn euclidean_distance(u: &[f32], v: &[f32]) -> f32 {
 
 // Don't use dot-product: avoid catastrophic cancellation in
 // https://github.com/spotify/annoy/issues/314.
-pub fn euclidean_distance_non_optimized(u: &[f32], v: &[f32]) -> f32 {
-    u.iter().zip(v.iter()).map(|(&u, &v)| (u - v) * (u - v)).sum()
+pub fn euclidean_distance_non_optimized(u: &UnalignedF32Slice, v: &UnalignedF32Slice) -> f32 {
+    u.iter().zip(v.iter()).map(|(u, v)| (u - v) * (u - v)).sum()
 }
 
-pub fn dot_product(u: &[f32], v: &[f32]) -> f32 {
+pub fn dot_product(u: &UnalignedF32Slice, v: &UnalignedF32Slice) -> f32 {
     #[cfg(target_arch = "x86_64")]
     {
         if is_x86_feature_detected!("avx")
@@ -77,6 +78,6 @@ pub fn dot_product(u: &[f32], v: &[f32]) -> f32 {
     dot_product_non_optimized(u, v)
 }
 
-pub fn dot_product_non_optimized(u: &[f32], v: &[f32]) -> f32 {
-    u.iter().zip(v).map(|(a, b)| a * b).sum()
+pub fn dot_product_non_optimized(u: &UnalignedF32Slice, v: &UnalignedF32Slice) -> f32 {
+    u.iter().zip(v.iter()).map(|(a, b)| a * b).sum()
 }

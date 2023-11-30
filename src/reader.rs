@@ -9,7 +9,7 @@ use heed::RoTxn;
 use ordered_float::OrderedFloat;
 
 use crate::item_iter::ItemIter;
-use crate::node::{Descendants, ItemIds, Leaf, SplitPlaneNormal};
+use crate::node::{Descendants, ItemIds, Leaf, SplitPlaneNormal, UnalignedF32Slice};
 use crate::{
     Database, Distance, Error, ItemId, Key, KeyCodec, MetadataCodec, Node, NodeId, Prefix,
     PrefixCodec, Result, Side,
@@ -123,6 +123,7 @@ impl<'t, D: Distance> Reader<'t, D> {
             });
         }
 
+        let vector = UnalignedF32Slice::from_slice(vector);
         let leaf = Leaf { header: D::new_header(vector), vector: Cow::Borrowed(vector) };
         self.nns_by_leaf(rtxn, &leaf, count, search_k)
     }

@@ -9,7 +9,7 @@ pub use manhattan::{Manhattan, NodeHeaderManhattan};
 use rand::seq::SliceRandom;
 use rand::Rng;
 
-use crate::node::Leaf;
+use crate::node::{Leaf, UnalignedF32Slice};
 use crate::spaces::simple::dot_product;
 use crate::{KeyCodec, NodeCodec, Side};
 
@@ -21,7 +21,7 @@ mod manhattan;
 pub trait Distance: Sized + Clone + fmt::Debug + 'static {
     type Header: Pod + Zeroable + fmt::Debug;
 
-    fn new_header(vector: &[f32]) -> Self::Header;
+    fn new_header(vector: &UnalignedF32Slice) -> Self::Header;
 
     /// Returns a non-normalized distance.
     fn built_distance(p: &Leaf<Self>, q: &Leaf<Self>) -> f32;
@@ -46,7 +46,7 @@ pub trait Distance: Sized + Clone + fmt::Debug + 'static {
         Self::norm_no_header(&leaf.vector)
     }
 
-    fn norm_no_header(v: &[f32]) -> f32 {
+    fn norm_no_header(v: &UnalignedF32Slice) -> f32 {
         dot_product(v, v).sqrt()
     }
 
@@ -64,7 +64,7 @@ pub trait Distance: Sized + Clone + fmt::Debug + 'static {
             .to_mut()
             .iter_mut()
             .zip(new_node.vector.iter())
-            .for_each(|(x, n)| *x = (*x * c + *n / norm) / (c + 1.0));
+            .for_each(|(x, n)| *x = (*x * c + n / norm) / (c + 1.0));
     }
 
     fn create_split<R: Rng>(children: &[Leaf<Self>], rng: &mut R) -> Vec<f32>;
@@ -73,9 +73,9 @@ pub trait Distance: Sized + Clone + fmt::Debug + 'static {
         Self::margin_no_header(&p.vector, &q.vector)
     }
 
-    fn margin_no_header(p: &[f32], q: &[f32]) -> f32;
+    fn margin_no_header(p: &UnalignedF32Slice, q: &UnalignedF32Slice) -> f32;
 
-    fn side<R: Rng>(normal_plane: &[f32], node: &Leaf<Self>, rng: &mut R) -> Side {
+    fn side<R: Rng>(normal_plane: &UnalignedF32Slice, node: &Leaf<Self>, rng: &mut R) -> Side {
         let dot = Self::margin_no_header(&node.vector, normal_plane);
         if dot > 0.0 {
             Side::Right
