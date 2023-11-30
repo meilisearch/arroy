@@ -9,16 +9,21 @@ pub use manhattan::{Manhattan, NodeHeaderManhattan};
 use rand::seq::SliceRandom;
 use rand::Rng;
 
+use crate::internals::{KeyCodec, Side};
 use crate::node::{Leaf, UnalignedF32Slice};
 use crate::spaces::simple::dot_product;
-use crate::{KeyCodec, NodeCodec, Side};
+use crate::NodeCodec;
 
 mod angular;
 mod dot_product;
 mod euclidean;
 mod manhattan;
 
+/// A trait used by arroy to compute the distances,
+/// compute the split planes, and normalize user vectors.
+#[allow(missing_docs)]
 pub trait Distance: Sized + Clone + fmt::Debug + 'static {
+    /// A header structure with informations related to the
     type Header: Pod + Zeroable + fmt::Debug;
 
     fn new_header(vector: &UnalignedF32Slice) -> Self::Header;

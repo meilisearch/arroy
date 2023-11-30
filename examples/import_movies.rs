@@ -3,7 +3,9 @@
 use std::io::{BufRead, BufReader};
 use std::time::{Duration, Instant};
 
-use arroy::{DotProduct, KeyCodec, Reader, Writer};
+use arroy::distances::DotProduct;
+use arroy::internals::KeyCodec;
+use arroy::{Reader, Writer};
 use heed::{DatabaseFlags, EnvOpenOptions, Unspecified};
 use rand::rngs::StdRng;
 use rand::SeedableRng;

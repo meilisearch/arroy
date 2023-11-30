@@ -6,7 +6,9 @@ use rand::rngs::StdRng;
 use rand::SeedableRng;
 use tempfile::TempDir;
 
-use crate::{Angular, KeyCodec, MetadataCodec, NodeCodec, NodeMode};
+use crate::distances::Angular;
+use crate::internals::KeyCodec;
+use crate::{MetadataCodec, NodeCodec, NodeMode};
 
 mod reader;
 mod writer;

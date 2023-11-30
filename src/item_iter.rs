@@ -1,4 +1,7 @@
-use crate::{Distance, ItemId, KeyCodec, Leaf, Node, NodeCodec, Result};
+use crate::distance::Distance;
+use crate::internals::KeyCodec;
+use crate::node::Leaf;
+use crate::{ItemId, Node, NodeCodec, Result};
 
 pub struct ItemIter<'t, D: Distance> {
     pub(crate) inner: heed::RoPrefix<'t, KeyCodec, NodeCodec<D>>,

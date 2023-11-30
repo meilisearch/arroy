@@ -8,13 +8,15 @@ use std::num::NonZeroUsize;
 use heed::RoTxn;
 use ordered_float::OrderedFloat;
 
+use crate::distance::Distance;
+use crate::internals::{KeyCodec, Side};
 use crate::item_iter::ItemIter;
 use crate::node::{Descendants, ItemIds, Leaf, SplitPlaneNormal, UnalignedF32Slice};
 use crate::{
-    Database, Distance, Error, ItemId, Key, KeyCodec, MetadataCodec, Node, NodeId, Prefix,
-    PrefixCodec, Result, Side,
+    Database, Error, ItemId, Key, MetadataCodec, Node, NodeId, Prefix, PrefixCodec, Result,
 };
 
+/// A reader over the arroy trees and user items.
 #[derive(Debug)]
 pub struct Reader<'t, D: Distance> {
     database: Database<D>,
@@ -26,6 +28,7 @@ pub struct Reader<'t, D: Distance> {
 }
 
 impl<'t, D: Distance> Reader<'t, D> {
+    /// Returns a reader over the database with the specified [`Distance`] type.
     pub fn open<U>(
         rtxn: &'t RoTxn,
         index: u16,

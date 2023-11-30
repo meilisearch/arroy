@@ -4,13 +4,18 @@ use bytemuck::{Pod, Zeroable};
 use rand::Rng;
 
 use super::two_means;
+use crate::distance::Distance;
 use crate::node::{Leaf, UnalignedF32Slice};
 use crate::spaces::simple::{dot_product, euclidean_distance};
-use crate::Distance;
 
+/// The Euclidean distance between two points in Euclidean space
+/// is the length of the line segment between them.
+///
+/// `d(p, q) = sqrt((p - q)²)`
 #[derive(Debug, Clone)]
 pub enum Euclidean {}
 
+/// The header of Euclidean leaf nodes.
 #[repr(C)]
 #[derive(Pod, Zeroable, Debug, Clone, Copy)]
 pub struct NodeHeaderEuclidean {

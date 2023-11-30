@@ -1,19 +1,23 @@
 use std::any::TypeId;
 use std::borrow::Cow;
-use std::marker;
 
 use heed::types::DecodeIgnore;
 use heed::{MdbError, PutFlags, RoTxn, RwTxn};
 use rand::Rng;
 
+use crate::distance::Distance;
+use crate::internals::{KeyCodec, Side};
 use crate::item_iter::ItemIter;
 use crate::node::{Descendants, ItemIds, Leaf, SplitPlaneNormal, UnalignedF32Slice};
 use crate::reader::item_leaf;
 use crate::{
-    Database, Distance, Error, ItemId, Key, KeyCodec, Metadata, MetadataCodec, Node, NodeCodec,
-    NodeId, Prefix, PrefixCodec, Result, Side,
+    Database, Error, ItemId, Key, Metadata, MetadataCodec, Node, NodeCodec, NodeId, Prefix,
+    PrefixCodec, Result,
 };
 
+/// A writer to store new items, remove existing ones,
+/// and build the search tree to query the nearest
+/// neighbors to items or vectors.
 #[derive(Debug)]
 pub struct Writer<D: Distance> {
     database: Database<D>,
@@ -25,10 +29,11 @@ pub struct Writer<D: Distance> {
     next_tree_id: u32,
     // We know the root nodes points to tree-nodes.
     roots: Vec<ItemId>,
-    _marker: marker::PhantomData<D>,
 }
 
 impl<D: Distance> Writer<D> {
+    /// Returns a writer after having deleted the tree nodes to be able to modify items
+    /// safely.
     pub fn prepare<U>(
         wtxn: &mut RwTxn,
         database: heed::Database<KeyCodec, U>,
@@ -37,17 +42,11 @@ impl<D: Distance> Writer<D> {
     ) -> Result<Writer<D>> {
         let database: Database<D> = database.remap_data_type();
         clear_tree_nodes(wtxn, database, index)?;
-        Ok(Writer {
-            database,
-            index,
-            dimensions,
-            n_items: 0,
-            next_tree_id: 0,
-            roots: Vec::new(),
-            _marker: marker::PhantomData,
-        })
+        Ok(Writer { database, index, dimensions, n_items: 0, next_tree_id: 0, roots: Vec::new() })
     }
 
+    /// Returns a writer after having deleted the tree nodes and rewrote all the items
+    /// for the new [`Distance`] format to be able to modify items safely.
     pub fn prepare_changing_distance<ND: Distance>(self, wtxn: &mut RwTxn) -> Result<Writer<ND>> {
         if TypeId::of::<ND>() != TypeId::of::<D>() {
             clear_tree_nodes(wtxn, self.database, self.index)?;
@@ -74,7 +73,7 @@ impl<D: Distance> Writer<D> {
             }
         }
 
-        let Writer { database, index, dimensions, n_items, next_tree_id, roots, _marker: _ } = self;
+        let Writer { database, index, dimensions, n_items, next_tree_id, roots } = self;
         Ok(Writer {
             database: database.remap_data_type(),
             index,
@@ -82,10 +81,10 @@ impl<D: Distance> Writer<D> {
             n_items,
             next_tree_id,
             roots,
-            _marker: marker::PhantomData,
         })
     }
 
+    /// Returns an `Option`al vector previous stored in this database.
     pub fn item_vector(&self, rtxn: &RoTxn, item: ItemId) -> Result<Option<Vec<f32>>> {
         Ok(item_leaf(self.database, self.index, rtxn, item)?.map(|leaf| leaf.vector.into_owned()))
     }
@@ -115,10 +114,12 @@ impl<D: Distance> Writer<D> {
         Ok(self.database.put(wtxn, &Key::item(self.index, item), &Node::Leaf(leaf))?)
     }
 
+    /// Deletes an item stored in this database and returns `true` if it existed.
     pub fn del_item(&self, wtxn: &mut RwTxn, item: ItemId) -> Result<bool> {
         Ok(self.database.delete(wtxn, &Key::item(self.index, item))?)
     }
 
+    /// Removes everything in the database, user items and internal tree nodes.
     pub fn clear(&self, wtxn: &mut RwTxn) -> Result<()> {
         let mut cursor = self
             .database
@@ -134,6 +135,11 @@ impl<D: Distance> Writer<D> {
         Ok(())
     }
 
+    /// Generates a forest of `n_trees` trees.
+    ///
+    /// More trees give higher precision when querying at
+    /// the cost of more disk usage. After calling build,
+    /// no more items can be added.
     pub fn build<R: Rng>(
         mut self,
         wtxn: &mut RwTxn,

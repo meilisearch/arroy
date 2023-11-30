@@ -5,13 +5,19 @@ use heed::{RwPrefix, RwTxn};
 use rand::Rng;
 
 use super::two_means;
+use crate::distance::Distance;
+use crate::internals::KeyCodec;
 use crate::node::{Leaf, UnalignedF32Slice};
 use crate::spaces::simple::dot_product;
-use crate::{Distance, KeyCodec, Node, NodeCodec};
+use crate::{Node, NodeCodec};
 
+/// In mathematics, the dot product or scalar product is an algebraic
+/// operation that takes two equal-length sequences of numbers
+/// (usually coordinate vectors), and returns a single number.
 #[derive(Debug, Clone)]
 pub enum DotProduct {}
 
+/// The header of DotProduct leaf nodes.
 #[repr(C)]
 #[derive(Pod, Zeroable, Debug, Clone, Copy)]
 pub struct NodeHeaderDotProduct {
