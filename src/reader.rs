@@ -40,6 +40,13 @@ impl<'t, D: Distance> Reader<'t, D> {
             None => return Err(Error::MissingMetadata),
         };
 
+        if D::name() != metadata.distance {
+            return Err(Error::UnmatchingDistance {
+                expected: metadata.distance.to_owned(),
+                received: D::name(),
+            });
+        }
+
         Ok(Reader {
             database: database.remap_data_type(),
             index,

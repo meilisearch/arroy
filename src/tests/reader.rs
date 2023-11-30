@@ -51,6 +51,7 @@ fn open_db_with_wrong_dimension() {
 }
 
 #[test]
+#[should_panic]
 fn open_db_with_wrong_distance() {
     let handle = create_database();
     let mut wtxn = handle.env.write_txn().unwrap();
@@ -62,9 +63,7 @@ fn open_db_with_wrong_distance() {
 
     let rtxn = handle.env.read_txn().unwrap();
     let reader = Reader::<Manhattan>::open(&rtxn, 0, handle.database).unwrap();
-    // TODO: This should fail
-    let ret = reader.nns_by_vector(&rtxn, &[1.0, 2.0], 5, None).unwrap();
-    insta::assert_display_snapshot!(NnsRes(Some(ret)), @"");
+    reader.nns_by_vector(&rtxn, &[1.0, 2.0], 5, None).unwrap();
 }
 
 #[test]
