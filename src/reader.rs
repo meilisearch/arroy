@@ -11,14 +11,14 @@ use ordered_float::OrderedFloat;
 use crate::item_iter::ItemIter;
 use crate::node::{Descendants, ItemIds, Leaf, SplitPlaneNormal, UnalignedF32Slice};
 use crate::{
-    Database, Distance, Error, ItemId, Key, KeyCodec, MetadataCodec, Node, NodeId, Prefix,
-    PrefixCodec, Result, Side,
+    Database, Distance, Error, ItemId, Key, KeyCodec, MetadataCodec, Node, Prefix, PrefixCodec,
+    Result, Side,
 };
 
 #[derive(Debug)]
 pub struct Reader<'t, D: Distance> {
     database: Database<D>,
-    index: u16,
+    index: u8,
     roots: ItemIds<'t>,
     dimensions: usize,
     n_items: usize,
@@ -28,9 +28,15 @@ pub struct Reader<'t, D: Distance> {
 impl<'t, D: Distance> Reader<'t, D> {
     pub fn open<U>(
         rtxn: &'t RoTxn,
-        index: u16,
+        index: u8,
         database: heed::Database<KeyCodec, U>,
     ) -> Result<Reader<'t, D>> {
+        if index > 0b0111_1111 {
+            return Err(Error::InvalidIndex { received: index });
+        }
+        // we keep the lowest bit for our mode
+        let index = index << 1;
+
         let metadata_key = Key::metadata(index);
         let metadata = match database.remap_data_type::<MetadataCodec>().get(rtxn, &metadata_key)? {
             Some(metadata) => metadata,
@@ -63,8 +69,8 @@ impl<'t, D: Distance> Reader<'t, D> {
     }
 
     /// Returns the index of this reader in the database.
-    pub fn index(&self) -> u16 {
-        self.index
+    pub fn index(&self) -> u8 {
+        self.index >> 1
     }
 
     /// Returns the number of nodes in the index. Useful to run an exhaustive search.
@@ -141,17 +147,20 @@ impl<'t, D: Distance> Reader<'t, D> {
         let search_k = search_k.map_or(count * self.roots.len(), NonZeroUsize::get);
 
         // Insert all the root nodes and associate them to the highest distance.
-        queue.extend(repeat(OrderedFloat(f32::INFINITY)).zip(self.roots.iter().map(NodeId::tree)));
+        queue.extend(
+            repeat(OrderedFloat(f32::INFINITY))
+                .zip(self.roots.iter().map(|item| Key::tree(self.index, item))),
+        );
 
         let mut nns = Vec::new();
         while nns.len() < search_k {
-            let (OrderedFloat(dist), item) = match queue.pop() {
+            let (OrderedFloat(dist), key) = match queue.pop() {
                 Some(out) => out,
                 None => break,
             };
 
-            match self.database.get(rtxn, &Key::new(self.index, item))?.unwrap() {
-                Node::Leaf(_) => nns.push(item.unwrap_item()),
+            match self.database.get(rtxn, &key)?.unwrap() {
+                Node::Leaf(_) => nns.push(key.unwrap_item()),
                 Node::Descendants(Descendants { descendants }) => nns.extend(descendants.iter()),
                 Node::SplitPlaneNormal(SplitPlaneNormal { normal, left, right }) => {
                     let margin = D::margin_no_header(&normal, &query_leaf.vector);
@@ -192,7 +201,7 @@ impl<'t, D: Distance> Reader<'t, D> {
 
 pub fn item_leaf<'a, D: Distance>(
     database: Database<D>,
-    index: u16,
+    index: u8,
     rtxn: &'a RoTxn,
     item: ItemId,
 ) -> Result<Option<Leaf<'a, D>>> {
