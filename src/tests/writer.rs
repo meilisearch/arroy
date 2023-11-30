@@ -18,7 +18,7 @@ fn use_u32_max_minus_one_for_a_vec() {
     insta::assert_display_snapshot!(handle, @r###"
     ==================
     Dumping index 0
-    Item 4294967294: Leaf(Leaf { header: NodeHeaderAngular { norm: 0.0 }, vector: [0.00000, 1.00000, 2.00000] })
+    Item 4294967294: Leaf(Leaf { header: NodeHeaderAngular { norm: 0.0 }, vector: [0.0000, 1.0000, 2.0000] })
     Tree 0: Descendants(Descendants { descendants: [4294967294] })
     Root: Metadata { dimensions: 3, n_items: 1, roots: [0] }
     "###);
@@ -37,7 +37,7 @@ fn use_u32_max_for_a_vec() {
     insta::assert_display_snapshot!(handle, @r###"
     ==================
     Dumping index 0
-    Item 4294967295: Leaf(Leaf { header: NodeHeaderAngular { norm: 0.0 }, vector: [0.00000, 1.00000, 2.00000] })
+    Item 4294967295: Leaf(Leaf { header: NodeHeaderAngular { norm: 0.0 }, vector: [0.0000, 1.0000, 2.0000] })
     Tree 0: Descendants(Descendants { descendants: [4294967295] })
     Root: Metadata { dimensions: 3, n_items: 1, roots: [0] }
     "###);
@@ -56,7 +56,7 @@ fn write_one_vector_in_one_tree() {
     insta::assert_display_snapshot!(handle, @r###"
     ==================
     Dumping index 0
-    Item 0: Leaf(Leaf { header: NodeHeaderAngular { norm: 0.0 }, vector: [0.00000, 1.00000, 2.00000] })
+    Item 0: Leaf(Leaf { header: NodeHeaderAngular { norm: 0.0 }, vector: [0.0000, 1.0000, 2.0000] })
     Tree 0: Descendants(Descendants { descendants: [0] })
     Root: Metadata { dimensions: 3, n_items: 1, roots: [0] }
     "###);
@@ -75,7 +75,7 @@ fn write_one_vector_in_multiple_trees() {
     insta::assert_display_snapshot!(handle, @r###"
     ==================
     Dumping index 0
-    Item 0: Leaf(Leaf { header: NodeHeaderAngular { norm: 0.0 }, vector: [0.00000, 1.00000, 2.00000] })
+    Item 0: Leaf(Leaf { header: NodeHeaderAngular { norm: 0.0 }, vector: [0.0000, 1.0000, 2.0000] })
     Tree 0: Descendants(Descendants { descendants: [0] })
     Tree 1: Descendants(Descendants { descendants: [0] })
     Tree 2: Descendants(Descendants { descendants: [0] })
@@ -107,9 +107,9 @@ fn write_vectors_until_there_is_a_descendants() {
     insta::assert_display_snapshot!(handle, @r###"
     ==================
     Dumping index 0
-    Item 0: Leaf(Leaf { header: NodeHeaderAngular { norm: 0.0 }, vector: [0.00000, 0.00000, 0.00000] })
-    Item 1: Leaf(Leaf { header: NodeHeaderAngular { norm: 0.0 }, vector: [1.00000, 1.00000, 1.00000] })
-    Item 2: Leaf(Leaf { header: NodeHeaderAngular { norm: 0.0 }, vector: [2.00000, 2.00000, 2.00000] })
+    Item 0: Leaf(Leaf { header: NodeHeaderAngular { norm: 0.0 }, vector: [0.0000, 0.0000, 0.0000] })
+    Item 1: Leaf(Leaf { header: NodeHeaderAngular { norm: 0.0 }, vector: [1.0000, 1.0000, 1.0000] })
+    Item 2: Leaf(Leaf { header: NodeHeaderAngular { norm: 0.0 }, vector: [2.0000, 2.0000, 2.0000] })
     Tree 0: Descendants(Descendants { descendants: [0, 1, 2] })
     Root: Metadata { dimensions: 3, n_items: 3, roots: [0] }
     "###);
@@ -132,12 +132,12 @@ fn write_vectors_until_there_is_a_split() {
     insta::assert_display_snapshot!(handle, @r###"
     ==================
     Dumping index 0
-    Item 0: Leaf(Leaf { header: NodeHeaderAngular { norm: 0.0 }, vector: [0.00000, 0.00000, 0.00000] })
-    Item 1: Leaf(Leaf { header: NodeHeaderAngular { norm: 0.0 }, vector: [1.00000, 1.00000, 1.00000] })
-    Item 2: Leaf(Leaf { header: NodeHeaderAngular { norm: 0.0 }, vector: [2.00000, 2.00000, 2.00000] })
-    Item 3: Leaf(Leaf { header: NodeHeaderAngular { norm: 0.0 }, vector: [3.00000, 3.00000, 3.00000] })
+    Item 0: Leaf(Leaf { header: NodeHeaderAngular { norm: 0.0 }, vector: [0.0000, 0.0000, 0.0000] })
+    Item 1: Leaf(Leaf { header: NodeHeaderAngular { norm: 0.0 }, vector: [1.0000, 1.0000, 1.0000] })
+    Item 2: Leaf(Leaf { header: NodeHeaderAngular { norm: 0.0 }, vector: [2.0000, 2.0000, 2.0000] })
+    Item 3: Leaf(Leaf { header: NodeHeaderAngular { norm: 0.0 }, vector: [3.0000, 3.0000, 3.0000] })
     Tree 0: Descendants(Descendants { descendants: [1, 2, 3] })
-    Tree 1: SplitPlaneNormal(SplitPlaneNormal { normal: [0.57735, 0.57735, 0.57735], left: NodeId { mode: Item, item: 0 }, right: NodeId { mode: Tree, item: 0 } })
+    Tree 1: SplitPlaneNormal(SplitPlaneNormal { normal: [0.5774, 0.5774, 0.5774], left: NodeId { mode: Item, item: 0 }, right: NodeId { mode: Tree, item: 0 } })
     Root: Metadata { dimensions: 3, n_items: 4, roots: [1] }
     "###);
 }
@@ -174,27 +174,27 @@ fn write_multiple_indexes() {
     insta::assert_display_snapshot!(handle, @r###"
     ==================
     Dumping index 0
-    Item 0: Leaf(Leaf { header: NodeHeaderAngular { norm: 0.0 }, vector: [0.00000, 1.00000, 2.00000] })
+    Item 0: Leaf(Leaf { header: NodeHeaderAngular { norm: 0.0 }, vector: [0.0000, 1.0000, 2.0000] })
     Tree 0: Descendants(Descendants { descendants: [0] })
     Root: Metadata { dimensions: 3, n_items: 1, roots: [0] }
     ==================
     Dumping index 1
-    Item 0: Leaf(Leaf { header: NodeHeaderAngular { norm: 0.0 }, vector: [0.00000, 1.00000, 2.00000] })
+    Item 0: Leaf(Leaf { header: NodeHeaderAngular { norm: 0.0 }, vector: [0.0000, 1.0000, 2.0000] })
     Tree 0: Descendants(Descendants { descendants: [0] })
     Root: Metadata { dimensions: 3, n_items: 1, roots: [0] }
     ==================
     Dumping index 2
-    Item 0: Leaf(Leaf { header: NodeHeaderAngular { norm: 0.0 }, vector: [0.00000, 1.00000, 2.00000] })
+    Item 0: Leaf(Leaf { header: NodeHeaderAngular { norm: 0.0 }, vector: [0.0000, 1.0000, 2.0000] })
     Tree 0: Descendants(Descendants { descendants: [0] })
     Root: Metadata { dimensions: 3, n_items: 1, roots: [0] }
     ==================
     Dumping index 3
-    Item 0: Leaf(Leaf { header: NodeHeaderAngular { norm: 0.0 }, vector: [0.00000, 1.00000, 2.00000] })
+    Item 0: Leaf(Leaf { header: NodeHeaderAngular { norm: 0.0 }, vector: [0.0000, 1.0000, 2.0000] })
     Tree 0: Descendants(Descendants { descendants: [0] })
     Root: Metadata { dimensions: 3, n_items: 1, roots: [0] }
     ==================
     Dumping index 4
-    Item 0: Leaf(Leaf { header: NodeHeaderAngular { norm: 0.0 }, vector: [0.00000, 1.00000, 2.00000] })
+    Item 0: Leaf(Leaf { header: NodeHeaderAngular { norm: 0.0 }, vector: [0.0000, 1.0000, 2.0000] })
     Tree 0: Descendants(Descendants { descendants: [0] })
     Root: Metadata { dimensions: 3, n_items: 1, roots: [0] }
     "###);

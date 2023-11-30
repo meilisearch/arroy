@@ -119,7 +119,7 @@ impl fmt::Debug for UnalignedF32Slice {
         struct SmallF32(f32);
         impl fmt::Debug for SmallF32 {
             fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-                f.write_fmt(format_args!("{:.5?}", self.0))
+                f.write_fmt(format_args!("{:.4?}", self.0))
             }
         }
 
