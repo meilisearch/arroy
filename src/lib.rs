@@ -1,3 +1,4 @@
+#![warn(missing_docs)]
 #![doc(
     html_favicon_url = "https://raw.githubusercontent.com/meilisearch/arroy/main/assets/arroy-electric-clusters.ico?raw=true"
 )]
@@ -22,46 +23,59 @@ use std::borrow::Cow;
 use std::mem::size_of;
 
 use byteorder::{BigEndian, ByteOrder};
-pub use distance::{
-    Angular, Distance, DotProduct, Euclidean, Manhattan, NodeHeaderAngular, NodeHeaderDotProduct,
-    NodeHeaderEuclidean, NodeHeaderManhattan,
-};
+pub use distance::Distance;
 pub use error::Error;
 use heed::BoxedError;
-pub use key::{Key, KeyCodec, Prefix, PrefixCodec};
-use node::ItemIds;
-pub use node::{Leaf, Node, NodeCodec, SizeMismatch, UnalignedF32Slice};
-pub use node_id::{NodeId, NodeMode};
-use rand::Rng;
+use key::{Key, Prefix, PrefixCodec};
+use node::{ItemIds, Node, NodeCodec};
+use node_id::{NodeId, NodeMode};
 pub use reader::Reader;
 pub use writer::Writer;
 
-pub type Result<T, E = Error> = std::result::Result<T, E>;
+/// The set of types used by the [`Distance`] trait.
+pub mod internals {
+    use rand::Rng;
 
-/// The database required by arroy for reading or writing operations.
-pub type Database<D> = heed::Database<KeyCodec, NodeCodec<D>>;
+    pub use crate::distance::{
+        NodeHeaderAngular, NodeHeaderDotProduct, NodeHeaderEuclidean, NodeHeaderManhattan,
+    };
+    pub use crate::key::KeyCodec;
+    pub use crate::node::{Leaf, UnalignedF32Slice};
 
-/// An big endian-encoded u32.
-pub type BEU32 = heed::types::U32<heed::byteorder::BE>;
+    /// A type that is used to decide on
+    /// which side of a plane we move an item.
+    #[derive(Debug, Copy, Clone)]
+    pub enum Side {
+        /// The left side.
+        Left,
+        /// The right side.
+        Right,
+    }
 
-/// An external item id.
-pub type ItemId = u32;
-
-#[derive(Debug, Copy, Clone)]
-pub enum Side {
-    Left,
-    Right,
-}
-
-impl Side {
-    pub fn random<R: Rng>(rng: &mut R) -> Side {
-        if rng.gen() {
-            Side::Left
-        } else {
-            Side::Right
+    impl Side {
+        pub(crate) fn random<R: Rng>(rng: &mut R) -> Side {
+            if rng.gen() {
+                Side::Left
+            } else {
+                Side::Right
+            }
         }
     }
 }
+
+/// The set of distances implementing the [`Distance`] and supported by arroy.
+pub mod distances {
+    pub use crate::distance::{Angular, DotProduct, Euclidean, Manhattan};
+}
+
+/// A custom Result type that is returning an arroy error by default.
+pub type Result<T, E = Error> = std::result::Result<T, E>;
+
+/// The database required by arroy for reading or writing operations.
+pub type Database<D> = heed::Database<internals::KeyCodec, NodeCodec<D>>;
+
+/// An identifier for the items stored in the database.
+pub type ItemId = u32;
 
 #[derive(Debug)]
 struct Metadata<'a> {

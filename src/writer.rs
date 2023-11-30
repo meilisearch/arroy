@@ -1,17 +1,18 @@
 use std::any::TypeId;
 use std::borrow::Cow;
-use std::marker;
 
 use heed::types::DecodeIgnore;
 use heed::{MdbError, PutFlags, RoTxn, RwTxn};
 use rand::Rng;
 
+use crate::distance::Distance;
+use crate::internals::{KeyCodec, Side};
 use crate::item_iter::ItemIter;
 use crate::node::{Descendants, ItemIds, Leaf, SplitPlaneNormal, UnalignedF32Slice};
 use crate::reader::item_leaf;
 use crate::{
-    Database, Distance, Error, ItemId, Key, KeyCodec, Metadata, MetadataCodec, Node, NodeCodec,
-    NodeId, Prefix, PrefixCodec, Result, Side,
+    Database, Error, ItemId, Key, Metadata, MetadataCodec, Node, NodeCodec, NodeId, Prefix,
+    PrefixCodec, Result,
 };
 
 #[derive(Debug)]
@@ -25,7 +26,6 @@ pub struct Writer<D: Distance> {
     next_tree_id: u32,
     // We know the root nodes points to tree-nodes.
     roots: Vec<ItemId>,
-    _marker: marker::PhantomData<D>,
 }
 
 impl<D: Distance> Writer<D> {
@@ -37,15 +37,7 @@ impl<D: Distance> Writer<D> {
     ) -> Result<Writer<D>> {
         let database: Database<D> = database.remap_data_type();
         clear_tree_nodes(wtxn, database, index)?;
-        Ok(Writer {
-            database,
-            index,
-            dimensions,
-            n_items: 0,
-            next_tree_id: 0,
-            roots: Vec::new(),
-            _marker: marker::PhantomData,
-        })
+        Ok(Writer { database, index, dimensions, n_items: 0, next_tree_id: 0, roots: Vec::new() })
     }
 
     pub fn prepare_changing_distance<ND: Distance>(self, wtxn: &mut RwTxn) -> Result<Writer<ND>> {
@@ -74,7 +66,7 @@ impl<D: Distance> Writer<D> {
             }
         }
 
-        let Writer { database, index, dimensions, n_items, next_tree_id, roots, _marker: _ } = self;
+        let Writer { database, index, dimensions, n_items, next_tree_id, roots } = self;
         Ok(Writer {
             database: database.remap_data_type(),
             index,
@@ -82,7 +74,6 @@ impl<D: Distance> Writer<D> {
             n_items,
             next_tree_id,
             roots,
-            _marker: marker::PhantomData,
         })
     }
 

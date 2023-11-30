@@ -6,7 +6,8 @@ use bytemuck::{bytes_of, cast_slice, pod_collect_to_vec, pod_read_unaligned};
 use byteorder::{ByteOrder, NativeEndian};
 use heed::{BoxedError, BytesDecode, BytesEncode};
 
-use crate::{Distance, ItemId, NodeId};
+use crate::distance::Distance;
+use crate::{ItemId, NodeId};
 
 #[derive(Debug, Clone)]
 pub enum Node<'a, D: Distance> {
@@ -29,13 +30,19 @@ impl<'a, D: Distance> Node<'a, D> {
     }
 }
 
+/// A leaf node which corresponds to the vector inputed
+/// by the user and the distance header.
 #[derive(Debug, Clone)]
 pub struct Leaf<'a, D: Distance> {
+    /// The header of this leaf.
     pub header: D::Header,
+    /// The vector of this leaf.
     pub vector: Cow<'a, UnalignedF32Slice>,
 }
 
 impl<D: Distance> Leaf<'_, D> {
+    /// Converts the leaf into an owned version of itself by cloning
+    /// the internal vector. Doing so will make it mutable.
     pub fn into_owned(self) -> Leaf<'static, D> {
         Leaf { header: self.header, vector: Cow::Owned(self.vector.into_owned()) }
     }
@@ -46,6 +53,7 @@ impl<D: Distance> Leaf<'_, D> {
 pub struct UnalignedF32Slice([u8]);
 
 impl UnalignedF32Slice {
+    /// Creates an unaligned slice of f32 wrapper from a slice of bytes.
     pub fn from_bytes(bytes: &[u8]) -> Result<&Self, SizeMismatch> {
         if bytes.len() % size_of::<f32>() == 0 {
             Ok(unsafe { transmute(bytes) })
@@ -54,27 +62,35 @@ impl UnalignedF32Slice {
         }
     }
 
+    /// Creates an unaligned slice of f32 wrapper from a slice of f32.
+    /// The slice is already known to be of the right length.
     pub fn from_slice(slice: &[f32]) -> &Self {
         Self::from_bytes(cast_slice(slice)).unwrap()
     }
 
+    /// Returns the original raw slice of bytes.
     pub fn as_bytes(&self) -> &[u8] {
         &self.0
     }
 
+    /// Return the number of f32 that fits into this slice.
     pub fn len(&self) -> usize {
         self.0.len() / size_of::<f32>()
     }
 
+    /// Returns wether it is empty or not.
     pub fn is_empty(&self) -> bool {
         self.0.is_empty()
     }
 
+    /// Returns an iterator of f32 that are read from the slice.
+    /// The f32 are copied in memory and are therefore, aligned.
     #[allow(clippy::needless_lifetimes)]
     pub fn iter<'a>(&'a self) -> impl Iterator<Item = f32> + 'a {
         self.0.chunks_exact(size_of::<f32>()).map(NativeEndian::read_f32)
     }
 
+    /// Returns the raw pointer to the start of this slice.
     pub fn as_ptr(&self) -> *const u8 {
         self.0.as_ptr()
     }

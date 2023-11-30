@@ -4,13 +4,17 @@ use bytemuck::{Pod, Zeroable};
 use rand::Rng;
 
 use super::two_means;
+use crate::distance::Distance;
 use crate::node::{Leaf, UnalignedF32Slice};
 use crate::spaces::simple::dot_product;
-use crate::Distance;
 
+/// A taxicab geometry or a Manhattan geometry is a geometry whose usual distance function
+/// or metric of Euclidean geometry is replaced by a new metric in which the distance between
+/// two points is the sum of the absolute differences of their Cartesian coordinates.
 #[derive(Debug, Clone)]
 pub enum Manhattan {}
 
+/// The header of Manhattan leaf nodes.
 #[repr(C)]
 #[derive(Pod, Zeroable, Debug, Clone, Copy)]
 pub struct NodeHeaderManhattan {

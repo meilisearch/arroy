@@ -2,9 +2,9 @@ use std::borrow::Cow;
 use std::num::NonZeroUsize;
 use std::time::Instant;
 
-use arroy::{
-    Distance, Euclidean, ItemId, KeyCodec, Leaf, Reader, Result, UnalignedF32Slice, Writer,
-};
+use arroy::distances::Euclidean;
+use arroy::internals::{KeyCodec, Leaf, UnalignedF32Slice};
+use arroy::{Distance, ItemId, Reader, Result, Writer};
 use heed::{Database, DatabaseFlags, EnvOpenOptions, RwTxn, Unspecified};
 use instant_distance::{Builder, HnswMap, MapItem};
 use rand::rngs::StdRng;
@@ -102,7 +102,7 @@ impl instant_distance::Point for Point {
         let other = UnalignedF32Slice::from_slice(&other.0);
         let p = Leaf { header: Euclidean::new_header(this), vector: Cow::Borrowed(this) };
         let q = Leaf { header: Euclidean::new_header(other), vector: Cow::Borrowed(other) };
-        arroy::Euclidean::built_distance(&p, &q).sqrt()
+        arroy::distances::Euclidean::built_distance(&p, &q).sqrt()
     }
 }
 

@@ -4,13 +4,17 @@ use bytemuck::{Pod, Zeroable};
 use rand::Rng;
 
 use super::two_means;
+use crate::distance::Distance;
 use crate::node::{Leaf, UnalignedF32Slice};
 use crate::spaces::simple::dot_product;
-use crate::Distance;
 
+/// The Cosine similarity is a measure of similarity between two
+/// non-zero vectors defined in an inner product space. Cosine similarity
+/// is the cosine of the angle between the vectors.
 #[derive(Debug, Clone)]
 pub enum Angular {}
 
+/// The header of Angular leaf nodes.
 #[repr(C)]
 #[derive(Pod, Zeroable, Debug, Clone, Copy)]
 pub struct NodeHeaderAngular {

@@ -2,7 +2,8 @@ use std::fmt::Display;
 use std::num::NonZeroUsize;
 
 use super::*;
-use crate::{Euclidean, ItemId, Manhattan, Reader, Writer};
+use crate::distances::{Euclidean, Manhattan};
+use crate::{ItemId, Reader, Writer};
 
 pub struct NnsRes(pub Option<Vec<(ItemId, f32)>>);
 

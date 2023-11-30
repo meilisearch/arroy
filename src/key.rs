@@ -41,6 +41,7 @@ impl Key {
     }
 }
 
+/// The heed codec used internally to encode/decoding the internal key type.
 pub enum KeyCodec {}
 
 impl<'a> heed::BytesEncode<'a> for KeyCodec {

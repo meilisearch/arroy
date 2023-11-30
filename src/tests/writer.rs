@@ -2,7 +2,8 @@ use rand::seq::SliceRandom;
 use rand::Rng;
 
 use super::{create_database, rng};
-use crate::{Euclidean, Writer};
+use crate::distances::Euclidean;
+use crate::Writer;
 
 #[test]
 fn use_u32_max_minus_one_for_a_vec() {
