@@ -135,8 +135,10 @@ impl<D: Distance> Writer<D> {
         Ok(())
     }
 
-    /// Generates the final tree nodes that allows nearest
-    /// neighbors search to effectively work.
+    /// Generates a forest of `n_trees` trees.
+    ///
+    /// More trees gives higher precision when querying.
+    /// After calling build, no more items can be added.
     pub fn build<R: Rng>(
         mut self,
         wtxn: &mut RwTxn,

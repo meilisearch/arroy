@@ -1,3 +1,77 @@
+//! Arroy ([Approximate Rearest Reighbors][1] Oh Yeah) is a Rust library with the interface of the [Annoy Python library][2] to search for vectors in space that are close to a given query vector. It is based on LMDB, a memory-mapped key-value store, so many processes may share the same data and atomically modify the vectors.
+//!
+//! [1]: https://en.wikipedia.org/wiki/Nearest_neighbor_search#Approximate_nearest_neighbor
+//! [2]: https://github.com/spotify/annoy/#full-python-api
+//!
+//! # Examples
+//!
+//! Open a database, that will support some typed key/data and ensures, at compile time,
+//! that you'll write those types and not others.
+//!
+//! ```
+//! use std::fs;
+//! use std::num::NonZeroUsize;
+//! use std::path::Path;
+//!
+//! use arroy::distances::Euclidean;
+//! use arroy::{Database as ArroyDatabase, Writer, Reader};
+//! use heed::{EnvOpenOptions, Database};
+//! use rand::rngs::StdRng;
+//! use rand::{Rng, SeedableRng};
+//!
+//! /// That's the 200MiB size limit we allow LMDB to grow.
+//! const TWENTY_HUNDRED_MIB: usize = 2 * 1024 * 1024 * 1024;
+//!
+//! # fn main() -> Result<(), Box<dyn std::error::Error>> {
+//! let dir = tempfile::tempdir()?;
+//! let env = EnvOpenOptions::new().map_size(TWENTY_HUNDRED_MIB).open(dir.path())?;
+//!
+//! // we will open the default unnamed database
+//! let mut wtxn = env.write_txn()?;
+//! let db: ArroyDatabase<Euclidean> = env.create_database(&mut wtxn, None)?;
+//!
+//! // Now we can give it to our arroy writer
+//! let index = 0;
+//! let dimensions = 5;
+//! let writer = Writer::<Euclidean>::prepare(&mut wtxn, db, index, dimensions)?;
+//!
+//! // let's write some vectors
+//! writer.add_item(&mut wtxn, 0,    &[0.8,  0.49, 0.27, 0.76, 0.94])?;
+//! writer.add_item(&mut wtxn, 1,    &[0.66, 0.86, 0.42, 0.4,  0.31])?;
+//! writer.add_item(&mut wtxn, 2,    &[0.5,  0.95, 0.7,  0.51, 0.03])?;
+//! writer.add_item(&mut wtxn, 100,  &[0.52, 0.33, 0.65, 0.23, 0.44])?;
+//! writer.add_item(&mut wtxn, 1000, &[0.18, 0.43, 0.48, 0.81, 0.29])?;
+//!
+//! // We will need to generate a bunch of random numbers
+//! let mut rng = StdRng::seed_from_u64(42);
+//!
+//! // You can specify the number of trees to use or specify None
+//! writer.build(&mut wtxn, &mut rng, None)?;
+//!
+//! // By committing, other readers can query the database in parallel
+//! wtxn.commit()?;
+//!
+//! let mut rtxn = env.read_txn()?;
+//! let reader = Reader::<Euclidean>::open(&rtxn, index, db)?;
+//! let n_results = 20;
+//!
+//! // By making it precise we are near the HNSW but
+//! // we take a lot more time to search than the HNSW.
+//! let is_precise = true;
+//! let search_k = if is_precise {
+//!     // This 20 is arbitrary but basically the higher, the better results, the slower.
+//!     NonZeroUsize::new(n_results * reader.n_trees() * 20)
+//! } else {
+//!     None
+//! };
+//!
+//! // You can do similar searching by directly requesting
+//! // the nearest neighbors of a given item.
+//! let item_id = 0;
+//! let arroy_results = reader.nns_by_item(&rtxn, item_id, n_results, search_k)?.unwrap();
+//! # Ok(()) }
+//! ```
+
 #![warn(missing_docs)]
 #![doc(
     html_favicon_url = "https://raw.githubusercontent.com/meilisearch/arroy/main/assets/arroy-electric-clusters.ico?raw=true"

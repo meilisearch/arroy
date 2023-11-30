@@ -12,7 +12,8 @@ rand = { version = "0.8.5", features = ["alloc"] }
 thiserror = "1.0.50"
 
 [dev-dependencies]
-rand = { version = "0.8.5", features = ["std_rng"] }
+heed = "0.20.0-alpha.9"
 insta = "1.34.0"
-tempfile = "3.8.1"
 instant-distance = "0.6.1"
+rand = { version = "0.8.5", features = ["std_rng"] }
+tempfile = "3.8.1"
