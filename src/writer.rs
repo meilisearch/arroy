@@ -137,8 +137,9 @@ impl<D: Distance> Writer<D> {
 
     /// Generates a forest of `n_trees` trees.
     ///
-    /// More trees gives higher precision when querying.
-    /// After calling build, no more items can be added.
+    /// More trees give higher precision when querying at
+    /// the cost of more disk usage. After calling build,
+    /// no more items can be added.
     pub fn build<R: Rng>(
         mut self,
         wtxn: &mut RwTxn,

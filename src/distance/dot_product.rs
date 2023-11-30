@@ -11,7 +11,7 @@ use crate::node::{Leaf, UnalignedF32Slice};
 use crate::spaces::simple::dot_product;
 use crate::{Node, NodeCodec};
 
-/// n mathematics, the dot product or scalar product is an algebraic
+/// In mathematics, the dot product or scalar product is an algebraic
 /// operation that takes two equal-length sequences of numbers
 /// (usually coordinate vectors), and returns a single number.
 #[derive(Debug, Clone)]

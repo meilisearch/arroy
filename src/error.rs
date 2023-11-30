@@ -5,7 +5,7 @@ pub enum Error {
     #[error(transparent)]
     Heed(#[from] heed::Error),
 
-    /// The user is searching for a vector which is not of the right dimensions.
+    /// The user is trying to insert or search for a vector that is not of the right dimensions.
     #[error("Invalid vector dimensions. Got {received} but expected {expected}.")]
     InvalidVecDimension {
         /// The expected number of dimensions.
