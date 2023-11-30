@@ -1,6 +1,13 @@
 [package]
 name = "arroy"
+description = "Annoy-inspired Approximate Nearest Neighbors in Rust, based on LMDB and optimized for memory usage"
 version = "0.1.0"
+documentation = "https://docs.rs/arroy"
+repository = "https://github.com/meilisearch/arroy"
+keywords = ["Approximate nearest neighbor search", "Graph algorithms", "Vector Search", "Store"]
+categories = ["algorithms", "database", "data-structures", "science"]
+authors = ["Kerollmops <clement@meilisearch.com>", "Tamo <tamo@meilisearch.com>"]
+license = "MIT"
 edition = "2021"
 
 [dependencies]
