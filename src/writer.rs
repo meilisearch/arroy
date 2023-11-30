@@ -178,6 +178,7 @@ impl<D: Distance> Writer<D> {
             dimensions: self.dimensions.try_into().unwrap(),
             n_items: self.n_items.try_into().unwrap(),
             roots: ItemIds::from_slice(&self.roots),
+            distance: D::name(),
         };
         match self.database.remap_data_type::<MetadataCodec>().put_with_flags(
             wtxn,

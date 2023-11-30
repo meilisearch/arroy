@@ -94,6 +94,7 @@ mod writer;
 mod tests;
 
 use std::borrow::Cow;
+use std::ffi::CStr;
 use std::mem::size_of;
 
 use byteorder::{BigEndian, ByteOrder};
@@ -114,7 +115,7 @@ pub mod internals {
         NodeHeaderAngular, NodeHeaderDotProduct, NodeHeaderEuclidean, NodeHeaderManhattan,
     };
     pub use crate::key::KeyCodec;
-    pub use crate::node::{Leaf, UnalignedF32Slice};
+    pub use crate::node::{Leaf, NodeCodec, UnalignedF32Slice};
 
     /// A type that is used to decide on
     /// which side of a plane we move an item.
@@ -156,6 +157,7 @@ struct Metadata<'a> {
     dimensions: u32,
     n_items: u32,
     roots: ItemIds<'a>,
+    distance: &'a str,
 }
 
 enum MetadataCodec {}
@@ -164,10 +166,17 @@ impl<'a> heed::BytesEncode<'a> for MetadataCodec {
     type EItem = Metadata<'a>;
 
     fn bytes_encode(item: &'a Self::EItem) -> Result<Cow<'a, [u8]>, BoxedError> {
-        let mut output = Vec::with_capacity(size_of::<u32>() + item.roots.len() * size_of::<u32>());
-        output.extend_from_slice(&item.dimensions.to_be_bytes());
-        output.extend_from_slice(&item.n_items.to_be_bytes());
-        output.extend_from_slice(item.roots.raw_bytes());
+        let Metadata { dimensions, n_items, roots, distance } = item;
+        debug_assert!(!distance.as_bytes().iter().any(|&b| b == 0));
+
+        let mut output = Vec::with_capacity(
+            size_of::<u32>() + roots.len() * size_of::<u32>() + distance.len() + 1,
+        );
+        output.extend_from_slice(distance.as_bytes());
+        output.push(0);
+        output.extend_from_slice(&dimensions.to_be_bytes());
+        output.extend_from_slice(&n_items.to_be_bytes());
+        output.extend_from_slice(roots.raw_bytes());
 
         Ok(Cow::Owned(output))
     }
@@ -177,11 +186,13 @@ impl<'a> heed::BytesDecode<'a> for MetadataCodec {
     type DItem = Metadata<'a>;
 
     fn bytes_decode(bytes: &'a [u8]) -> Result<Self::DItem, BoxedError> {
+        let distance = CStr::from_bytes_until_nul(bytes)?.to_str()?;
+        let bytes = &bytes[distance.len() + 1..];
         let dimensions = BigEndian::read_u32(bytes);
         let bytes = &bytes[size_of::<u32>()..];
         let n_items = BigEndian::read_u32(bytes);
         let bytes = &bytes[size_of::<u32>()..];
 
-        Ok(Metadata { dimensions, n_items, roots: ItemIds::from_bytes(bytes) })
+        Ok(Metadata { dimensions, n_items, roots: ItemIds::from_bytes(bytes), distance })
     }
 }

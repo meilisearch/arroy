@@ -25,6 +25,10 @@ pub struct NodeHeaderManhattan {
 impl Distance for Manhattan {
     type Header = NodeHeaderManhattan;
 
+    fn name() -> &'static str {
+        "manhattan"
+    }
+
     fn new_header(_vector: &UnalignedF32Slice) -> Self::Header {
         NodeHeaderManhattan { bias: 0.0 }
     }
