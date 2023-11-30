@@ -16,6 +16,7 @@ use crate::{
     Database, Error, ItemId, Key, MetadataCodec, Node, NodeId, Prefix, PrefixCodec, Result,
 };
 
+/// A reader over the arroy trees and user items.
 #[derive(Debug)]
 pub struct Reader<'t, D: Distance> {
     database: Database<D>,
@@ -27,6 +28,7 @@ pub struct Reader<'t, D: Distance> {
 }
 
 impl<'t, D: Distance> Reader<'t, D> {
+    /// Returns a reader over the database with the specified [`Distance`] type.
     pub fn open<U>(
         rtxn: &'t RoTxn,
         index: u16,

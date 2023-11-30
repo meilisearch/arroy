@@ -15,6 +15,9 @@ use crate::{
     PrefixCodec, Result,
 };
 
+/// A writer to store new items, remove existing ones,
+/// and build the search tree to query the nearest
+/// neighbors to items or vectors.
 #[derive(Debug)]
 pub struct Writer<D: Distance> {
     database: Database<D>,
@@ -29,6 +32,8 @@ pub struct Writer<D: Distance> {
 }
 
 impl<D: Distance> Writer<D> {
+    /// Returns a writer after having deleted the tree nodes to be able to modify items
+    /// safely.
     pub fn prepare<U>(
         wtxn: &mut RwTxn,
         database: heed::Database<KeyCodec, U>,
@@ -40,6 +45,8 @@ impl<D: Distance> Writer<D> {
         Ok(Writer { database, index, dimensions, n_items: 0, next_tree_id: 0, roots: Vec::new() })
     }
 
+    /// Returns a writer after having deleted the tree nodes and rewrote all the items
+    /// for the new [`Distance`] format to be able to modify items safely.
     pub fn prepare_changing_distance<ND: Distance>(self, wtxn: &mut RwTxn) -> Result<Writer<ND>> {
         if TypeId::of::<ND>() != TypeId::of::<D>() {
             clear_tree_nodes(wtxn, self.database, self.index)?;
@@ -77,6 +84,7 @@ impl<D: Distance> Writer<D> {
         })
     }
 
+    /// Returns an `Option`al vector previous stored in this database.
     pub fn item_vector(&self, rtxn: &RoTxn, item: ItemId) -> Result<Option<Vec<f32>>> {
         Ok(item_leaf(self.database, self.index, rtxn, item)?.map(|leaf| leaf.vector.into_owned()))
     }
@@ -106,10 +114,12 @@ impl<D: Distance> Writer<D> {
         Ok(self.database.put(wtxn, &Key::item(self.index, item), &Node::Leaf(leaf))?)
     }
 
+    /// Deletes an item stored in this database and returns `true` if it existed.
     pub fn del_item(&self, wtxn: &mut RwTxn, item: ItemId) -> Result<bool> {
         Ok(self.database.delete(wtxn, &Key::item(self.index, item))?)
     }
 
+    /// Removes everything in the database, user items and internal tree nodes.
     pub fn clear(&self, wtxn: &mut RwTxn) -> Result<()> {
         let mut cursor = self
             .database
@@ -125,6 +135,8 @@ impl<D: Distance> Writer<D> {
         Ok(())
     }
 
+    /// Generates the final tree nodes that allows nearest
+    /// neighbors search to effectively work.
     pub fn build<R: Rng>(
         mut self,
         wtxn: &mut RwTxn,
