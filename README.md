@@ -29,6 +29,8 @@ Arroy was built by [@Kerollmops](https://github.com/Kerollmops) and [@irevoire](
 - Index creation is separate from lookup (in particular, you can not add more items once the tree has been created)
 - Build index on disk to enable indexing big datasets that won't fit into memory using LMDB
 - Additional features compared to Annoy
+  - Filter when querying ([planned](https://github.com/meilisearch/arroy/issues/5))
+  - Incrementally update the tree without rebuilding it from scratch ([planned](https://github.com/meilisearch/arroy/issues/21))
   - Store and Modify different indexes atomically using LMDB (indexes are identified by an `u16`)
   - Modify the items list **in place** while performing queries using LMDB
   - Storage based on LMDB using LMDB
