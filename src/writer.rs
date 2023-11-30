@@ -36,7 +36,7 @@ impl<D: Distance> Writer<D> {
     /// safely.
     pub fn prepare(
         wtxn: &mut RwTxn,
-        database: heed::Database<KeyCodec, NodeCodec<D>>,
+        database: Database<D>,
         index: u16,
         dimensions: usize,
     ) -> Result<Writer<D>> {
