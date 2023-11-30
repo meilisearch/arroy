@@ -2,14 +2,13 @@ use rand::seq::SliceRandom;
 use rand::Rng;
 
 use super::{create_database, rng};
-use crate::distances::Euclidean;
 use crate::Writer;
 
 #[test]
 fn use_u32_max_minus_one_for_a_vec() {
     let handle = create_database();
     let mut wtxn = handle.env.write_txn().unwrap();
-    let writer = Writer::<Euclidean>::prepare(&mut wtxn, handle.database, 0, 3).unwrap();
+    let writer = Writer::prepare(&mut wtxn, handle.database, 0, 3).unwrap();
     writer.add_item(&mut wtxn, u32::MAX - 1, &[0.0, 1.0, 2.0]).unwrap();
 
     writer.build(&mut wtxn, rng(), Some(1)).unwrap();
@@ -28,7 +27,7 @@ fn use_u32_max_minus_one_for_a_vec() {
 fn use_u32_max_for_a_vec() {
     let handle = create_database();
     let mut wtxn = handle.env.write_txn().unwrap();
-    let writer = Writer::<Euclidean>::prepare(&mut wtxn, handle.database, 0, 3).unwrap();
+    let writer = Writer::prepare(&mut wtxn, handle.database, 0, 3).unwrap();
     writer.add_item(&mut wtxn, u32::MAX, &[0.0, 1.0, 2.0]).unwrap();
 
     writer.build(&mut wtxn, rng(), Some(1)).unwrap();
@@ -47,7 +46,7 @@ fn use_u32_max_for_a_vec() {
 fn write_one_vector_in_one_tree() {
     let handle = create_database();
     let mut wtxn = handle.env.write_txn().unwrap();
-    let writer = Writer::<Euclidean>::prepare(&mut wtxn, handle.database, 0, 3).unwrap();
+    let writer = Writer::prepare(&mut wtxn, handle.database, 0, 3).unwrap();
     writer.add_item(&mut wtxn, 0, &[0.0, 1.0, 2.0]).unwrap();
 
     writer.build(&mut wtxn, rng(), Some(1)).unwrap();
@@ -66,7 +65,7 @@ fn write_one_vector_in_one_tree() {
 fn write_one_vector_in_multiple_trees() {
     let handle = create_database();
     let mut wtxn = handle.env.write_txn().unwrap();
-    let writer = Writer::<Euclidean>::prepare(&mut wtxn, handle.database, 0, 3).unwrap();
+    let writer = Writer::prepare(&mut wtxn, handle.database, 0, 3).unwrap();
     writer.add_item(&mut wtxn, 0, &[0.0, 1.0, 2.0]).unwrap();
 
     writer.build(&mut wtxn, rng(), Some(10)).unwrap();
@@ -94,7 +93,7 @@ fn write_one_vector_in_multiple_trees() {
 fn write_vectors_until_there_is_a_descendants() {
     let handle = create_database();
     let mut wtxn = handle.env.write_txn().unwrap();
-    let writer = Writer::<Euclidean>::prepare(&mut wtxn, handle.database, 0, 3).unwrap();
+    let writer = Writer::prepare(&mut wtxn, handle.database, 0, 3).unwrap();
     for i in 0..3 {
         let id = i;
         let i = i as f32;
@@ -119,7 +118,7 @@ fn write_vectors_until_there_is_a_descendants() {
 fn write_vectors_until_there_is_a_split() {
     let handle = create_database();
     let mut wtxn = handle.env.write_txn().unwrap();
-    let writer = Writer::<Euclidean>::prepare(&mut wtxn, handle.database, 0, 3).unwrap();
+    let writer = Writer::prepare(&mut wtxn, handle.database, 0, 3).unwrap();
     for i in 0..4 {
         let id = i;
         let i = i as f32;
@@ -146,7 +145,7 @@ fn write_vectors_until_there_is_a_split() {
 fn write_a_lot_of_random_points() {
     let handle = create_database();
     let mut wtxn = handle.env.write_txn().unwrap();
-    let writer = Writer::<Euclidean>::prepare(&mut wtxn, handle.database, 0, 30).unwrap();
+    let writer = Writer::prepare(&mut wtxn, handle.database, 0, 30).unwrap();
     let mut rng = rng();
     for id in 0..100 {
         let vector: [f32; 30] = std::array::from_fn(|_| rng.gen());
@@ -165,7 +164,7 @@ fn write_multiple_indexes() {
     let mut wtxn = handle.env.write_txn().unwrap();
 
     for i in 0..5 {
-        let writer = Writer::<Euclidean>::prepare(&mut wtxn, handle.database, i, 3).unwrap();
+        let writer = Writer::prepare(&mut wtxn, handle.database, i, 3).unwrap();
         writer.add_item(&mut wtxn, 0, &[0.0, 1.0, 2.0]).unwrap();
         writer.build(&mut wtxn, rng(), Some(1)).unwrap();
     }
@@ -210,7 +209,7 @@ fn write_random_vectors_to_random_indexes() {
     indexes.shuffle(&mut rng);
 
     for index in indexes {
-        let writer = Writer::<Euclidean>::prepare(&mut wtxn, handle.database, index, 10).unwrap();
+        let writer = Writer::prepare(&mut wtxn, handle.database, index, 10).unwrap();
 
         // We're going to write 10 vectors per index
         for i in 0..10 {

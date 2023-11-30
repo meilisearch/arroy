@@ -63,7 +63,7 @@ impl NodeId {
         self.item
     }
 
-    pub fn to_bytes(&self) -> [u8; 5] {
+    pub fn as_bytes(&self) -> [u8; 5] {
         let mut output = [0; 5];
         output[0] = self.mode as u8;
 

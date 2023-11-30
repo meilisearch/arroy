@@ -182,7 +182,7 @@ pub struct SplitPlaneNormal<'a> {
     pub right: NodeId,
 }
 
-/// The internal codec uses to encode and decode internal nodes inside LMDB.
+/// The codec used internally to encode and decode nodes.
 pub struct NodeCodec<D>(D);
 
 impl<'a, D: Distance> BytesEncode<'a> for NodeCodec<D> {
@@ -198,8 +198,8 @@ impl<'a, D: Distance> BytesEncode<'a> for NodeCodec<D> {
             }
             Node::SplitPlaneNormal(SplitPlaneNormal { normal, left, right }) => {
                 bytes.push(SPLIT_PLANE_NORMAL_TAG);
-                bytes.extend_from_slice(&left.to_bytes());
-                bytes.extend_from_slice(&right.to_bytes());
+                bytes.extend_from_slice(&left.as_bytes());
+                bytes.extend_from_slice(&right.as_bytes());
                 bytes.extend_from_slice(normal.as_bytes());
             }
             Node::Descendants(Descendants { descendants }) => {
