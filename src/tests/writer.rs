@@ -2,11 +2,12 @@ use rand::seq::SliceRandom;
 use rand::Rng;
 
 use super::{create_database, rng};
+use crate::distance::Euclidean;
 use crate::Writer;
 
 #[test]
 fn use_u32_max_minus_one_for_a_vec() {
-    let handle = create_database();
+    let handle = create_database::<Euclidean>();
     let mut wtxn = handle.env.write_txn().unwrap();
     let writer = Writer::prepare(&mut wtxn, handle.database, 0, 3).unwrap();
     writer.add_item(&mut wtxn, u32::MAX - 1, &[0.0, 1.0, 2.0]).unwrap();
@@ -25,7 +26,7 @@ fn use_u32_max_minus_one_for_a_vec() {
 
 #[test]
 fn use_u32_max_for_a_vec() {
-    let handle = create_database();
+    let handle = create_database::<Euclidean>();
     let mut wtxn = handle.env.write_txn().unwrap();
     let writer = Writer::prepare(&mut wtxn, handle.database, 0, 3).unwrap();
     writer.add_item(&mut wtxn, u32::MAX, &[0.0, 1.0, 2.0]).unwrap();
@@ -44,7 +45,7 @@ fn use_u32_max_for_a_vec() {
 
 #[test]
 fn write_one_vector_in_one_tree() {
-    let handle = create_database();
+    let handle = create_database::<Euclidean>();
     let mut wtxn = handle.env.write_txn().unwrap();
     let writer = Writer::prepare(&mut wtxn, handle.database, 0, 3).unwrap();
     writer.add_item(&mut wtxn, 0, &[0.0, 1.0, 2.0]).unwrap();
@@ -63,7 +64,7 @@ fn write_one_vector_in_one_tree() {
 
 #[test]
 fn write_one_vector_in_multiple_trees() {
-    let handle = create_database();
+    let handle = create_database::<Euclidean>();
     let mut wtxn = handle.env.write_txn().unwrap();
     let writer = Writer::prepare(&mut wtxn, handle.database, 0, 3).unwrap();
     writer.add_item(&mut wtxn, 0, &[0.0, 1.0, 2.0]).unwrap();
@@ -91,7 +92,7 @@ fn write_one_vector_in_multiple_trees() {
 
 #[test]
 fn write_vectors_until_there_is_a_descendants() {
-    let handle = create_database();
+    let handle = create_database::<Euclidean>();
     let mut wtxn = handle.env.write_txn().unwrap();
     let writer = Writer::prepare(&mut wtxn, handle.database, 0, 3).unwrap();
     for i in 0..3 {
@@ -116,7 +117,7 @@ fn write_vectors_until_there_is_a_descendants() {
 
 #[test]
 fn write_vectors_until_there_is_a_split() {
-    let handle = create_database();
+    let handle = create_database::<Euclidean>();
     let mut wtxn = handle.env.write_txn().unwrap();
     let writer = Writer::prepare(&mut wtxn, handle.database, 0, 3).unwrap();
     for i in 0..4 {
@@ -143,7 +144,7 @@ fn write_vectors_until_there_is_a_split() {
 
 #[test]
 fn write_a_lot_of_random_points() {
-    let handle = create_database();
+    let handle = create_database::<Euclidean>();
     let mut wtxn = handle.env.write_txn().unwrap();
     let writer = Writer::prepare(&mut wtxn, handle.database, 0, 30).unwrap();
     let mut rng = rng();
@@ -160,7 +161,7 @@ fn write_a_lot_of_random_points() {
 
 #[test]
 fn write_multiple_indexes() {
-    let handle = create_database();
+    let handle = create_database::<Euclidean>();
     let mut wtxn = handle.env.write_txn().unwrap();
 
     for i in 0..5 {
@@ -201,7 +202,7 @@ fn write_multiple_indexes() {
 
 #[test]
 fn write_random_vectors_to_random_indexes() {
-    let handle = create_database();
+    let handle = create_database::<Euclidean>();
     let mut rng = rng();
     let mut wtxn = handle.env.write_txn().unwrap();
 

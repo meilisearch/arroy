@@ -6,22 +6,21 @@ use rand::rngs::StdRng;
 use rand::SeedableRng;
 use tempfile::TempDir;
 
-use crate::distance::Euclidean;
 use crate::distances::Angular;
 use crate::internals::KeyCodec;
-use crate::{MetadataCodec, NodeCodec, NodeMode};
+use crate::{Distance, MetadataCodec, NodeCodec, NodeMode};
 
 mod reader;
 mod writer;
 
-pub struct DatabaseHandle {
+pub struct DatabaseHandle<D> {
     pub env: Env,
-    pub database: Database<KeyCodec, NodeCodec<Euclidean>>,
+    pub database: Database<KeyCodec, NodeCodec<D>>,
     #[allow(unused)]
     pub tempdir: TempDir,
 }
 
-impl fmt::Display for DatabaseHandle {
+impl<D: Distance> fmt::Display for DatabaseHandle<D> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let rtxn = self.env.read_txn().unwrap();
 
@@ -71,12 +70,11 @@ impl fmt::Display for DatabaseHandle {
     }
 }
 
-fn create_database() -> DatabaseHandle {
+fn create_database<D: Distance>() -> DatabaseHandle<D> {
     let dir = tempfile::tempdir().unwrap();
     let env = EnvOpenOptions::new().map_size(200 * 1024 * 1024).open(dir.path()).unwrap();
     let mut wtxn = env.write_txn().unwrap();
-    let database: Database<KeyCodec, NodeCodec<Euclidean>> =
-        env.create_database(&mut wtxn, None).unwrap();
+    let database: Database<KeyCodec, NodeCodec<D>> = env.create_database(&mut wtxn, None).unwrap();
     wtxn.commit().unwrap();
     DatabaseHandle { env, database, tempdir: dir }
 }
