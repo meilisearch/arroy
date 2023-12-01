@@ -20,7 +20,7 @@ fn use_u32_max_minus_one_for_a_vec() {
     Dumping index 0
     Item 4294967294: Leaf(Leaf { header: NodeHeaderAngular { norm: 0.0 }, vector: [0.0000, 1.0000, 2.0000] })
     Tree 0: Descendants(Descendants { descendants: [4294967294] })
-    Root: Metadata { dimensions: 3, n_items: 1, roots: [0] }
+    Root: Metadata { dimensions: 3, n_items: 1, roots: [0], distance: "euclidean" }
     "###);
 }
 
@@ -39,7 +39,7 @@ fn use_u32_max_for_a_vec() {
     Dumping index 0
     Item 4294967295: Leaf(Leaf { header: NodeHeaderAngular { norm: 0.0 }, vector: [0.0000, 1.0000, 2.0000] })
     Tree 0: Descendants(Descendants { descendants: [4294967295] })
-    Root: Metadata { dimensions: 3, n_items: 1, roots: [0] }
+    Root: Metadata { dimensions: 3, n_items: 1, roots: [0], distance: "euclidean" }
     "###);
 }
 
@@ -58,7 +58,7 @@ fn write_one_vector_in_one_tree() {
     Dumping index 0
     Item 0: Leaf(Leaf { header: NodeHeaderAngular { norm: 0.0 }, vector: [0.0000, 1.0000, 2.0000] })
     Tree 0: Descendants(Descendants { descendants: [0] })
-    Root: Metadata { dimensions: 3, n_items: 1, roots: [0] }
+    Root: Metadata { dimensions: 3, n_items: 1, roots: [0], distance: "euclidean" }
     "###);
 }
 
@@ -86,7 +86,7 @@ fn write_one_vector_in_multiple_trees() {
     Tree 7: Descendants(Descendants { descendants: [0] })
     Tree 8: Descendants(Descendants { descendants: [0] })
     Tree 9: Descendants(Descendants { descendants: [0] })
-    Root: Metadata { dimensions: 3, n_items: 1, roots: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9] }
+    Root: Metadata { dimensions: 3, n_items: 1, roots: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9], distance: "euclidean" }
     "###);
 }
 
@@ -111,7 +111,7 @@ fn write_vectors_until_there_is_a_descendants() {
     Item 1: Leaf(Leaf { header: NodeHeaderAngular { norm: 0.0 }, vector: [1.0000, 1.0000, 1.0000] })
     Item 2: Leaf(Leaf { header: NodeHeaderAngular { norm: 0.0 }, vector: [2.0000, 2.0000, 2.0000] })
     Tree 0: Descendants(Descendants { descendants: [0, 1, 2] })
-    Root: Metadata { dimensions: 3, n_items: 3, roots: [0] }
+    Root: Metadata { dimensions: 3, n_items: 3, roots: [0], distance: "euclidean" }
     "###);
 }
 
@@ -138,7 +138,7 @@ fn write_vectors_until_there_is_a_split() {
     Item 3: Leaf(Leaf { header: NodeHeaderAngular { norm: 0.0 }, vector: [3.0000, 3.0000, 3.0000] })
     Tree 0: Descendants(Descendants { descendants: [1, 2, 3] })
     Tree 1: SplitPlaneNormal(SplitPlaneNormal { normal: [0.5774, 0.5774, 0.5774], left: NodeId { mode: Item, item: 0 }, right: NodeId { mode: Tree, item: 0 } })
-    Root: Metadata { dimensions: 3, n_items: 4, roots: [1] }
+    Root: Metadata { dimensions: 3, n_items: 4, roots: [1], distance: "euclidean" }
     "###);
 }
 
@@ -176,27 +176,27 @@ fn write_multiple_indexes() {
     Dumping index 0
     Item 0: Leaf(Leaf { header: NodeHeaderAngular { norm: 0.0 }, vector: [0.0000, 1.0000, 2.0000] })
     Tree 0: Descendants(Descendants { descendants: [0] })
-    Root: Metadata { dimensions: 3, n_items: 1, roots: [0] }
+    Root: Metadata { dimensions: 3, n_items: 1, roots: [0], distance: "euclidean" }
     ==================
     Dumping index 1
     Item 0: Leaf(Leaf { header: NodeHeaderAngular { norm: 0.0 }, vector: [0.0000, 1.0000, 2.0000] })
     Tree 0: Descendants(Descendants { descendants: [0] })
-    Root: Metadata { dimensions: 3, n_items: 1, roots: [0] }
+    Root: Metadata { dimensions: 3, n_items: 1, roots: [0], distance: "euclidean" }
     ==================
     Dumping index 2
     Item 0: Leaf(Leaf { header: NodeHeaderAngular { norm: 0.0 }, vector: [0.0000, 1.0000, 2.0000] })
     Tree 0: Descendants(Descendants { descendants: [0] })
-    Root: Metadata { dimensions: 3, n_items: 1, roots: [0] }
+    Root: Metadata { dimensions: 3, n_items: 1, roots: [0], distance: "euclidean" }
     ==================
     Dumping index 3
     Item 0: Leaf(Leaf { header: NodeHeaderAngular { norm: 0.0 }, vector: [0.0000, 1.0000, 2.0000] })
     Tree 0: Descendants(Descendants { descendants: [0] })
-    Root: Metadata { dimensions: 3, n_items: 1, roots: [0] }
+    Root: Metadata { dimensions: 3, n_items: 1, roots: [0], distance: "euclidean" }
     ==================
     Dumping index 4
     Item 0: Leaf(Leaf { header: NodeHeaderAngular { norm: 0.0 }, vector: [0.0000, 1.0000, 2.0000] })
     Tree 0: Descendants(Descendants { descendants: [0] })
-    Root: Metadata { dimensions: 3, n_items: 1, roots: [0] }
+    Root: Metadata { dimensions: 3, n_items: 1, roots: [0], distance: "euclidean" }
     "###);
 }
 

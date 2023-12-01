@@ -214,5 +214,5 @@ Tree 106: SplitPlaneNormal(SplitPlaneNormal { normal: [0.1072, 0.2300, -0.0531, 
 Tree 107: SplitPlaneNormal(SplitPlaneNormal { normal: [0.0798, 0.0307, 0.0889, -0.0105, -0.1144, 0.2471, -0.0233, 0.0400, 0.1735, 0.0095, -0.1586, 0.0739, 0.1577, -0.1638, 0.1547, -0.0736, -0.2954, 0.2473, 0.2064, -0.3256, 0.0105, -0.0084, 0.3109, 0.2837, -0.1964, 0.4315, -0.1461, 0.0249, -0.1463, -0.1547], left: NodeId { mode: Tree, item: 99 }, right: NodeId { mode: Tree, item: 106 } })
 Tree 108: Descendants(Descendants { descendants: [1, 6, 13, 26, 28, 42, 45, 52, 89, 90, 91] })
 Tree 109: SplitPlaneNormal(SplitPlaneNormal { normal: [0.1480, 0.1261, -0.0665, 0.3737, -0.0057, -0.1971, -0.5071, -0.2435, 0.0663, -0.0095, -0.2081, -0.2250, -0.0387, 0.0152, -0.1832, 0.0617, 0.0393, -0.1884, -0.1056, 0.2606, -0.2452, -0.0101, 0.0920, -0.0175, 0.0626, -0.0276, -0.2676, 0.2327, 0.0947, 0.0282], left: NodeId { mode: Tree, item: 107 }, right: NodeId { mode: Tree, item: 108 } })
-Root: Metadata { dimensions: 30, n_items: 100, roots: [8, 23, 32, 41, 54, 63, 78, 89, 98, 109] }
+Root: Metadata { dimensions: 30, n_items: 100, roots: [8, 23, 32, 41, 54, 63, 78, 89, 98, 109], distance: "euclidean" }
 

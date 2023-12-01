@@ -61,10 +61,13 @@ fn open_db_with_wrong_distance() {
     wtxn.commit().unwrap();
 
     let rtxn = handle.env.read_txn().unwrap();
-    let reader = Reader::<Manhattan>::open(&rtxn, 0, handle.database).unwrap();
-    // TODO: This should fail
-    let ret = reader.nns_by_vector(&rtxn, &[1.0, 2.0], 5, None).unwrap();
-    insta::assert_display_snapshot!(NnsRes(Some(ret)), @"");
+    let err = Reader::<Manhattan>::open(&rtxn, 0, handle.database).unwrap_err();
+    insta::assert_debug_snapshot!(err, @r###"
+    UnmatchingDistance {
+        expected: "euclidean",
+        received: "manhattan",
+    }
+    "###);
 }
 
 #[test]

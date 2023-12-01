@@ -29,6 +29,10 @@ pub struct NodeHeaderDotProduct {
 impl Distance for DotProduct {
     type Header = NodeHeaderDotProduct;
 
+    fn name() -> &'static str {
+        "dot-product"
+    }
+
     fn new_header(_vector: &UnalignedF32Slice) -> Self::Header {
         // We compute the norm when we preprocess the vector, before generating the tree nodes.
         NodeHeaderDotProduct { extra_dim: 0.0, norm: 0.0 }

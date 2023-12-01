@@ -18,6 +18,15 @@ pub enum Error {
     #[error("Database full. Try to use lower vector IDs.")]
     DatabaseFull,
 
+    /// The user is trying to query a database with a distance that is not of the right type.
+    #[error("Invalid distance provided. Got {received} but expected {expected}.")]
+    UnmatchingDistance {
+        /// The expected distance type.
+        expected: String,
+        /// The distance given by the user.
+        received: &'static str,
+    },
+
     /// Arroy is not able to find the metadata for a given index.
     /// It is probably because the user forget to build the database.
     #[error("Metadata are missing, did you build your database before trying to read it.")]

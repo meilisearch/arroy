@@ -24,6 +24,10 @@ pub struct NodeHeaderAngular {
 impl Distance for Angular {
     type Header = NodeHeaderAngular;
 
+    fn name() -> &'static str {
+        "angular"
+    }
+
     fn new_header(vector: &UnalignedF32Slice) -> Self::Header {
         NodeHeaderAngular { norm: Self::norm_no_header(vector) }
     }

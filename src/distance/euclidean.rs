@@ -26,6 +26,10 @@ pub struct NodeHeaderEuclidean {
 impl Distance for Euclidean {
     type Header = NodeHeaderEuclidean;
 
+    fn name() -> &'static str {
+        "euclidean"
+    }
+
     fn new_header(_vector: &UnalignedF32Slice) -> Self::Header {
         NodeHeaderEuclidean { bias: 0.0 }
     }
