@@ -5,17 +5,13 @@
 //!
 //! # Examples
 //!
-//! Open a database, that will support some typed key/data and ensures, at compile time,
-//! that you'll write those types and not others.
+//! Open an LMDB database, store some vectors in it and query the top 20 nearest items from the first vector. This is the most trivial way to use arroy and it's fairly easy. Just do not forget to [`Writer::build`] and [`heed::RwTxn::commit`] when you are done inserting your items.
 //!
 //! ```
-//! use std::fs;
 //! use std::num::NonZeroUsize;
-//! use std::path::Path;
 //!
 //! use arroy::distances::Euclidean;
 //! use arroy::{Database as ArroyDatabase, Writer, Reader};
-//! use heed::{EnvOpenOptions, Database};
 //! use rand::rngs::StdRng;
 //! use rand::{Rng, SeedableRng};
 //!
@@ -24,9 +20,9 @@
 //!
 //! # fn main() -> Result<(), Box<dyn std::error::Error>> {
 //! let dir = tempfile::tempdir()?;
-//! let env = EnvOpenOptions::new().map_size(TWENTY_HUNDRED_MIB).open(dir.path())?;
+//! let env = heed::EnvOpenOptions::new().map_size(TWENTY_HUNDRED_MIB).open(dir.path())?;
 //!
-//! // we will open the default unnamed database
+//! // we will open the default LMDB unnamed database
 //! let mut wtxn = env.write_txn()?;
 //! let db: ArroyDatabase<Euclidean> = env.create_database(&mut wtxn, None)?;
 //!
@@ -42,31 +38,27 @@
 //! writer.add_item(&mut wtxn, 100,  &[0.52, 0.33, 0.65, 0.23, 0.44])?;
 //! writer.add_item(&mut wtxn, 1000, &[0.18, 0.43, 0.48, 0.81, 0.29])?;
 //!
-//! // We will need to generate a bunch of random numbers
+//! // You can specify the number of trees to use or specify None.
 //! let mut rng = StdRng::seed_from_u64(42);
-//!
-//! // You can specify the number of trees to use or specify None
 //! writer.build(&mut wtxn, &mut rng, None)?;
 //!
-//! // By committing, other readers can query the database in parallel
+//! // By committing, other readers can query the database in parallel.
 //! wtxn.commit()?;
 //!
 //! let mut rtxn = env.read_txn()?;
 //! let reader = Reader::<Euclidean>::open(&rtxn, index, db)?;
 //! let n_results = 20;
 //!
-//! // By making it precise we are near the HNSW but
-//! // we take a lot more time to search than the HNSW.
+//! // You can increase the quality of the results by forcing arroy to search into more nodes.
+//! // This multiplier is arbitrary but basically the higher, the better the results, the slower the query.
 //! let is_precise = true;
 //! let search_k = if is_precise {
-//!     // This 20 is arbitrary but basically the higher, the better results, the slower.
-//!     NonZeroUsize::new(n_results * reader.n_trees() * 20)
+//!     NonZeroUsize::new(n_results * reader.n_trees() * 15)
 //! } else {
 //!     None
 //! };
 //!
-//! // You can do similar searching by directly requesting
-//! // the nearest neighbors of a given item.
+//! // Similar searching can be achieved by requesting the nearest neighbors of a given item.
 //! let item_id = 0;
 //! let arroy_results = reader.nns_by_item(&rtxn, item_id, n_results, search_k)?.unwrap();
 //! # Ok(()) }
