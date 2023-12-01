@@ -51,7 +51,6 @@ fn open_db_with_wrong_dimension() {
 }
 
 #[test]
-#[should_panic]
 fn open_db_with_wrong_distance() {
     let handle = create_database();
     let mut wtxn = handle.env.write_txn().unwrap();
@@ -62,8 +61,13 @@ fn open_db_with_wrong_distance() {
     wtxn.commit().unwrap();
 
     let rtxn = handle.env.read_txn().unwrap();
-    let reader = Reader::<Manhattan>::open(&rtxn, 0, handle.database).unwrap();
-    reader.nns_by_vector(&rtxn, &[1.0, 2.0], 5, None).unwrap();
+    let err = Reader::<Manhattan>::open(&rtxn, 0, handle.database).unwrap_err();
+    insta::assert_debug_snapshot!(err, @r###"
+    UnmatchingDistance {
+        expected: "euclidean",
+        received: "manhattan",
+    }
+    "###);
 }
 
 #[test]
