@@ -63,13 +63,11 @@ impl NodeId {
         self.item
     }
 
-    pub fn as_bytes(&self) -> [u8; 5] {
+    pub fn to_bytes(self) -> [u8; 5] {
         let mut output = [0; 5];
+
         output[0] = self.mode as u8;
-
         let item_bytes = self.item.to_be_bytes();
-        debug_assert_eq!(item_bytes.len(), output.len() - 1);
-
         output[1..].copy_from_slice(&item_bytes);
 
         output
