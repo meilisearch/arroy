@@ -4,9 +4,8 @@ use std::io::{BufRead, BufReader};
 use std::time::{Duration, Instant};
 
 use arroy::distances::DotProduct;
-use arroy::internals::{KeyCodec, NodeCodec};
-use arroy::{Reader, Writer};
-use heed::{DatabaseFlags, EnvOpenOptions};
+use arroy::{Database, Reader, Writer};
+use heed::EnvOpenOptions;
 use rand::rngs::StdRng;
 use rand::SeedableRng;
 
@@ -60,12 +59,7 @@ fn main() {
 
     // we will open the default unnamed database
     let mut wtxn = env.write_txn().unwrap();
-    let database = env
-        .database_options()
-        .types::<KeyCodec, NodeCodec<DotProduct>>()
-        .flags(DatabaseFlags::INTEGER_KEY)
-        .create(&mut wtxn)
-        .unwrap();
+    let database: Database<DotProduct> = env.create_database(&mut wtxn, None).unwrap();
     let writer = Writer::prepare(&mut wtxn, database, 0, dimensions).unwrap();
 
     println!("Starts to insert document in the database ...");
