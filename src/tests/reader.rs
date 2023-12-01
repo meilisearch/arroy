@@ -52,7 +52,7 @@ fn open_db_with_wrong_dimension() {
 
 #[test]
 fn open_db_with_wrong_distance() {
-    let handle = create_database();
+    let handle = create_database::<Euclidean>();
     let mut wtxn = handle.env.write_txn().unwrap();
     let writer = Writer::prepare(&mut wtxn, handle.database, 0, 2).unwrap();
     writer.add_item(&mut wtxn, 0, &[0.0, 0.0]).unwrap();
@@ -61,7 +61,8 @@ fn open_db_with_wrong_distance() {
     wtxn.commit().unwrap();
 
     let rtxn = handle.env.read_txn().unwrap();
-    let err = Reader::<Manhattan>::open(&rtxn, 0, handle.database).unwrap_err();
+    let wrongly_typed_db = handle.database.remap_data_type::<NodeCodec<Manhattan>>();
+    let err = Reader::open(&rtxn, 0, wrongly_typed_db).unwrap_err();
     insta::assert_debug_snapshot!(err, @r###"
     UnmatchingDistance {
         expected: "euclidean",
