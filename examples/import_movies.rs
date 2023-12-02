@@ -78,7 +78,15 @@ fn main() -> Result<(), heed::BoxedError> {
 
     println!("Building the arroy internal trees...");
     let now = Instant::now();
-    writer.build(&mut wtxn, &mut rng, None)?;
+    for (id, vector) in vectors.iter() {
+        writer.add_item(&mut wtxn, *id, vector).unwrap();
+    }
+    let insert = now.elapsed();
+
+    wtxn.commit().unwrap();
+
+    let mut wtxn = env.write_txn().unwrap();
+    writer.build_in_parallel(&mut wtxn, rng, Some(111)).unwrap();
     wtxn.commit().unwrap();
     println!("Took {:.2?} to build", now.elapsed());
 
