@@ -22,7 +22,7 @@ mod manhattan;
 /// A trait used by arroy to compute the distances,
 /// compute the split planes, and normalize user vectors.
 #[allow(missing_docs)]
-pub trait Distance: Sized + Clone + fmt::Debug + 'static {
+pub trait Distance: Send + Sync + Sized + Clone + fmt::Debug + 'static {
     /// A header structure with informations related to the
     type Header: Pod + Zeroable + fmt::Debug;
 

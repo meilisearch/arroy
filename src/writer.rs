@@ -1,10 +1,13 @@
 use std::any::TypeId;
 use std::borrow::Cow;
+use std::iter::repeat_with;
+use std::sync::atomic::AtomicU32;
 
 use heed::types::DecodeIgnore;
 use heed::{MdbError, PutFlags, RoTxn, RwTxn};
 use rand::seq::SliceRandom;
-use rand::Rng;
+use rayon::prelude::*;
+use rand::{Rng, SeedableRng};
 use roaring::RoaringBitmap;
 
 use crate::distance::Distance;
@@ -132,6 +135,198 @@ impl<D: Distance> Writer<D> {
         while let Some((_id, _node)) = cursor.next().transpose()? {
             // safety: we don't have any reference to the database
             unsafe { cursor.del_current() }?;
+        }
+
+        Ok(())
+    }
+
+    pub fn build_parallel<R: Rng + SeedableRng + Send + Sync>(
+        mut self,
+        wtxn: &mut RwTxn,
+        mut rng: R,
+        n_trees: Option<usize>,
+    ) -> Result<()> {
+        D::preprocess(wtxn, |wtxn| {
+            Ok(self
+                .database
+                .remap_key_type::<PrefixCodec>()
+                .prefix_iter_mut(wtxn, &Prefix::item(self.index))?
+                .remap_key_type::<KeyCodec>())
+        })?;
+
+        let item_indices = self.item_indices(wtxn)?;
+        self.n_items = item_indices.len();
+
+        fn make_tree_in_file<D: Distance, R: Rng>(
+            database: Database<D>,
+            dimensions: usize,
+            n_items: usize,
+            index: u16,
+            next_node_id: &AtomicU32,
+            rtxn: &RoTxn,
+            item_indices: &[ItemId],
+            is_root: bool,
+            rng: &mut R,
+        ) -> Result<NodeId> {
+            // we simplify the max descendants (_K) thing by considering
+            // that we can fit as much descendants as the number of dimensions
+            let max_descendants = dimensions;
+
+            if item_indices.len() == 1 && !is_root {
+                return Ok(NodeId::item(item_indices[0]));
+            }
+
+            if item_indices.len() <= max_descendants
+                && (!is_root || n_items <= max_descendants || item_indices.len() == 1)
+            {
+                let item_id = todo!();
+                // let item_id = self.create_item_id()?;
+                let item = todo!();
+                // let item = Node::Descendants(Descendants {
+                //     descendants: ItemIds::from_slice(item_indices),
+                // });
+                // database.put(wtxn, &Key::tree(index, item_id), &item)?;
+                return Ok(NodeId::tree(item_id));
+            }
+
+            let mut children = Vec::new();
+            for &item_id in item_indices {
+                let node = database.get(rtxn, &Key::item(index, item_id))?.unwrap();
+                let leaf = node.leaf().unwrap();
+                children.push(leaf);
+            }
+
+            let mut children_left = Vec::new();
+            let mut children_right = Vec::new();
+            let mut remaining_attempts = 3;
+
+            let mut normal = loop {
+                children_left.clear();
+                children_right.clear();
+
+                let normal = D::create_split(&children, rng);
+                for (&node_id, node) in item_indices.iter().zip(&children) {
+                    match D::side(UnalignedF32Slice::from_slice(&normal), node, rng) {
+                        Side::Left => children_left.push(node_id),
+                        Side::Right => children_right.push(node_id),
+                    }
+                }
+
+                if split_imbalance(children_left.len(), children_right.len()) < 0.95
+                    || remaining_attempts == 0
+                {
+                    break normal;
+                }
+
+                remaining_attempts -= 1;
+            };
+
+            // If we didn't find a hyperplane, just randomize sides as a last option
+            // and set the split plane to zero as a dummy plane.
+            if split_imbalance(children_left.len(), children_right.len()) > 0.99 {
+                children_left.clear();
+                children_right.clear();
+
+                let mut children = item_indices.to_vec();
+                children.shuffle(rng);
+                let (left, right) = children.split_at(children.len() / 2);
+                children_left.copy_from_slice(left);
+                children_right.copy_from_slice(right);
+
+                normal.fill(0.0);
+            }
+
+            let normal = SplitPlaneNormal {
+                normal: Cow::Owned(normal),
+                left: make_tree_in_file(
+                    database,
+                    dimensions,
+                    n_items,
+                    index,
+                    next_node_id,
+                    rtxn,
+                    &children_left,
+                    false,
+                    rng,
+                )?,
+                right: make_tree_in_file(
+                    database,
+                    dimensions,
+                    n_items,
+                    index,
+                    next_node_id,
+                    rtxn,
+                    &children_right,
+                    false,
+                    rng,
+                )?,
+            };
+
+            let new_node_id = todo!();
+            // let new_node_id = self.create_item_id()?;
+            // database.put(wtxn, &Key::tree(index, new_node_id), &Node::SplitPlaneNormal(normal))?;
+
+            Ok(NodeId::tree(new_node_id))
+        }
+
+        // The globally incrementing node ids that are shared between threads.
+        // TODO create a wrapper around that atomic type.
+        let next_node_id = AtomicU32::new(self.next_tree_id);
+
+        let n_trees = n_trees.expect("please specify the number of trees");
+        let rtxn_rngs: Result<Vec<_>, _> = repeat_with(|| {
+            wtxn.env().read_txn().map(|txn| (txn, R::seed_from_u64(rng.next_u64())))
+        })
+        .collect();
+        let trees: Result<Vec<_>> = rtxn_rngs?
+            .into_par_iter()
+            .map(|(rtxn, mut rng)| {
+                make_tree_in_file(
+                    self.database,
+                    self.dimensions,
+                    self.n_items,
+                    self.index,
+                    &next_node_id,
+                    &rtxn,
+                    &item_indices,
+                    true,
+                    &mut rng,
+                )
+            })
+            .collect();
+
+        let mut thread_roots = Vec::new();
+        // loop {
+        //     match n_trees {
+        //         Some(n_trees) if thread_roots.len() >= n_trees => break,
+        //         None if self.next_tree_id as usize >= self.n_items => break,
+        //         _ => (),
+        //     }
+
+        //     let tree_root_id = self.make_tree(wtxn, &item_indices, true, &mut rng)?;
+        //     // make_tree must NEVER return a leaf when called as root
+        //     thread_roots.push(tree_root_id.unwrap_tree());
+        // }
+
+        self.roots.append(&mut thread_roots);
+
+        // Also, copy the roots into the highest key of the database (u32::MAX).
+        // This way we can load them faster without reading the whole database.
+        let metadata = Metadata {
+            dimensions: self.dimensions.try_into().unwrap(),
+            n_items: self.n_items.try_into().unwrap(),
+            roots: ItemIds::from_slice(&self.roots),
+            distance: D::name(),
+        };
+        match self.database.remap_data_type::<MetadataCodec>().put_with_flags(
+            wtxn,
+            PutFlags::NO_OVERWRITE,
+            &Key::metadata(self.index),
+            &metadata,
+        ) {
+            Ok(_) => (),
+            Err(heed::Error::Mdb(MdbError::KeyExist)) => return Err(Error::DatabaseFull),
+            Err(e) => return Err(e.into()),
         }
 
         Ok(())
