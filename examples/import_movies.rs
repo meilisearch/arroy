@@ -38,7 +38,7 @@ struct Cli {
 fn main() -> Result<(), heed::BoxedError> {
     let Cli { database, map_size, dimensions, seed } = Cli::parse();
 
-    let mut rng = StdRng::seed_from_u64(seed);
+    let rng = StdRng::seed_from_u64(seed);
     let reader = BufReader::new(std::io::stdin());
 
     let _ = fs::create_dir_all(&database);
@@ -77,12 +77,6 @@ fn main() -> Result<(), heed::BoxedError> {
     println!();
 
     println!("Building the arroy internal trees...");
-    let now = Instant::now();
-    for (id, vector) in vectors.iter() {
-        writer.add_item(&mut wtxn, *id, vector).unwrap();
-    }
-    let insert = now.elapsed();
-
     wtxn.commit().unwrap();
 
     let mut wtxn = env.write_txn().unwrap();
