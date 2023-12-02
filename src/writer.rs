@@ -1,9 +1,8 @@
 use std::any::TypeId;
 use std::borrow::Cow;
 use std::iter::repeat_with;
-use std::sync::atomic::AtomicU32;
 
-use heed::types::DecodeIgnore;
+use heed::types::{Bytes, DecodeIgnore};
 use heed::{MdbError, PutFlags, RoTxn, RwTxn};
 use rand::seq::SliceRandom;
 use rayon::prelude::*;
@@ -15,6 +14,7 @@ use crate::internals::{KeyCodec, Side};
 use crate::item_iter::ItemIter;
 use crate::node::{Descendants, ItemIds, Leaf, SplitPlaneNormal, UnalignedF32Slice};
 use crate::reader::item_leaf;
+use crate::tmp_nodes::{ConcurrentNodeIds, TmpNodes};
 use crate::{
     Database, Error, ItemId, Key, Metadata, MetadataCodec, Node, NodeCodec, NodeId, Prefix,
     PrefixCodec, Result,
@@ -140,7 +140,7 @@ impl<D: Distance> Writer<D> {
         Ok(())
     }
 
-    pub fn build_parallel<R: Rng + SeedableRng + Send + Sync>(
+    pub fn build_in_parallel<R: Rng + SeedableRng + Send + Sync>(
         mut self,
         wtxn: &mut RwTxn,
         mut rng: R,
@@ -162,7 +162,8 @@ impl<D: Distance> Writer<D> {
             dimensions: usize,
             n_items: usize,
             index: u16,
-            next_node_id: &AtomicU32,
+            concurrent_node_ids: &ConcurrentNodeIds,
+            tmp_nodes: &mut TmpNodes,
             rtxn: &RoTxn,
             item_indices: &[ItemId],
             is_root: bool,
@@ -179,13 +180,11 @@ impl<D: Distance> Writer<D> {
             if item_indices.len() <= max_descendants
                 && (!is_root || n_items <= max_descendants || item_indices.len() == 1)
             {
-                let item_id = todo!();
-                // let item_id = self.create_item_id()?;
-                let item = todo!();
-                // let item = Node::Descendants(Descendants {
-                //     descendants: ItemIds::from_slice(item_indices),
-                // });
-                // database.put(wtxn, &Key::tree(index, item_id), &item)?;
+                let item_id = concurrent_node_ids.next();
+                let item = Node::Descendants(Descendants {
+                    descendants: ItemIds::from_slice(item_indices),
+                });
+                tmp_nodes.put::<NodeCodec<D>>(item_id, &item)?;
                 return Ok(NodeId::tree(item_id));
             }
 
@@ -230,8 +229,8 @@ impl<D: Distance> Writer<D> {
                 let mut children = item_indices.to_vec();
                 children.shuffle(rng);
                 let (left, right) = children.split_at(children.len() / 2);
-                children_left.copy_from_slice(left);
-                children_right.copy_from_slice(right);
+                children_left.extend_from_slice(left);
+                children_right.extend_from_slice(right);
 
                 normal.fill(0.0);
             }
@@ -243,7 +242,8 @@ impl<D: Distance> Writer<D> {
                     dimensions,
                     n_items,
                     index,
-                    next_node_id,
+                    concurrent_node_ids,
+                    tmp_nodes,
                     rtxn,
                     &children_left,
                     false,
@@ -254,7 +254,8 @@ impl<D: Distance> Writer<D> {
                     dimensions,
                     n_items,
                     index,
-                    next_node_id,
+                    concurrent_node_ids,
+                    tmp_nodes,
                     rtxn,
                     &children_right,
                     false,
@@ -262,51 +263,49 @@ impl<D: Distance> Writer<D> {
                 )?,
             };
 
-            let new_node_id = todo!();
-            // let new_node_id = self.create_item_id()?;
-            // database.put(wtxn, &Key::tree(index, new_node_id), &Node::SplitPlaneNormal(normal))?;
+            let new_node_id = concurrent_node_ids.next();
+            tmp_nodes.put::<NodeCodec<D>>(new_node_id, &Node::SplitPlaneNormal(normal))?;
 
             Ok(NodeId::tree(new_node_id))
         }
 
         // The globally incrementing node ids that are shared between threads.
-        // TODO create a wrapper around that atomic type.
-        let next_node_id = AtomicU32::new(self.next_tree_id);
-
         let n_trees = n_trees.expect("please specify the number of trees");
         let rtxn_rngs: Result<Vec<_>, _> = repeat_with(|| {
             wtxn.env().read_txn().map(|txn| (txn, R::seed_from_u64(rng.next_u64())))
         })
+        .take(n_trees)
         .collect();
-        let trees: Result<Vec<_>> = rtxn_rngs?
+
+        let next_node_id = ConcurrentNodeIds::new(self.next_tree_id);
+        let results: Result<(Vec<_>, Vec<_>)> = rtxn_rngs?
             .into_par_iter()
             .map(|(rtxn, mut rng)| {
-                make_tree_in_file(
+                let mut tmp_nodes = TmpNodes::new()?;
+                let root_id = make_tree_in_file(
                     self.database,
                     self.dimensions,
                     self.n_items,
                     self.index,
                     &next_node_id,
+                    &mut tmp_nodes,
                     &rtxn,
                     &item_indices,
                     true,
                     &mut rng,
-                )
+                )?;
+                // make_tree must NEVER return a leaf when called as root
+                Ok((root_id.unwrap_tree(), tmp_nodes.into_reader()?))
             })
             .collect();
 
-        let mut thread_roots = Vec::new();
-        // loop {
-        //     match n_trees {
-        //         Some(n_trees) if thread_roots.len() >= n_trees => break,
-        //         None if self.next_tree_id as usize >= self.n_items => break,
-        //         _ => (),
-        //     }
-
-        //     let tree_root_id = self.make_tree(wtxn, &item_indices, true, &mut rng)?;
-        //     // make_tree must NEVER return a leaf when called as root
-        //     thread_roots.push(tree_root_id.unwrap_tree());
-        // }
+        let (mut thread_roots, tmp_nodes) = results?;
+        for tmp_node in tmp_nodes {
+            for (item_id, item_bytes) in tmp_node.iter() {
+                let key = Key::tree(self.index, item_id);
+                self.database.remap_data_type::<Bytes>().put(wtxn, &key, item_bytes)?;
+            }
+        }
 
         self.roots.append(&mut thread_roots);
 
@@ -459,13 +458,9 @@ impl<D: Distance> Writer<D> {
 
             for node_id in item_indices.iter() {
                 match Side::random(rng) {
-                    Side::Left => {
-                        children_left.push(node_id);
-                    }
-                    Side::Right => {
-                        children_right.push(node_id);
-                    }
-                }
+                    Side::Left => children_left.push(node_id),
+                    Side::Right => children_right.push(node_id),
+                };
             }
         }
 

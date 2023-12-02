@@ -81,6 +81,7 @@ mod node_id;
 mod reader;
 mod spaces;
 mod stats;
+mod tmp_nodes;
 mod writer;
 
 #[cfg(test)]
