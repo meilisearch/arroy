@@ -13,7 +13,8 @@ use crate::internals::{KeyCodec, Side};
 use crate::item_iter::ItemIter;
 use crate::node::{Descendants, ItemIds, Leaf, SplitPlaneNormal, UnalignedF32Slice};
 use crate::{
-    Database, Error, ItemId, Key, MetadataCodec, Node, NodeId, Prefix, PrefixCodec, Result,
+    Database, Error, ItemId, Key, MetadataCodec, Node, NodeId, Prefix, PrefixCodec, Result, Stats,
+    TreeStats,
 };
 
 /// A reader over the arroy trees and user items.
@@ -71,6 +72,40 @@ impl<'t, D: Distance> Reader<'t, D> {
     /// Returns the index of this reader in the database.
     pub fn index(&self) -> u16 {
         self.index
+    }
+
+    /// Returns the stats of the trees of this database.
+    pub fn stats(&self, rtxn: &RoTxn) -> Result<Stats> {
+        fn recursive_depth<D: Distance>(
+            rtxn: &RoTxn,
+            database: Database<D>,
+            index: u16,
+            node_id: NodeId,
+        ) -> Result<TreeStats> {
+            match database.get(rtxn, &Key::new(index, node_id))?.unwrap() {
+                Node::Leaf(_) => Ok(TreeStats { depth: 1, zero_normals: 0 }),
+                Node::Descendants(_) => Ok(TreeStats { depth: 1, zero_normals: 0 }),
+                Node::SplitPlaneNormal(SplitPlaneNormal { normal, left, right }) => {
+                    let left = recursive_depth(rtxn, database, index, left)?;
+                    let right = recursive_depth(rtxn, database, index, right)?;
+                    let is_zero_normal = normal.iter().all(|f| f == 0.0) as usize;
+
+                    Ok(TreeStats {
+                        depth: 1 + left.depth.max(right.depth),
+                        zero_normals: left.zero_normals + right.zero_normals + is_zero_normal,
+                    })
+                }
+            }
+        }
+
+        let tree_stats: Result<Vec<_>> = self
+            .roots
+            .iter()
+            .map(NodeId::tree)
+            .map(|root| recursive_depth::<D>(rtxn, self.database, self.index, root))
+            .collect();
+
+        Ok(Stats { tree_stats: tree_stats? })
     }
 
     /// Returns the number of nodes in the index. Useful to run an exhaustive search.
