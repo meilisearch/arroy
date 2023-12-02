@@ -3,6 +3,7 @@ use std::borrow::Cow;
 
 use heed::types::DecodeIgnore;
 use heed::{MdbError, PutFlags, RoTxn, RwTxn};
+use rand::seq::SliceRandom;
 use rand::Rng;
 use roaring::RoaringBitmap;
 
@@ -257,10 +258,9 @@ impl<D: Distance> Writer<D> {
 
         // If we didn't find a hyperplane, just randomize sides as a last option
         // and set the split plane to zero as a dummy plane.
-        while split_imbalance(children_left.len(), children_right.len()) > 0.99 {
+        if split_imbalance(children_left.len(), children_right.len()) > 0.99 {
             children_left.clear();
             children_right.clear();
-            normal.fill(0.0);
 
             for node_id in item_indices.iter() {
                 match Side::random(rng) {
