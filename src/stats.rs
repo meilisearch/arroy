@@ -12,5 +12,5 @@ pub struct TreeStats {
     pub depth: usize,
     /// The number of split plane normals that were set to zero
     /// and where children are randomly assigned a side.
-    pub zero_normals: usize,
+    pub dummy_normals: usize,
 }

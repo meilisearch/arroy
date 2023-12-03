@@ -83,8 +83,8 @@ impl<'t, D: Distance> Reader<'t, D> {
             node_id: NodeId,
         ) -> Result<TreeStats> {
             match database.get(rtxn, &Key::new(index, node_id))?.unwrap() {
-                Node::Leaf(_) => Ok(TreeStats { depth: 1, zero_normals: 0 }),
-                Node::Descendants(_) => Ok(TreeStats { depth: 1, zero_normals: 0 }),
+                Node::Leaf(_) => Ok(TreeStats { depth: 1, dummy_normals: 0 }),
+                Node::Descendants(_) => Ok(TreeStats { depth: 1, dummy_normals: 0 }),
                 Node::SplitPlaneNormal(SplitPlaneNormal { normal, left, right }) => {
                     let left = recursive_depth(rtxn, database, index, left)?;
                     let right = recursive_depth(rtxn, database, index, right)?;
@@ -92,7 +92,7 @@ impl<'t, D: Distance> Reader<'t, D> {
 
                     Ok(TreeStats {
                         depth: 1 + left.depth.max(right.depth),
-                        zero_normals: left.zero_normals + right.zero_normals + is_zero_normal,
+                        dummy_normals: left.dummy_normals + right.dummy_normals + is_zero_normal,
                     })
                 }
             }
