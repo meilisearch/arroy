@@ -30,13 +30,17 @@ struct Cli {
     #[arg(long, default_value_t = 768)]
     dimensions: usize,
 
+    /// The number of tress to generate.
+    #[arg(long)]
+    n_trees: Option<usize>,
+
     /// The seed to generate the internal trees.
     #[arg(long, default_value_t = 42)]
     seed: u64,
 }
 
 fn main() -> Result<(), heed::BoxedError> {
-    let Cli { database, map_size, dimensions, seed } = Cli::parse();
+    let Cli { database, map_size, dimensions, n_trees, seed } = Cli::parse();
 
     let rng = StdRng::seed_from_u64(seed);
     let reader = BufReader::new(std::io::stdin());
@@ -77,7 +81,7 @@ fn main() -> Result<(), heed::BoxedError> {
     println!();
 
     println!("Building the arroy internal trees...");
-    writer.build_in_parallel(&mut wtxn, rng, Some(111)).unwrap();
+    writer.build_in_parallel(&mut wtxn, rng, n_trees).unwrap();
     wtxn.commit().unwrap();
     println!("Took {:.2?} to build", now.elapsed());
 
