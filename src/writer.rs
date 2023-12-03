@@ -13,8 +13,8 @@ use crate::distance::Distance;
 use crate::internals::{KeyCodec, Side};
 use crate::item_iter::ItemIter;
 use crate::node::{Descendants, ItemIds, Leaf, SplitPlaneNormal, UnalignedF32Slice};
+use crate::parallel::{ConcurrentNodeIds, ImmutableLeafs, TmpNodes};
 use crate::reader::item_leaf;
-use crate::tmp_nodes::{ConcurrentNodeIds, TmpNodes};
 use crate::{
     Database, Error, ItemId, Key, Metadata, MetadataCodec, Node, NodeCodec, NodeId, Prefix,
     PrefixCodec, Result,
@@ -158,13 +158,11 @@ impl<D: Distance> Writer<D> {
         self.n_items = item_indices.len();
 
         fn make_tree_in_file<D: Distance, R: Rng>(
-            database: Database<D>,
+            database: &ImmutableLeafs<D>,
             dimensions: usize,
             n_items: usize,
-            index: u16,
             concurrent_node_ids: &ConcurrentNodeIds,
             tmp_nodes: &mut TmpNodes,
-            rtxn: &RoTxn,
             item_indices: &[ItemId],
             is_root: bool,
             rng: &mut R,
@@ -190,8 +188,7 @@ impl<D: Distance> Writer<D> {
 
             let mut children = Vec::new();
             for &item_id in item_indices {
-                let node = database.get(rtxn, &Key::item(index, item_id))?.unwrap();
-                let leaf = node.leaf().unwrap();
+                let leaf = database.get(item_id)?.unwrap();
                 children.push(leaf);
             }
 
@@ -241,10 +238,8 @@ impl<D: Distance> Writer<D> {
                     database,
                     dimensions,
                     n_items,
-                    index,
                     concurrent_node_ids,
                     tmp_nodes,
-                    rtxn,
                     &children_left,
                     false,
                     rng,
@@ -253,10 +248,8 @@ impl<D: Distance> Writer<D> {
                     database,
                     dimensions,
                     n_items,
-                    index,
                     concurrent_node_ids,
                     tmp_nodes,
-                    rtxn,
                     &children_right,
                     false,
                     rng,
@@ -271,25 +264,20 @@ impl<D: Distance> Writer<D> {
 
         // The globally incrementing node ids that are shared between threads.
         let n_trees = n_trees.expect("please specify the number of trees");
-        let rtxn_rngs: Result<Vec<_>, _> = repeat_with(|| {
-            wtxn.env().read_txn().map(|txn| (txn, R::seed_from_u64(rng.next_u64())))
-        })
-        .take(n_trees)
-        .collect();
+        let rngs: Vec<_> = repeat_with(|| R::seed_from_u64(rng.next_u64())).take(n_trees).collect();
 
         let next_node_id = ConcurrentNodeIds::new(self.next_tree_id);
-        let results: Result<(Vec<_>, Vec<_>)> = rtxn_rngs?
+        let immutable_leafs = ImmutableLeafs::new(wtxn, self.database, self.index)?;
+        let results: Result<(Vec<_>, Vec<_>)> = rngs
             .into_par_iter()
-            .map(|(rtxn, mut rng)| {
+            .map(|mut rng| {
                 let mut tmp_nodes = TmpNodes::new()?;
                 let root_id = make_tree_in_file(
-                    self.database,
+                    &immutable_leafs,
                     self.dimensions,
                     self.n_items,
-                    self.index,
                     &next_node_id,
                     &mut tmp_nodes,
-                    &rtxn,
                     &item_indices,
                     true,
                     &mut rng,

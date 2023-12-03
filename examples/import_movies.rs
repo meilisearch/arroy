@@ -77,9 +77,6 @@ fn main() -> Result<(), heed::BoxedError> {
     println!();
 
     println!("Building the arroy internal trees...");
-    wtxn.commit().unwrap();
-
-    let mut wtxn = env.write_txn().unwrap();
     writer.build_in_parallel(&mut wtxn, rng, Some(111)).unwrap();
     wtxn.commit().unwrap();
     println!("Took {:.2?} to build", now.elapsed());

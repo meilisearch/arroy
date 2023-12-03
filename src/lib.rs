@@ -78,10 +78,10 @@ mod item_iter;
 mod key;
 mod node;
 mod node_id;
+mod parallel;
 mod reader;
 mod spaces;
 mod stats;
-mod tmp_nodes;
 mod writer;
 
 #[cfg(test)]
