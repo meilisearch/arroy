@@ -140,7 +140,7 @@ impl<D: Distance> Writer<D> {
         Ok(())
     }
 
-    pub fn build_in_parallel<R: Rng + SeedableRng + Send + Sync>(
+    pub fn build_in_parallel<R: Rng + SeedableRng>(
         mut self,
         wtxn: &mut RwTxn,
         mut rng: R,
@@ -264,13 +264,14 @@ impl<D: Distance> Writer<D> {
 
         // The globally incrementing node ids that are shared between threads.
         let n_trees = n_trees.expect("please specify the number of trees");
-        let rngs: Vec<_> = repeat_with(|| R::seed_from_u64(rng.next_u64())).take(n_trees).collect();
+        let seeds: Vec<_> = repeat_with(|| rng.next_u64()).take(n_trees).collect();
 
         let next_node_id = ConcurrentNodeIds::new(self.next_tree_id);
         let immutable_leafs = ImmutableLeafs::new(wtxn, self.database, self.index)?;
-        let results: Result<(Vec<_>, Vec<_>)> = rngs
+        let results: Result<(Vec<_>, Vec<_>)> = seeds
             .into_par_iter()
-            .map(|mut rng| {
+            .map(|seed| {
+                let mut rng = R::seed_from_u64(seed);
                 let mut tmp_nodes = TmpNodes::new()?;
                 let root_id = make_tree_in_file(
                     &immutable_leafs,
