@@ -42,7 +42,7 @@ struct Cli {
 fn main() -> Result<(), heed::BoxedError> {
     let Cli { database, map_size, dimensions, n_trees, seed } = Cli::parse();
 
-    let rng = StdRng::seed_from_u64(seed);
+    let mut rng = StdRng::seed_from_u64(seed);
     let reader = BufReader::new(std::io::stdin());
 
     let _ = fs::create_dir_all(&database);
@@ -81,7 +81,7 @@ fn main() -> Result<(), heed::BoxedError> {
     println!();
 
     println!("Building the arroy internal trees...");
-    writer.build_in_parallel(&mut wtxn, rng, n_trees).unwrap();
+    writer.build_in_parallel(&mut wtxn, &mut rng, n_trees).unwrap();
     wtxn.commit().unwrap();
     println!("Took {:.2?} to build", now.elapsed());
 

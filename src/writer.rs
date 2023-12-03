@@ -143,7 +143,7 @@ impl<D: Distance> Writer<D> {
     pub fn build_in_parallel<R: Rng + SeedableRng>(
         mut self,
         wtxn: &mut RwTxn,
-        mut rng: R,
+        rng: &mut R,
         n_trees: Option<usize>,
     ) -> Result<()> {
         D::preprocess(wtxn, |wtxn| {
