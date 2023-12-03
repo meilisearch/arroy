@@ -1,26 +1,25 @@
 use std::fmt;
 
 use heed::types::LazyDecode;
-use heed::{Database, Env, EnvOpenOptions, Unspecified};
+use heed::{Env, EnvOpenOptions};
 use rand::rngs::StdRng;
 use rand::SeedableRng;
 use tempfile::TempDir;
 
 use crate::distances::Angular;
-use crate::internals::KeyCodec;
-use crate::{MetadataCodec, NodeCodec, NodeMode};
+use crate::{Database, Distance, MetadataCodec, NodeCodec, NodeMode};
 
 mod reader;
 mod writer;
 
-pub struct DatabaseHandle {
+pub struct DatabaseHandle<D> {
     pub env: Env,
-    pub database: Database<KeyCodec, Unspecified>,
+    pub database: Database<D>,
     #[allow(unused)]
     pub tempdir: TempDir,
 }
 
-impl fmt::Display for DatabaseHandle {
+impl<D: Distance> fmt::Display for DatabaseHandle<D> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let rtxn = self.env.read_txn().unwrap();
 
@@ -70,11 +69,11 @@ impl fmt::Display for DatabaseHandle {
     }
 }
 
-fn create_database() -> DatabaseHandle {
+fn create_database<D: Distance>() -> DatabaseHandle<D> {
     let dir = tempfile::tempdir().unwrap();
     let env = EnvOpenOptions::new().map_size(200 * 1024 * 1024).open(dir.path()).unwrap();
     let mut wtxn = env.write_txn().unwrap();
-    let database: Database<KeyCodec, Unspecified> = env.create_database(&mut wtxn, None).unwrap();
+    let database: Database<D> = env.create_database(&mut wtxn, None).unwrap();
     wtxn.commit().unwrap();
     DatabaseHandle { env, database, tempdir: dir }
 }

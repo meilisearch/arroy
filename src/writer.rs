@@ -34,9 +34,9 @@ pub struct Writer<D: Distance> {
 impl<D: Distance> Writer<D> {
     /// Returns a writer after having deleted the tree nodes to be able to modify items
     /// safely.
-    pub fn prepare<U>(
+    pub fn prepare(
         wtxn: &mut RwTxn,
-        database: heed::Database<KeyCodec, U>,
+        database: Database<D>,
         index: u16,
         dimensions: usize,
     ) -> Result<Writer<D>> {

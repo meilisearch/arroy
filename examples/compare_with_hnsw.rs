@@ -3,9 +3,9 @@ use std::num::NonZeroUsize;
 use std::time::Instant;
 
 use arroy::distances::Euclidean;
-use arroy::internals::{KeyCodec, Leaf, UnalignedF32Slice};
-use arroy::{Distance, ItemId, Reader, Result, Writer};
-use heed::{Database, DatabaseFlags, EnvOpenOptions, RwTxn, Unspecified};
+use arroy::internals::{Leaf, UnalignedF32Slice};
+use arroy::{Database, Distance, ItemId, Reader, Result, Writer};
+use heed::{EnvOpenOptions, RwTxn};
 use instant_distance::{Builder, HnswMap, MapItem};
 use rand::rngs::StdRng;
 use rand::{Rng, SeedableRng};
@@ -27,11 +27,7 @@ fn main() -> Result<()> {
     eprintln!("took {:.02?} to generate the {NUMBER_VECTORS} random points", before.elapsed());
 
     let mut wtxn = env.write_txn()?;
-    let database = env
-        .database_options()
-        .flags(DatabaseFlags::INTEGER_KEY)
-        .types::<KeyCodec, Unspecified>()
-        .create(&mut wtxn)?;
+    let database: Database<Euclidean> = env.create_database(&mut wtxn, None)?;
     let before = Instant::now();
     load_into_arroy(rng_arroy, wtxn, database, VECTOR_DIMENSIONS, &points)?;
     eprintln!("took {:.02?} to load into arroy", before.elapsed());
@@ -75,11 +71,11 @@ fn main() -> Result<()> {
 fn load_into_arroy(
     rng: StdRng,
     mut wtxn: RwTxn,
-    database: Database<KeyCodec, Unspecified>,
+    database: Database<Euclidean>,
     dimensions: usize,
     points: &[Point],
 ) -> Result<()> {
-    let writer = Writer::<Euclidean>::prepare(&mut wtxn, database, 0, dimensions)?;
+    let writer = Writer::prepare(&mut wtxn, database, 0, dimensions)?;
     for (i, Point(vector)) in points.iter().enumerate() {
         writer.add_item(&mut wtxn, i.try_into().unwrap(), &vector[..])?;
     }

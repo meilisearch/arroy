@@ -29,11 +29,7 @@ pub struct Reader<'t, D: Distance> {
 
 impl<'t, D: Distance> Reader<'t, D> {
     /// Returns a reader over the database with the specified [`Distance`] type.
-    pub fn open<U>(
-        rtxn: &'t RoTxn,
-        index: u16,
-        database: heed::Database<KeyCodec, U>,
-    ) -> Result<Reader<'t, D>> {
+    pub fn open(rtxn: &'t RoTxn, index: u16, database: Database<D>) -> Result<Reader<'t, D>> {
         let metadata_key = Key::metadata(index);
         let metadata = match database.remap_data_type::<MetadataCodec>().get(rtxn, &metadata_key)? {
             Some(metadata) => metadata,
