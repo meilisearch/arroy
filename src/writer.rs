@@ -220,15 +220,7 @@ impl<D: Distance> Writer<D> {
             // If we didn't find a hyperplane, just randomize sides as a last option
             // and set the split plane to zero as a dummy plane.
             if split_imbalance(children_left.len(), children_right.len()) > 0.99 {
-                children_left.clear();
-                children_right.clear();
-
-                let mut children = item_indices.to_vec();
-                children.shuffle(rng);
-                let (left, right) = children.split_at(children.len() / 2);
-                children_left.extend_from_slice(left);
-                children_right.extend_from_slice(right);
-
+                randomly_split_children(rng, item_indices, &mut children_left, &mut children_right);
                 normal.fill(0.0);
             }
 
@@ -442,15 +434,8 @@ impl<D: Distance> Writer<D> {
         // If we didn't find a hyperplane, just randomize sides as a last option
         // and set the split plane to zero as a dummy plane.
         if split_imbalance(children_left.len(), children_right.len()) > 0.99 {
-            children_left.clear();
-            children_right.clear();
-
-            for node_id in item_indices.iter() {
-                match Side::random(rng) {
-                    Side::Left => children_left.push(node_id),
-                    Side::Right => children_right.push(node_id),
-                };
-            }
+            randomly_split_children(rng, item_indices, &mut children_left, &mut children_right);
+            normal.fill(0.0);
         }
 
         let normal = SplitPlaneNormal {
@@ -490,6 +475,24 @@ impl<D: Distance> Writer<D> {
         }
 
         Ok(indices)
+    }
+}
+
+/// Efficiently splits the items into the left and right children bitmaps.
+fn randomly_split_children<R: Rng>(
+    rng: &mut R,
+    item_indices: &RoaringBitmap,
+    children_left: &mut RoaringBitmap,
+    children_right: &mut RoaringBitmap,
+) {
+    children_left.clear();
+    children_right.clear();
+
+    for node_id in item_indices.iter() {
+        match Side::random(rng) {
+            Side::Left => children_left.push(node_id),
+            Side::Right => children_right.push(node_id),
+        };
     }
 }
 
