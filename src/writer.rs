@@ -1,11 +1,11 @@
 use std::any::TypeId;
 use std::borrow::Cow;
-use std::iter::repeat_with;
 
 use heed::types::{Bytes, DecodeIgnore};
 use heed::{MdbError, PutFlags, RoTxn, RwTxn};
 use rand::seq::SliceRandom;
 use rand::{Rng, SeedableRng};
+use rayon::iter::repeatn;
 use rayon::prelude::*;
 
 use crate::distance::Distance;
@@ -180,37 +180,41 @@ impl<D: Distance> Writer<D> {
 
         log::debug!("started building trees for {} items...", self.n_items);
 
+        let concurrent_node_ids = ConcurrentNodeIds::new(0);
         let frozzen_reader = FrozzenReader {
             leafs: &ImmutableLeafs::new(wtxn, self.database, self.index)?,
             dimensions: self.dimensions,
             n_items: self.n_items,
             // The globally incrementing node ids that are shared between threads.
-            concurrent_node_ids: &ConcurrentNodeIds::new(0),
+            concurrent_node_ids: &concurrent_node_ids,
         };
 
-        let n_trees = n_trees.expect("please specify the number of trees");
-        log::debug!("running {n_trees} parallel tree building...");
+        log::debug!(
+            "running {} parallel tree building...",
+            n_trees.map_or_else(|| "an unknown number of".to_string(), |n| n.to_string())
+        );
 
-        let seeds: Vec<_> = repeat_with(|| rng.next_u64()).take(n_trees).collect();
-        let results: Result<(Vec<_>, Vec<_>)> = seeds
-            .into_par_iter()
-            .enumerate()
-            .map(|(i, seed)| {
-                log::debug!("started generating tree {i}nth...");
-                let mut rng = R::seed_from_u64(seed);
-                let mut tmp_nodes = TmpNodes::new()?;
-                let root_id = make_tree_in_file(
-                    &frozzen_reader,
-                    &mut rng,
-                    &item_indices,
-                    true,
-                    &mut tmp_nodes,
-                )?;
-                log::debug!("finished generating tree {i}nth");
-                // make_tree must NEVER return a leaf when called as root
-                Ok((root_id.unwrap_tree(), tmp_nodes.into_reader()?))
-            })
-            .collect();
+        let results: Result<(Vec<_>, Vec<_>)> =
+            repeatn(rng.next_u64(), n_trees.unwrap_or(usize::MAX))
+                .enumerate()
+                // Stop generating trees once the number of tree nodes are generated
+                .take_any_while(|_| concurrent_node_ids.current() as usize <= self.n_items)
+                .map(|(i, seed)| {
+                    log::debug!("started generating tree {i:X}...");
+                    let mut rng = R::seed_from_u64(seed + (i as u64));
+                    let mut tmp_nodes = TmpNodes::new()?;
+                    let root_id = make_tree_in_file(
+                        &frozzen_reader,
+                        &mut rng,
+                        &item_indices,
+                        true,
+                        &mut tmp_nodes,
+                    )?;
+                    log::debug!("finished generating tree {i:X}");
+                    // make_tree must NEVER return a leaf when called as root
+                    Ok((root_id.unwrap_tree(), tmp_nodes.into_reader()?))
+                })
+                .collect();
 
         let (mut thread_roots, tmp_nodes) = results?;
         log::debug!("started writing the tree nodes of {} trees...", tmp_nodes.len());
