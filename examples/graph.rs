@@ -4,25 +4,34 @@
 
 use std::fs::File;
 use std::io::BufWriter;
+use std::path::PathBuf;
 
 use arroy::distances::DotProduct;
 use arroy::{Database, Reader};
+use clap::Parser;
 use heed::EnvOpenOptions;
 
-fn main() {
-    let mut args = std::env::args();
-    let dir_path = args.nth(1).expect("Provide the path to a database");
-    let output_file = args.nth(1).unwrap_or_else(|| {
-        eprintln!("No output path is specified. Writing to `graph.dot` by default.");
-        "graph.dot".to_string()
-    });
+#[derive(Parser)]
+#[command(author, version, about, long_about = None)]
+struct Cli {
+    /// Sets a custom database path.
+    #[arg(default_value = "import.ary")]
+    database: PathBuf,
 
-    let output = File::create(&output_file).unwrap();
+    /// Sets the output path for the graph.
+    #[arg(long, default_value = "graph.dot")]
+    output_path: PathBuf,
+}
+
+fn main() {
+    let Cli { database, output_path } = Cli::parse();
+
+    let output = File::create(&output_path).unwrap();
     let writer = BufWriter::new(output);
 
     let env = EnvOpenOptions::new()
         .map_size(1024 * 1024 * 1024 * 2) // 2GiB
-        .open(dir_path)
+        .open(database)
         .unwrap();
 
     let rtxn = env.read_txn().unwrap();
@@ -33,6 +42,6 @@ fn main() {
 
     reader.plot_internals_tree_nodes(&rtxn, writer).unwrap();
 
-    eprintln!("To convert the graph to a png, run: `dot {} -T png > graph.png`", output_file);
+    eprintln!("To convert the graph to a png, run: `dot {output_path:?} -T png > graph.png`");
     eprintln!("`dot` comes from the graphiz package");
 }

@@ -1,9 +1,9 @@
 use std::borrow::Cow;
 use std::cmp::Reverse;
-use std::collections::{BinaryHeap, HashMap};
+use std::collections::BinaryHeap;
 use std::iter::repeat;
+use std::marker;
 use std::num::NonZeroUsize;
-use std::{io, marker};
 
 use heed::RoTxn;
 use ordered_float::OrderedFloat;
@@ -241,7 +241,7 @@ impl<'t, D: Distance> Reader<'t, D> {
     pub fn plot_internals_tree_nodes(
         &self,
         rtxn: &RoTxn,
-        mut writer: impl io::Write,
+        mut writer: impl std::io::Write,
     ) -> Result<()> {
         writeln!(writer, "digraph {{")?;
         writeln!(writer, "\tlabel=metadata")?;
@@ -254,7 +254,7 @@ impl<'t, D: Distance> Reader<'t, D> {
             //   b -> a
             // }
 
-            let mut cache: HashMap<NodeId, usize> = HashMap::new();
+            let mut cache = std::collections::HashMap::<NodeId, usize>::new();
 
             // Start creating the graph
             writeln!(writer, "\tsubgraph {{")?;
@@ -306,7 +306,7 @@ impl<'t, D: Distance> Reader<'t, D> {
         &self,
         rtxn: &RoTxn,
         node_id: NodeId,
-        cache: &mut HashMap<NodeId, usize>,
+        cache: &mut std::collections::HashMap<NodeId, usize>,
     ) -> Result<usize> {
         if let Some(count) = cache.get(&node_id) {
             return Ok(*count);

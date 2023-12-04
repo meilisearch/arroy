@@ -31,7 +31,7 @@ fn main() -> anyhow::Result<()> {
 
     let Stats { tree_stats, leaf } = reader.stats(&rtxn)?;
     let nb_roots = tree_stats.len();
-    println!("There are {} trees in this arroy index for a total of {} leaf.", nb_roots, leaf);
+    println!("There are {nb_roots} trees in this arroy index for a total of {leaf} leaf.");
 
     #[allow(clippy::unused_enumerate_index)]
     for (_i, TreeStats { depth, dummy_normals, split_nodes, descendants }) in
