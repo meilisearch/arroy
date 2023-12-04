@@ -1,6 +1,8 @@
 /// The different stats of an arroy database.
 #[derive(Debug, Clone)]
 pub struct Stats {
+    /// Number of leaf node or item vectors.
+    pub leaf: usize,
     /// The stats of each individual tree.
     pub tree_stats: Vec<TreeStats>,
 }
@@ -13,4 +15,8 @@ pub struct TreeStats {
     /// The number of split plane normals that were set to zero
     /// and where children are randomly assigned a side.
     pub dummy_normals: usize,
+    /// Number of split nodes in the tree.
+    pub split_nodes: usize,
+    /// Number of descendants nodes in the tree.
+    pub descendants: usize,
 }

@@ -26,19 +26,41 @@ fn main() -> anyhow::Result<()> {
 
     let mut dummy_sum = 0;
     let mut depth_sum = 0;
-    let Stats { tree_stats } = reader.stats(&rtxn)?;
+    let mut split_nodes_sum = 0;
+    let mut descendants_sum = 0;
+
+    let Stats { tree_stats, leaf } = reader.stats(&rtxn)?;
     let nb_roots = tree_stats.len();
-    println!("There are {} trees in this arroy index.", nb_roots);
-    for (i, TreeStats { depth, dummy_normals }) in tree_stats.into_iter().enumerate() {
+    println!("There are {} trees in this arroy index for a total of {} leaf.", nb_roots, leaf);
+
+    for (i, TreeStats { depth, dummy_normals, split_nodes, descendants }) in
+        tree_stats.into_iter().enumerate()
+    {
         depth_sum += depth;
         dummy_sum += dummy_normals;
-        println!("Tree {i} as a depth of {depth} and {dummy_normals} dummy normals");
+        split_nodes_sum += split_nodes;
+        descendants_sum += descendants;
+
+        // println!("Tree {i} as a depth of {depth}, {split_nodes} split nodes, {dummy_normals} dummy normals ({}%), and {descendants} descendants.", dummy_normals as f64 / split_nodes as f64 * 100.);
     }
 
+    println!();
+    println!("Over all the trees, on average:");
+    println!("\tdepth:\t\t\t{:.2}", depth_sum as f64 / nb_roots as f64);
+    println!("\tsplit nodes:\t\t{:.2}", split_nodes_sum as f64 / nb_roots as f64);
     println!(
-        "On average, got a depth of {} and {} normals",
-        depth_sum as f64 / nb_roots as f64,
-        dummy_sum as f64 / nb_roots as f64
+        "\tdummy split nodes:\t{:.2} ({:.2}%)",
+        dummy_sum as f64 / nb_roots as f64,
+        dummy_sum as f64 / split_nodes_sum as f64 * 100.
+    );
+    println!("\tdescendants:\t\t{:.2}", descendants_sum as f64 / nb_roots as f64);
+    println!();
+    println!(
+        "That makes a total of: {} tree nodes. {:.2}% of all the nodes",
+        split_nodes_sum + descendants_sum,
+        (split_nodes_sum + descendants_sum) as f64
+            / (split_nodes_sum + descendants_sum + leaf) as f64
+            * 100.,
     );
 
     Ok(())

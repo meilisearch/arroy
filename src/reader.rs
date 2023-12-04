@@ -1,7 +1,6 @@
 use std::borrow::Cow;
 use std::cmp::Reverse;
 use std::collections::{BinaryHeap, HashMap};
-use std::fmt::Write;
 use std::iter::repeat;
 use std::num::NonZeroUsize;
 use std::{io, marker};
@@ -84,8 +83,12 @@ impl<'t, D: Distance> Reader<'t, D> {
             node_id: NodeId,
         ) -> Result<TreeStats> {
             match database.get(rtxn, &Key::new(index, node_id))?.unwrap() {
-                Node::Leaf(_) => Ok(TreeStats { depth: 1, dummy_normals: 0 }),
-                Node::Descendants(_) => Ok(TreeStats { depth: 1, dummy_normals: 0 }),
+                Node::Leaf(_) => {
+                    Ok(TreeStats { depth: 1, dummy_normals: 0, split_nodes: 0, descendants: 0 })
+                }
+                Node::Descendants(_) => {
+                    Ok(TreeStats { depth: 1, dummy_normals: 0, split_nodes: 0, descendants: 1 })
+                }
                 Node::SplitPlaneNormal(SplitPlaneNormal { normal, left, right }) => {
                     let left = recursive_depth(rtxn, database, index, left)?;
                     let right = recursive_depth(rtxn, database, index, right)?;
@@ -94,6 +97,8 @@ impl<'t, D: Distance> Reader<'t, D> {
                     Ok(TreeStats {
                         depth: 1 + left.depth.max(right.depth),
                         dummy_normals: left.dummy_normals + right.dummy_normals + is_zero_normal,
+                        split_nodes: left.split_nodes + right.split_nodes + 1,
+                        descendants: left.descendants + right.descendants,
                     })
                 }
             }
@@ -106,7 +111,7 @@ impl<'t, D: Distance> Reader<'t, D> {
             .map(|root| recursive_depth::<D>(rtxn, self.database, self.index, root))
             .collect();
 
-        Ok(Stats { tree_stats: tree_stats? })
+        Ok(Stats { tree_stats: tree_stats?, leaf: self.n_items })
     }
 
     /// Returns the number of nodes in the index. Useful to run an exhaustive search.
