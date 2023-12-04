@@ -247,7 +247,7 @@ impl<'t, D: Distance> Reader<'t, D> {
             // Start creating the graph
             writeln!(writer, "\tsubgraph {{")?;
             // writeln!(writer, "\t\tlabel={}", tree)?;
-            writeln!(writer, "\t\troot [color=red]")?;
+            writeln!(writer, "\t\troot [color=blue]")?;
             writeln!(writer, "\t\troot -> {tree}")?;
 
             let mut explore = vec![Key::tree(self.index, tree)];
@@ -264,7 +264,7 @@ impl<'t, D: Distance> Reader<'t, D> {
                     )?,
                     Node::SplitPlaneNormal(SplitPlaneNormal { normal, left, right }) => {
                         if normal.iter().all(|n| n == 0.) {
-                            writeln!(writer, "\t\t{} [color=yellow]", key.node.item)?;
+                            writeln!(writer, "\t\t{} [color=red]", key.node.item)?;
                         }
                         writeln!(writer, "\t\t{} -> {}", key.node.item, left.item)?;
                         writeln!(writer, "\t\t{} -> {}", key.node.item, right.item)?;
