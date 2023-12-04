@@ -1,9 +1,10 @@
 use std::borrow::Cow;
 use std::cmp::Reverse;
 use std::collections::BinaryHeap;
+use std::fmt::Write;
 use std::iter::repeat;
-use std::marker;
 use std::num::NonZeroUsize;
+use std::{io, marker};
 
 use heed::RoTxn;
 use ordered_float::OrderedFloat;
@@ -228,6 +229,54 @@ impl<'t, D: Distance> Reader<'t, D> {
         }
 
         Ok(output)
+    }
+
+    /// Write the internal arroy graph in dot format into the provided writer.
+    pub fn plot_internals(&self, rtxn: &RoTxn, mut writer: impl io::Write) -> Result<()> {
+        writeln!(writer, "digraph {{")?;
+        writeln!(writer, "\tlabel=metadata")?;
+        writeln!(writer)?;
+
+        for tree in self.roots.iter().take(1) {
+            // subgraph {
+            //   a -> b
+            //   a -> b
+            //   b -> a
+            // }
+
+            // Start creating the graph
+            writeln!(writer, "\tsubgraph {{")?;
+            // writeln!(writer, "\t\tlabel={}", tree)?;
+            writeln!(writer, "\t\troot [color=red]")?;
+            writeln!(writer, "\t\troot -> {tree}")?;
+
+            let mut explore = vec![Key::tree(self.index, tree)];
+            while let Some(key) = explore.pop() {
+                let node = self.database.get(rtxn, &key)?.unwrap();
+                match node {
+                    Node::Leaf(_) => (),
+                    Node::Descendants(iter) => writeln!(
+                        writer,
+                        "\t\t{} [label=\"{}-{}\"]",
+                        key.node.item,
+                        key.node.item,
+                        iter.descendants.len()
+                    )?,
+                    Node::SplitPlaneNormal(SplitPlaneNormal { normal: _, left, right }) => {
+                        writeln!(writer, "\t\t{} -> {}", key.node.item, left.item)?;
+                        writeln!(writer, "\t\t{} -> {}", key.node.item, right.item)?;
+                        explore.push(Key::tree(self.index, left.item));
+                        explore.push(Key::tree(self.index, right.item));
+                    }
+                }
+            }
+
+            writeln!(writer, "\t}}")?;
+        }
+
+        writeln!(writer, "}}")?;
+
+        Ok(())
     }
 }
 
