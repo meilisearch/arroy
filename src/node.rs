@@ -157,7 +157,7 @@ impl<'a> ItemIds<'a> {
     }
 
     pub fn len(&self) -> usize {
-        self.bytes.len() / size_of::<NodeId>()
+        self.bytes.len() / size_of::<ItemId>()
     }
 
     pub fn iter(&self) -> impl Iterator<Item = ItemId> + 'a {
