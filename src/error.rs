@@ -24,6 +24,11 @@ pub enum Error {
     #[error("Database full. Try to use lower vector IDs.")]
     DatabaseFull,
 
+    /// The user tried to append an item in the database but the last inserted item
+    /// is highler or equal to this one.
+    #[error("Item cannot be appended into the database")]
+    InvalidItemAppend,
+
     /// The user is trying to query a database with a distance that is not of the right type.
     #[error("Invalid distance provided. Got {received} but expected {expected}.")]
     UnmatchingDistance {

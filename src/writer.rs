@@ -109,6 +109,29 @@ impl<D: Distance> Writer<D> {
         Ok(self.database.put(wtxn, &Key::item(self.index, item), &Node::Leaf(leaf))?)
     }
 
+    /// Attempt to append an item into the database. It is generaly faster to append an item than insert it.
+    ///
+    /// There are two conditions for an item to be successfully appended:
+    ///  - The last item ID in the database is smaller than the one appended.
+    ///  - The index of the database is the highest one.
+    pub fn append_item(&self, wtxn: &mut RwTxn, item: ItemId, vector: &[f32]) -> Result<()> {
+        if vector.len() != self.dimensions {
+            return Err(Error::InvalidVecDimension {
+                expected: self.dimensions,
+                received: vector.len(),
+            });
+        }
+
+        let vector = UnalignedF32Slice::from_slice(vector);
+        let leaf = Leaf { header: D::new_header(vector), vector: Cow::Borrowed(vector) };
+        let key = Key::item(self.index, item);
+        match self.database.put_with_flags(wtxn, PutFlags::APPEND, &key, &Node::Leaf(leaf)) {
+            Ok(()) => Ok(()),
+            Err(heed::Error::Mdb(MdbError::KeyExist)) => Err(Error::InvalidItemAppend),
+            Err(e) => Err(e.into()),
+        }
+    }
+
     /// Deletes an item stored in this database and returns `true` if it existed.
     pub fn del_item(&self, wtxn: &mut RwTxn, item: ItemId) -> Result<bool> {
         Ok(self.database.delete(wtxn, &Key::item(self.index, item))?)
