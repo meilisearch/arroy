@@ -9,7 +9,7 @@ fn main() {
     let mut args = std::env::args();
     let dir_path = args.nth(1).expect("Provide the path to a database");
     let output_file = args.nth(1).unwrap_or_else(|| {
-        eprintln!("No database path were specified. Writing to `graph.dot` by default.");
+        eprintln!("No output path is specified. Writing to `graph.dot` by default.");
         "graph.dot".to_string()
     });
 
