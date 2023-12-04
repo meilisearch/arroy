@@ -1,9 +1,15 @@
+use std::io;
+
 /// The different set of errors that arroy can encounter.
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
     /// An internal error mostly related to LMDB or encoding/decoding.
     #[error(transparent)]
     Heed(#[from] heed::Error),
+
+    /// IO error
+    #[error(transparent)]
+    IO(#[from] io::Error),
 
     /// The user is trying to insert or search for a vector that is not of the right dimensions.
     #[error("Invalid vector dimensions. Got {received} but expected {expected}.")]

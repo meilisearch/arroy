@@ -1,6 +1,5 @@
 use std::borrow::Cow;
 use std::num::NonZeroUsize;
-use std::str::EscapeDebug;
 use std::time::Instant;
 
 use arroy::distances::Euclidean;

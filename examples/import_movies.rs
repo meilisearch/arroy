@@ -27,7 +27,7 @@ struct Cli {
     map_size: usize,
 
     /// The number of dimensions to construct the arroy tree.
-    #[arg(long)]
+    #[arg(long, default_value_t = 768)]
     dimensions: usize,
 
     /// The seed to generate the internal trees.

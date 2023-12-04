@@ -5,7 +5,7 @@ use byteorder::{BigEndian, ByteOrder};
 use crate::ItemId;
 
 /// /!\ Changing the value of the enum can be DB-breaking /!\
-#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[repr(u8)]
 pub enum NodeMode {
     Item = 0,
@@ -28,7 +28,7 @@ impl TryFrom<u8> for NodeMode {
 
 /// Point to a node in the tree. Can be any kind of node.
 /// /!\ This must fit on exactly 5 bytes without padding.
-#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct NodeId {
     // Indicate what the item represent.
     pub mode: NodeMode,

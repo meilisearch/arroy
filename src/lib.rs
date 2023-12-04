@@ -80,6 +80,7 @@ mod node;
 mod node_id;
 mod reader;
 mod spaces;
+mod stats;
 mod writer;
 
 #[cfg(test)]
@@ -97,6 +98,7 @@ use key::{Key, Prefix, PrefixCodec};
 use node::{ItemIds, Node, NodeCodec};
 use node_id::{NodeId, NodeMode};
 pub use reader::Reader;
+pub use stats::{Stats, TreeStats};
 pub use writer::Writer;
 
 /// The set of types used by the [`Distance`] trait.

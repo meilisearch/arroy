@@ -1,9 +1,9 @@
 use std::borrow::Cow;
 use std::cmp::Reverse;
-use std::collections::BinaryHeap;
+use std::collections::{BinaryHeap, HashMap};
 use std::iter::repeat;
-use std::marker;
 use std::num::NonZeroUsize;
+use std::{io, marker};
 
 use heed::RoTxn;
 use ordered_float::OrderedFloat;
@@ -13,7 +13,8 @@ use crate::internals::{KeyCodec, Side};
 use crate::item_iter::ItemIter;
 use crate::node::{Descendants, ItemIds, Leaf, SplitPlaneNormal, UnalignedF32Slice};
 use crate::{
-    Database, Error, ItemId, Key, MetadataCodec, Node, NodeId, Prefix, PrefixCodec, Result,
+    Database, Error, ItemId, Key, MetadataCodec, Node, NodeId, Prefix, PrefixCodec, Result, Stats,
+    TreeStats,
 };
 
 /// A reader over the arroy trees and user items.
@@ -71,6 +72,46 @@ impl<'t, D: Distance> Reader<'t, D> {
     /// Returns the index of this reader in the database.
     pub fn index(&self) -> u16 {
         self.index
+    }
+
+    /// Returns the stats of the trees of this database.
+    pub fn stats(&self, rtxn: &RoTxn) -> Result<Stats> {
+        fn recursive_depth<D: Distance>(
+            rtxn: &RoTxn,
+            database: Database<D>,
+            index: u16,
+            node_id: NodeId,
+        ) -> Result<TreeStats> {
+            match database.get(rtxn, &Key::new(index, node_id))?.unwrap() {
+                Node::Leaf(_) => {
+                    Ok(TreeStats { depth: 1, dummy_normals: 0, split_nodes: 0, descendants: 0 })
+                }
+                Node::Descendants(_) => {
+                    Ok(TreeStats { depth: 1, dummy_normals: 0, split_nodes: 0, descendants: 1 })
+                }
+                Node::SplitPlaneNormal(SplitPlaneNormal { normal, left, right }) => {
+                    let left = recursive_depth(rtxn, database, index, left)?;
+                    let right = recursive_depth(rtxn, database, index, right)?;
+                    let is_zero_normal = normal.iter().all(|f| f == 0.0) as usize;
+
+                    Ok(TreeStats {
+                        depth: 1 + left.depth.max(right.depth),
+                        dummy_normals: left.dummy_normals + right.dummy_normals + is_zero_normal,
+                        split_nodes: left.split_nodes + right.split_nodes + 1,
+                        descendants: left.descendants + right.descendants,
+                    })
+                }
+            }
+        }
+
+        let tree_stats: Result<Vec<_>> = self
+            .roots
+            .iter()
+            .map(NodeId::tree)
+            .map(|root| recursive_depth::<D>(rtxn, self.database, self.index, root))
+            .collect();
+
+        Ok(Stats { tree_stats: tree_stats?, leaf: self.n_items })
     }
 
     /// Returns the number of nodes in the index. Useful to run an exhaustive search.
@@ -193,6 +234,96 @@ impl<'t, D: Distance> Reader<'t, D> {
         }
 
         Ok(output)
+    }
+
+    #[cfg(feature = "plot")]
+    /// Write the internal arroy graph in dot format into the provided writer.
+    pub fn plot_internals_tree_nodes(
+        &self,
+        rtxn: &RoTxn,
+        mut writer: impl io::Write,
+    ) -> Result<()> {
+        writeln!(writer, "digraph {{")?;
+        writeln!(writer, "\tlabel=metadata")?;
+        writeln!(writer)?;
+
+        if let Some(tree) = self.roots.iter().next() {
+            // subgraph {
+            //   a -> b
+            //   a -> b
+            //   b -> a
+            // }
+
+            let mut cache: HashMap<NodeId, usize> = HashMap::new();
+
+            // Start creating the graph
+            writeln!(writer, "\tsubgraph {{")?;
+            writeln!(writer, "\t\troot [color=blue]")?;
+            writeln!(writer, "\t\troot -> {tree}")?;
+
+            let mut explore = vec![Key::tree(self.index, tree)];
+            while let Some(key) = explore.pop() {
+                match self.database.get(rtxn, &key)?.unwrap() {
+                    Node::Leaf(_) => (),
+                    Node::Descendants(Descendants { descendants: _ }) => {
+                        writeln!(writer, "\t\t{} [label=\"{}\"]", key.node.item, key.node.item,)?
+                    }
+                    Node::SplitPlaneNormal(SplitPlaneNormal { normal, left, right }) => {
+                        if normal.iter().all(|n| n == 0.) {
+                            writeln!(writer, "\t\t{} [color=red]", key.node.item)?;
+                        }
+                        writeln!(
+                            writer,
+                            "\t\t{} -> {} [taillabel=\"{}\"]",
+                            key.node.item,
+                            left.item,
+                            self.nb_sub_nodes(rtxn, left, &mut cache)?
+                        )?;
+                        writeln!(
+                            writer,
+                            "\t\t{} -> {} [taillabel=\"{}\"]",
+                            key.node.item,
+                            right.item,
+                            self.nb_sub_nodes(rtxn, right, &mut cache)?
+                        )?;
+                        explore.push(Key::tree(self.index, left.item));
+                        explore.push(Key::tree(self.index, right.item));
+                    }
+                }
+            }
+
+            writeln!(writer, "\t}}")?;
+        }
+
+        writeln!(writer, "}}")?;
+
+        Ok(())
+    }
+
+    #[cfg(feature = "plot")]
+    /// Return the number of nodes in a node.
+    fn nb_sub_nodes(
+        &self,
+        rtxn: &RoTxn,
+        node_id: NodeId,
+        cache: &mut HashMap<NodeId, usize>,
+    ) -> Result<usize> {
+        if let Some(count) = cache.get(&node_id) {
+            return Ok(*count);
+        }
+
+        match self.database.get(rtxn, &Key::new(self.index, node_id))?.unwrap() {
+            Node::Leaf(_) => Ok(1),
+            Node::Descendants(Descendants { descendants }) => Ok(descendants.len()),
+            Node::SplitPlaneNormal(SplitPlaneNormal { normal: _, left, right }) => {
+                let left = self.nb_sub_nodes(rtxn, left, cache)?;
+                let right = self.nb_sub_nodes(rtxn, right, cache)?;
+                let nb_descendants = left + right;
+
+                cache.insert(node_id, nb_descendants);
+                Ok(nb_descendants)
+            }
+        }
     }
 }
 
