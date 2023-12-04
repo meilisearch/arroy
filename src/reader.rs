@@ -256,13 +256,9 @@ impl<'t, D: Distance> Reader<'t, D> {
                 let node = self.database.get(rtxn, &key)?.unwrap();
                 match node {
                     Node::Leaf(_) => (),
-                    Node::Descendants(Descendants { descendants }) => writeln!(
-                        writer,
-                        "\t\t{} [label=\"{}-{}\"]",
-                        key.node.item,
-                        key.node.item,
-                        descendants.len()
-                    )?,
+                    Node::Descendants(Descendants { descendants: _ }) => {
+                        writeln!(writer, "\t\t{} [label=\"{}\"]", key.node.item, key.node.item,)?
+                    }
                     Node::SplitPlaneNormal(SplitPlaneNormal { normal, left, right }) => {
                         if normal.iter().all(|n| n == 0.) {
                             writeln!(writer, "\t\t{} [color=red]", key.node.item)?;
