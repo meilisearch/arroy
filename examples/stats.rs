@@ -33,7 +33,8 @@ fn main() -> anyhow::Result<()> {
     let nb_roots = tree_stats.len();
     println!("There are {} trees in this arroy index for a total of {} leaf.", nb_roots, leaf);
 
-    for (i, TreeStats { depth, dummy_normals, split_nodes, descendants }) in
+    #[allow(clippy::unused_enumerate_index)]
+    for (_i, TreeStats { depth, dummy_normals, split_nodes, descendants }) in
         tree_stats.into_iter().enumerate()
     {
         depth_sum += depth;
@@ -41,7 +42,7 @@ fn main() -> anyhow::Result<()> {
         split_nodes_sum += split_nodes;
         descendants_sum += descendants;
 
-        // println!("Tree {i} as a depth of {depth}, {split_nodes} split nodes, {dummy_normals} dummy normals ({}%), and {descendants} descendants.", dummy_normals as f64 / split_nodes as f64 * 100.);
+        // println!("Tree {_i} as a depth of {depth}, {split_nodes} split nodes, {dummy_normals} dummy normals ({}%), and {descendants} descendants.", dummy_normals as f64 / split_nodes as f64 * 100.);
     }
 
     println!();
