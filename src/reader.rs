@@ -307,9 +307,10 @@ impl<'t, D: Distance> Reader<'t, D> {
             Node::SplitPlaneNormal(SplitPlaneNormal { normal: _, left, right }) => {
                 let left = self.nb_nodes(rtxn, left, cache)?;
                 let right = self.nb_nodes(rtxn, right, cache)?;
-                // let is_zero_normal = normal.iter().all(|f| f == 0.0) as usize;
+                let nb_descendants = left + right;
 
-                Ok(left + right)
+                cache.insert(node_id, nb_descendants);
+                Ok(nb_descendants)
             }
         }
     }
