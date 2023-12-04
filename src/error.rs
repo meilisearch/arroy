@@ -9,7 +9,7 @@ pub enum Error {
 
     /// IO error
     #[error(transparent)]
-    IO(#[from] io::Error),
+    Io(#[from] io::Error),
 
     /// The user is trying to insert or search for a vector that is not of the right dimensions.
     #[error("Invalid vector dimensions. Got {received} but expected {expected}.")]
