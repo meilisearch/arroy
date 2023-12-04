@@ -1,6 +1,6 @@
 use std::borrow::Cow;
 use std::cmp::Reverse;
-use std::collections::BinaryHeap;
+use std::collections::{BinaryHeap, HashMap};
 use std::fmt::Write;
 use std::iter::repeat;
 use std::num::NonZeroUsize;
@@ -244,9 +244,10 @@ impl<'t, D: Distance> Reader<'t, D> {
             //   b -> a
             // }
 
+            let mut cache: HashMap<NodeId, usize> = HashMap::new();
+
             // Start creating the graph
             writeln!(writer, "\tsubgraph {{")?;
-            // writeln!(writer, "\t\tlabel={}", tree)?;
             writeln!(writer, "\t\troot [color=blue]")?;
             writeln!(writer, "\t\troot -> {tree}")?;
 
@@ -255,19 +256,31 @@ impl<'t, D: Distance> Reader<'t, D> {
                 let node = self.database.get(rtxn, &key)?.unwrap();
                 match node {
                     Node::Leaf(_) => (),
-                    Node::Descendants(iter) => writeln!(
+                    Node::Descendants(Descendants { descendants }) => writeln!(
                         writer,
                         "\t\t{} [label=\"{}-{}\"]",
                         key.node.item,
                         key.node.item,
-                        iter.descendants.len()
+                        descendants.len()
                     )?,
                     Node::SplitPlaneNormal(SplitPlaneNormal { normal, left, right }) => {
                         if normal.iter().all(|n| n == 0.) {
                             writeln!(writer, "\t\t{} [color=red]", key.node.item)?;
                         }
-                        writeln!(writer, "\t\t{} -> {}", key.node.item, left.item)?;
-                        writeln!(writer, "\t\t{} -> {}", key.node.item, right.item)?;
+                        writeln!(
+                            writer,
+                            "\t\t{} -> {} [taillabel=\"{}\"]",
+                            key.node.item,
+                            left.item,
+                            self.nb_nodes(rtxn, left, &mut cache)?
+                        )?;
+                        writeln!(
+                            writer,
+                            "\t\t{} -> {} [taillabel=\"{}\"]",
+                            key.node.item,
+                            right.item,
+                            self.nb_nodes(rtxn, right, &mut cache)?
+                        )?;
                         explore.push(Key::tree(self.index, left.item));
                         explore.push(Key::tree(self.index, right.item));
                     }
@@ -280,6 +293,29 @@ impl<'t, D: Distance> Reader<'t, D> {
         writeln!(writer, "}}")?;
 
         Ok(())
+    }
+
+    fn nb_nodes(
+        &self,
+        rtxn: &RoTxn,
+        node_id: NodeId,
+        cache: &mut HashMap<NodeId, usize>,
+    ) -> Result<usize> {
+        if let Some(count) = cache.get(&node_id) {
+            return Ok(*count);
+        }
+
+        match self.database.get(rtxn, &Key::new(self.index, node_id))?.unwrap() {
+            Node::Leaf(_) => Ok(1),
+            Node::Descendants(Descendants { descendants }) => Ok(descendants.len()),
+            Node::SplitPlaneNormal(SplitPlaneNormal { normal: _, left, right }) => {
+                let left = self.nb_nodes(rtxn, left, cache)?;
+                let right = self.nb_nodes(rtxn, right, cache)?;
+                // let is_zero_normal = normal.iter().all(|f| f == 0.0) as usize;
+
+                Ok(left + right)
+            }
+        }
     }
 }
 
