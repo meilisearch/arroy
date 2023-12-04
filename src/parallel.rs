@@ -51,6 +51,10 @@ pub struct TmpReader {
 }
 
 impl TmpReader {
+    pub fn len(&self) -> usize {
+        self.ids.len()
+    }
+
     pub fn iter(&self) -> impl Iterator<Item = (u32, &[u8])> {
         self.ids.iter().zip(self.bounds.windows(2)).map(|(&id, bounds)| {
             let [start, end] = [bounds[0], bounds[1]];

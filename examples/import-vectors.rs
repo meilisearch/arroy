@@ -48,6 +48,8 @@ struct Cli {
 }
 
 fn main() -> Result<(), heed::BoxedError> {
+    env_logger::init();
+
     let Cli { database, map_size, dimensions, write_map, no_append, n_trees, seed } = Cli::parse();
 
     let mut rng = StdRng::seed_from_u64(seed);

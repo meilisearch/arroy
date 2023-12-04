@@ -178,6 +178,8 @@ impl<D: Distance> Writer<D> {
         let item_indices = self.item_indices(wtxn)?;
         self.n_items = item_indices.len();
 
+        log::debug!("started building trees for {} items...", self.n_items);
+
         let frozzen_reader = FrozzenReader {
             leafs: &ImmutableLeafs::new(wtxn, self.database, self.index)?,
             dimensions: self.dimensions,
@@ -187,10 +189,14 @@ impl<D: Distance> Writer<D> {
         };
 
         let n_trees = n_trees.expect("please specify the number of trees");
+        log::debug!("running {n_trees} parallel tree building...");
+
         let seeds: Vec<_> = repeat_with(|| rng.next_u64()).take(n_trees).collect();
         let results: Result<(Vec<_>, Vec<_>)> = seeds
             .into_par_iter()
-            .map(|seed| {
+            .enumerate()
+            .map(|(i, seed)| {
+                log::debug!("started generating tree {i}nth...");
                 let mut rng = R::seed_from_u64(seed);
                 let mut tmp_nodes = TmpNodes::new()?;
                 let root_id = make_tree_in_file(
@@ -200,13 +206,16 @@ impl<D: Distance> Writer<D> {
                     true,
                     &mut tmp_nodes,
                 )?;
+                log::debug!("finished generating tree {i}nth");
                 // make_tree must NEVER return a leaf when called as root
                 Ok((root_id.unwrap_tree(), tmp_nodes.into_reader()?))
             })
             .collect();
 
         let (mut thread_roots, tmp_nodes) = results?;
-        for tmp_node in tmp_nodes {
+        log::debug!("started writing the tree nodes of {} trees...", tmp_nodes.len());
+        for (i, tmp_node) in tmp_nodes.into_iter().enumerate() {
+            log::debug!("started writing the {} tree nodes of the {i}nth trees...", tmp_node.len());
             for (item_id, item_bytes) in tmp_node.iter() {
                 let key = Key::tree(self.index, item_id);
                 self.database.remap_data_type::<Bytes>().put(wtxn, &key, item_bytes)?;
@@ -214,6 +223,8 @@ impl<D: Distance> Writer<D> {
         }
 
         self.roots.append(&mut thread_roots);
+
+        log::debug!("started writing the metadata...");
 
         // Also, copy the roots into the highest key of the database (u32::MAX).
         // This way we can load them faster without reading the whole database.
