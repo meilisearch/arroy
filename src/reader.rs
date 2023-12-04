@@ -262,7 +262,10 @@ impl<'t, D: Distance> Reader<'t, D> {
                         key.node.item,
                         iter.descendants.len()
                     )?,
-                    Node::SplitPlaneNormal(SplitPlaneNormal { normal: _, left, right }) => {
+                    Node::SplitPlaneNormal(SplitPlaneNormal { normal, left, right }) => {
+                        if normal.iter().all(|n| n == 0.) {
+                            writeln!(writer, "\t\t{} [color=yellow]", key.node.item)?;
+                        }
                         writeln!(writer, "\t\t{} -> {}", key.node.item, left.item)?;
                         writeln!(writer, "\t\t{} -> {}", key.node.item, right.item)?;
                         explore.push(Key::tree(self.index, left.item));
