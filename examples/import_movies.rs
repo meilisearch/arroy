@@ -81,7 +81,7 @@ fn main() -> Result<(), heed::BoxedError> {
     println!();
 
     println!("Building the arroy internal trees...");
-    writer.build_in_parallel(&mut wtxn, &mut rng, n_trees).unwrap();
+    writer.build(&mut wtxn, &mut rng, n_trees).unwrap();
     wtxn.commit().unwrap();
     println!("Took {:.2?} to build", now.elapsed());
 

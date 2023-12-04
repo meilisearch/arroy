@@ -5,9 +5,8 @@ use std::iter::repeat_with;
 use heed::types::{Bytes, DecodeIgnore};
 use heed::{MdbError, PutFlags, RoTxn, RwTxn};
 use rand::seq::SliceRandom;
-use rayon::prelude::*;
 use rand::{Rng, SeedableRng};
-use roaring::RoaringBitmap;
+use rayon::prelude::*;
 
 use crate::distance::Distance;
 use crate::internals::{KeyCodec, Side};
@@ -29,9 +28,7 @@ pub struct Writer<D: Distance> {
     index: u16,
     dimensions: usize,
     // non-initiliazed until build is called.
-    n_items: u64,
-    // non-initiliazed until build is called.
-    next_tree_id: u32,
+    n_items: usize,
     // We know the root nodes points to tree-nodes.
     roots: Vec<ItemId>,
 }
@@ -47,7 +44,7 @@ impl<D: Distance> Writer<D> {
     ) -> Result<Writer<D>> {
         let database: Database<D> = database.remap_data_type();
         clear_tree_nodes(wtxn, database, index)?;
-        Ok(Writer { database, index, dimensions, n_items: 0, next_tree_id: 0, roots: Vec::new() })
+        Ok(Writer { database, index, dimensions, n_items: 0, roots: Vec::new() })
     }
 
     /// Returns a writer after having deleted the tree nodes and rewrote all the items
@@ -78,15 +75,8 @@ impl<D: Distance> Writer<D> {
             }
         }
 
-        let Writer { database, index, dimensions, n_items, next_tree_id, roots } = self;
-        Ok(Writer {
-            database: database.remap_data_type(),
-            index,
-            dimensions,
-            n_items,
-            next_tree_id,
-            roots,
-        })
+        let Writer { database, index, dimensions, n_items, roots } = self;
+        Ok(Writer { database: database.remap_data_type(), index, dimensions, n_items, roots })
     }
 
     /// Returns an `Option`al vector previous stored in this database.
@@ -140,7 +130,15 @@ impl<D: Distance> Writer<D> {
         Ok(())
     }
 
-    pub fn build_in_parallel<R: Rng + SeedableRng>(
+    /// Generates a forest of `n_trees` trees.
+    ///
+    /// More trees give higher precision when querying at the cost of more disk usage.
+    /// After calling build, no more items can be added.
+    ///
+    /// This function is using rayon to spawn threads. It can be configured
+    /// by using the [`rayon::ThreadPoolBuilder`] and the
+    /// [`rayon::ThreadPool::install`] to use it.
+    pub fn build<R: Rng + SeedableRng>(
         mut self,
         wtxn: &mut RwTxn,
         rng: &mut R,
@@ -157,123 +155,27 @@ impl<D: Distance> Writer<D> {
         let item_indices = self.item_indices(wtxn)?;
         self.n_items = item_indices.len();
 
-        fn make_tree_in_file<D: Distance, R: Rng>(
-            database: &ImmutableLeafs<D>,
-            dimensions: usize,
-            n_items: usize,
-            concurrent_node_ids: &ConcurrentNodeIds,
-            tmp_nodes: &mut TmpNodes,
-            item_indices: &[ItemId],
-            is_root: bool,
-            rng: &mut R,
-        ) -> Result<NodeId> {
-            // we simplify the max descendants (_K) thing by considering
-            // that we can fit as much descendants as the number of dimensions
-            let max_descendants = dimensions;
+        let frozzen_reader = FrozzenReader {
+            leafs: &ImmutableLeafs::new(wtxn, self.database, self.index)?,
+            dimensions: self.dimensions,
+            n_items: self.n_items,
+            // The globally incrementing node ids that are shared between threads.
+            concurrent_node_ids: &ConcurrentNodeIds::new(0),
+        };
 
-            if item_indices.len() == 1 && !is_root {
-                return Ok(NodeId::item(item_indices[0]));
-            }
-
-            if item_indices.len() <= max_descendants
-                && (!is_root || n_items <= max_descendants || item_indices.len() == 1)
-            {
-                let item_id = concurrent_node_ids.next();
-                let item = Node::Descendants(Descendants {
-                    descendants: ItemIds::from_slice(item_indices),
-                });
-                tmp_nodes.put::<NodeCodec<D>>(item_id, &item)?;
-                return Ok(NodeId::tree(item_id));
-            }
-
-            let mut children = Vec::new();
-            for &item_id in item_indices {
-                let leaf = database.get(item_id)?.unwrap();
-                children.push(leaf);
-            }
-
-            let mut children_left = Vec::new();
-            let mut children_right = Vec::new();
-            let mut remaining_attempts = 3;
-
-            let mut normal = loop {
-                children_left.clear();
-                children_right.clear();
-
-                let normal = D::create_split(&children, rng);
-                for (&node_id, node) in item_indices.iter().zip(&children) {
-                    match D::side(UnalignedF32Slice::from_slice(&normal), node, rng) {
-                        Side::Left => children_left.push(node_id),
-                        Side::Right => children_right.push(node_id),
-                    }
-                }
-
-                if split_imbalance(children_left.len(), children_right.len()) < 0.95
-                    || remaining_attempts == 0
-                {
-                    break normal;
-                }
-
-                remaining_attempts -= 1;
-            };
-
-            // If we didn't find a hyperplane, just randomize sides as a last option
-            // and set the split plane to zero as a dummy plane.
-            if split_imbalance(children_left.len(), children_right.len()) > 0.99 {
-                randomly_split_children(rng, item_indices, &mut children_left, &mut children_right);
-                normal.fill(0.0);
-            }
-
-            let normal = SplitPlaneNormal {
-                normal: Cow::Owned(normal),
-                left: make_tree_in_file(
-                    database,
-                    dimensions,
-                    n_items,
-                    concurrent_node_ids,
-                    tmp_nodes,
-                    &children_left,
-                    false,
-                    rng,
-                )?,
-                right: make_tree_in_file(
-                    database,
-                    dimensions,
-                    n_items,
-                    concurrent_node_ids,
-                    tmp_nodes,
-                    &children_right,
-                    false,
-                    rng,
-                )?,
-            };
-
-            let new_node_id = concurrent_node_ids.next();
-            tmp_nodes.put::<NodeCodec<D>>(new_node_id, &Node::SplitPlaneNormal(normal))?;
-
-            Ok(NodeId::tree(new_node_id))
-        }
-
-        // The globally incrementing node ids that are shared between threads.
         let n_trees = n_trees.expect("please specify the number of trees");
         let seeds: Vec<_> = repeat_with(|| rng.next_u64()).take(n_trees).collect();
-
-        let next_node_id = ConcurrentNodeIds::new(self.next_tree_id);
-        let immutable_leafs = ImmutableLeafs::new(wtxn, self.database, self.index)?;
         let results: Result<(Vec<_>, Vec<_>)> = seeds
             .into_par_iter()
             .map(|seed| {
                 let mut rng = R::seed_from_u64(seed);
                 let mut tmp_nodes = TmpNodes::new()?;
                 let root_id = make_tree_in_file(
-                    &immutable_leafs,
-                    self.dimensions,
-                    self.n_items,
-                    &next_node_id,
-                    &mut tmp_nodes,
+                    &frozzen_reader,
+                    &mut rng,
                     &item_indices,
                     true,
-                    &mut rng,
+                    &mut tmp_nodes,
                 )?;
                 // make_tree must NEVER return a leaf when called as root
                 Ok((root_id.unwrap_tree(), tmp_nodes.into_reader()?))
@@ -312,158 +214,9 @@ impl<D: Distance> Writer<D> {
         Ok(())
     }
 
-    /// Generates a forest of `n_trees` trees.
-    ///
-    /// More trees give higher precision when querying at
-    /// the cost of more disk usage. After calling build,
-    /// no more items can be added.
-    pub fn build<R: Rng>(
-        mut self,
-        wtxn: &mut RwTxn,
-        mut rng: R,
-        n_trees: Option<usize>,
-    ) -> Result<()> {
-        D::preprocess(wtxn, |wtxn| {
-            Ok(self
-                .database
-                .remap_key_type::<PrefixCodec>()
-                .prefix_iter_mut(wtxn, &Prefix::item(self.index))?
-                .remap_key_type::<KeyCodec>())
-        })?;
-
-        let item_indices = self.item_indices(wtxn)?;
-        self.n_items = item_indices.len();
-
-        let mut thread_roots = Vec::new();
-        loop {
-            match n_trees {
-                Some(n_trees) if thread_roots.len() >= n_trees => break,
-                None if self.next_tree_id >= (self.n_items - 1) as u32 => break,
-                _ => (),
-            }
-
-            let tree_root_id = self.make_tree(wtxn, item_indices.clone(), true, &mut rng)?;
-            // make_tree must NEVER return a leaf when called as root
-            thread_roots.push(tree_root_id.unwrap_tree());
-        }
-
-        self.roots.append(&mut thread_roots);
-
-        // Also, copy the roots into the highest key of the database (u32::MAX).
-        // This way we can load them faster without reading the whole database.
-        let metadata = Metadata {
-            dimensions: self.dimensions.try_into().unwrap(),
-            n_items: self.n_items.try_into().unwrap(),
-            roots: ItemIds::from_slice(&self.roots),
-            distance: D::name(),
-        };
-        match self.database.remap_data_type::<MetadataCodec>().put_with_flags(
-            wtxn,
-            PutFlags::NO_OVERWRITE,
-            &Key::metadata(self.index),
-            &metadata,
-        ) {
-            Ok(_) => (),
-            Err(heed::Error::Mdb(MdbError::KeyExist)) => return Err(Error::DatabaseFull),
-            Err(e) => return Err(e.into()),
-        }
-
-        Ok(())
-    }
-
-    /// Creates a tree of nodes from the items the user provided
-    /// and generates descendants, split normal and root nodes.
-    fn make_tree<R: Rng>(
-        &mut self,
-        wtxn: &mut RwTxn,
-        item_indices: RoaringBitmap,
-        is_root: bool,
-        rng: &mut R,
-    ) -> Result<NodeId> {
-        // we simplify the max descendants (_K) thing by considering
-        // that we can fit as much descendants as the number of dimensions
-        let max_descendants = self.dimensions;
-
-        if item_indices.len() == 1 && !is_root {
-            return Ok(NodeId::item(item_indices.min().unwrap()));
-        }
-
-        if item_indices.len() <= max_descendants as u64
-            && (!is_root || self.n_items <= max_descendants as u64 || item_indices.len() == 1)
-        {
-            let item_id = self.create_item_id()?;
-
-            let item = Node::Descendants(Descendants { descendants: Cow::Owned(item_indices) });
-            self.database.put(wtxn, &Key::tree(self.index, item_id), &item)?;
-            return Ok(NodeId::tree(item_id));
-        }
-
-        let mut children = Vec::new();
-        for item_id in item_indices.iter() {
-            let node = self.database.get(wtxn, &Key::item(self.index, item_id))?.unwrap();
-            let leaf = node.leaf().unwrap();
-            children.push(leaf);
-        }
-
-        let mut children_left = RoaringBitmap::new();
-        let mut children_right = RoaringBitmap::new();
-        let mut remaining_attempts = 3;
-
-        let mut normal = loop {
-            children_left.clear();
-            children_right.clear();
-
-            let normal = D::create_split(&children, rng);
-            for (node_id, node) in item_indices.iter().zip(&children) {
-                // It is safe to push the value since they come from a roaring bitmap
-                let _ = match D::side(UnalignedF32Slice::from_slice(&normal), node, rng) {
-                    Side::Left => children_left.push(node_id),
-                    Side::Right => children_right.push(node_id),
-                };
-            }
-
-            if split_imbalance(children_left.len(), children_right.len()) < 0.95
-                || remaining_attempts == 0
-            {
-                break normal;
-            }
-
-            remaining_attempts -= 1;
-        };
-
-        // If we didn't find a hyperplane, just randomize sides as a last option
-        // and set the split plane to zero as a dummy plane.
-        if split_imbalance(children_left.len(), children_right.len()) > 0.99 {
-            randomly_split_children(rng, item_indices, &mut children_left, &mut children_right);
-            normal.fill(0.0);
-        }
-
-        let normal = SplitPlaneNormal {
-            normal: Cow::Owned(normal),
-            left: self.make_tree(wtxn, children_left, false, rng)?,
-            right: self.make_tree(wtxn, children_right, false, rng)?,
-        };
-
-        let new_node_id = self.create_item_id()?;
-        self.database.put(
-            wtxn,
-            &Key::tree(self.index, new_node_id),
-            &Node::SplitPlaneNormal(normal),
-        )?;
-
-        Ok(NodeId::tree(new_node_id))
-    }
-
-    fn create_item_id(&mut self) -> Result<ItemId> {
-        let old = self.next_tree_id;
-        self.next_tree_id = self.next_tree_id.checked_add(1).ok_or(Error::DatabaseFull)?;
-
-        Ok(old)
-    }
-
     // Fetches the item's ids, not the tree nodes ones.
-    fn item_indices(&self, wtxn: &mut RwTxn<'_>) -> heed::Result<RoaringBitmap> {
-        let mut indices = RoaringBitmap::new();
+    fn item_indices(&self, wtxn: &mut RwTxn<'_>) -> heed::Result<Vec<ItemId>> {
+        let mut indices = Vec::new();
         for result in self
             .database
             .remap_types::<PrefixCodec, DecodeIgnore>()
@@ -478,22 +231,113 @@ impl<D: Distance> Writer<D> {
     }
 }
 
-/// Efficiently splits the items into the left and right children bitmaps.
+/// Represents the final version of the leafs and contains
+/// useful informations to synchronize the building threads.
+#[derive(Clone)]
+struct FrozzenReader<'a, D: Distance> {
+    leafs: &'a ImmutableLeafs<'a, D>,
+    dimensions: usize,
+    n_items: usize,
+    concurrent_node_ids: &'a ConcurrentNodeIds,
+}
+
+/// Creates a tree of nodes from the frozzen items that lives
+/// in the database and generates descendants, split normal
+/// and root nodes in files that will be stored in the database later.
+fn make_tree_in_file<D: Distance, R: Rng>(
+    reader: &FrozzenReader<D>,
+    rng: &mut R,
+    item_indices: &[ItemId],
+    is_root: bool,
+    tmp_nodes: &mut TmpNodes,
+) -> Result<NodeId> {
+    // we simplify the max descendants (_K) thing by considering
+    // that we can fit as much descendants as the number of dimensions
+    let max_descendants = reader.dimensions;
+
+    if item_indices.len() == 1 && !is_root {
+        return Ok(NodeId::item(item_indices[0]));
+    }
+
+    if item_indices.len() <= max_descendants
+        && (!is_root || reader.n_items <= max_descendants || item_indices.len() == 1)
+    {
+        let item_id = reader.concurrent_node_ids.next();
+        let item =
+            Node::Descendants(Descendants { descendants: ItemIds::from_slice(item_indices) });
+        tmp_nodes.put::<NodeCodec<D>>(item_id, &item)?;
+        return Ok(NodeId::tree(item_id));
+    }
+
+    let mut children = Vec::new();
+    for &item_id in item_indices {
+        let leaf = reader.leafs.get(item_id)?.unwrap();
+        children.push(leaf);
+    }
+
+    let mut children_left = Vec::new();
+    let mut children_right = Vec::new();
+    let mut remaining_attempts = 3;
+
+    let mut normal = loop {
+        children_left.clear();
+        children_right.clear();
+
+        let normal = D::create_split(&children, rng);
+        for (&node_id, node) in item_indices.iter().zip(&children) {
+            match D::side(UnalignedF32Slice::from_slice(&normal), node, rng) {
+                Side::Left => children_left.push(node_id),
+                Side::Right => children_right.push(node_id),
+            }
+        }
+
+        if split_imbalance(children_left.len(), children_right.len()) < 0.95
+            || remaining_attempts == 0
+        {
+            break normal;
+        }
+
+        remaining_attempts -= 1;
+    };
+
+    // If we didn't find a hyperplane, just randomize sides as a last option
+    // and set the split plane to zero as a dummy plane.
+    if split_imbalance(children_left.len(), children_right.len()) > 0.99 {
+        randomly_split_children(rng, item_indices, &mut children_left, &mut children_right);
+        normal.fill(0.0);
+    }
+
+    let normal = SplitPlaneNormal {
+        normal: Cow::Owned(normal),
+        left: make_tree_in_file(reader, rng, &children_left, false, tmp_nodes)?,
+        right: make_tree_in_file(reader, rng, &children_right, false, tmp_nodes)?,
+    };
+
+    let new_node_id = reader.concurrent_node_ids.next();
+    tmp_nodes.put::<NodeCodec<D>>(new_node_id, &Node::SplitPlaneNormal(normal))?;
+
+    Ok(NodeId::tree(new_node_id))
+}
+
+/// Randomly and efficiently splits the items into
+/// the left and right children vectors.
 fn randomly_split_children<R: Rng>(
     rng: &mut R,
-    item_indices: &RoaringBitmap,
-    children_left: &mut RoaringBitmap,
-    children_right: &mut RoaringBitmap,
+    item_indices: &[ItemId],
+    children_left: &mut Vec<u32>,
+    children_right: &mut Vec<u32>,
 ) {
     children_left.clear();
     children_right.clear();
 
-    for node_id in item_indices.iter() {
-        match Side::random(rng) {
-            Side::Left => children_left.push(node_id),
-            Side::Right => children_right.push(node_id),
-        };
-    }
+    // Put the items into a mutable area to shuffle it just after.
+    children_left.extend_from_slice(item_indices);
+    children_left.shuffle(rng);
+
+    // Split it in half and put the right half into the right children's vector
+    let (left, right) = children_left.split_at(item_indices.len() / 2);
+    children_right.extend_from_slice(right);
+    children_left.truncate(left.len());
 }
 
 /// Clears everything but the leafs nodes (items).
@@ -516,7 +360,7 @@ fn clear_tree_nodes<D: Distance>(
     Ok(())
 }
 
-fn split_imbalance(left_indices_len: u64, right_indices_len: u64) -> f64 {
+fn split_imbalance(left_indices_len: usize, right_indices_len: usize) -> f64 {
     let ls = left_indices_len as f64;
     let rs = right_indices_len as f64;
     let f = ls / (ls + rs + f64::EPSILON); // Avoid 0/0

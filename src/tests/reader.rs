@@ -43,7 +43,7 @@ fn open_db_with_wrong_dimension() {
     let writer = Writer::prepare(&mut wtxn, handle.database, 0, 2).unwrap();
     writer.add_item(&mut wtxn, 0, &[0.0, 0.0]).unwrap();
 
-    writer.build(&mut wtxn, rng(), Some(1)).unwrap();
+    writer.build(&mut wtxn, &mut rng(), Some(1)).unwrap();
     wtxn.commit().unwrap();
 
     let rtxn = handle.env.read_txn().unwrap();
@@ -59,7 +59,7 @@ fn open_db_with_wrong_distance() {
     let writer = Writer::prepare(&mut wtxn, handle.database, 0, 2).unwrap();
     writer.add_item(&mut wtxn, 0, &[0.0, 0.0]).unwrap();
 
-    writer.build(&mut wtxn, rng(), Some(1)).unwrap();
+    writer.build(&mut wtxn, &mut rng(), Some(1)).unwrap();
     wtxn.commit().unwrap();
 
     let rtxn = handle.env.read_txn().unwrap();
@@ -84,7 +84,7 @@ fn two_dimension_on_a_line() {
         writer.add_item(&mut wtxn, i, &[i as f32, 0.0]).unwrap();
     }
 
-    writer.build(&mut wtxn, rng(), Some(50)).unwrap();
+    writer.build(&mut wtxn, &mut rng(), Some(50)).unwrap();
     wtxn.commit().unwrap();
 
     let rtxn = handle.env.read_txn().unwrap();
@@ -132,7 +132,7 @@ fn two_dimension_on_a_column() {
         writer.add_item(&mut wtxn, i, &[0.0, i as f32]).unwrap();
     }
 
-    writer.build(&mut wtxn, rng(), Some(50)).unwrap();
+    writer.build(&mut wtxn, &mut rng(), Some(50)).unwrap();
     wtxn.commit().unwrap();
 
     let rtxn = handle.env.read_txn().unwrap();

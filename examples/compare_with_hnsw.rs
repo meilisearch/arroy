@@ -20,7 +20,7 @@ fn main() -> Result<()> {
     let env = EnvOpenOptions::new().map_size(TWENTY_HUNDRED_MIB).open(dir.path())?;
 
     let rng_points = StdRng::seed_from_u64(42);
-    let rng_arroy = rng_points.clone();
+    let mut rng_arroy = rng_points.clone();
 
     let before = Instant::now();
     let (points, items_ids) = generate_points(rng_points, NUMBER_VECTORS, VECTOR_DIMENSIONS);
@@ -29,7 +29,7 @@ fn main() -> Result<()> {
     let mut wtxn = env.write_txn()?;
     let database: Database<Euclidean> = env.create_database(&mut wtxn, None)?;
     let before = Instant::now();
-    load_into_arroy(rng_arroy, wtxn, database, VECTOR_DIMENSIONS, &points)?;
+    load_into_arroy(&mut rng_arroy, wtxn, database, VECTOR_DIMENSIONS, &points)?;
     eprintln!("took {:.02?} to load into arroy", before.elapsed());
 
     let before = Instant::now();
@@ -69,7 +69,7 @@ fn main() -> Result<()> {
 }
 
 fn load_into_arroy(
-    rng: StdRng,
+    rng: &mut StdRng,
     mut wtxn: RwTxn,
     database: Database<Euclidean>,
     dimensions: usize,

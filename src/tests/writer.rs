@@ -12,7 +12,7 @@ fn use_u32_max_minus_one_for_a_vec() {
     let writer = Writer::prepare(&mut wtxn, handle.database, 0, 3).unwrap();
     writer.add_item(&mut wtxn, u32::MAX - 1, &[0.0, 1.0, 2.0]).unwrap();
 
-    writer.build(&mut wtxn, rng(), Some(1)).unwrap();
+    writer.build(&mut wtxn, &mut rng(), Some(1)).unwrap();
     wtxn.commit().unwrap();
 
     insta::assert_display_snapshot!(handle, @r###"
@@ -31,7 +31,7 @@ fn use_u32_max_for_a_vec() {
     let writer = Writer::prepare(&mut wtxn, handle.database, 0, 3).unwrap();
     writer.add_item(&mut wtxn, u32::MAX, &[0.0, 1.0, 2.0]).unwrap();
 
-    writer.build(&mut wtxn, rng(), Some(1)).unwrap();
+    writer.build(&mut wtxn, &mut rng(), Some(1)).unwrap();
     wtxn.commit().unwrap();
 
     insta::assert_display_snapshot!(handle, @r###"
@@ -50,7 +50,7 @@ fn write_one_vector_in_one_tree() {
     let writer = Writer::prepare(&mut wtxn, handle.database, 0, 3).unwrap();
     writer.add_item(&mut wtxn, 0, &[0.0, 1.0, 2.0]).unwrap();
 
-    writer.build(&mut wtxn, rng(), Some(1)).unwrap();
+    writer.build(&mut wtxn, &mut rng(), Some(1)).unwrap();
     wtxn.commit().unwrap();
 
     insta::assert_display_snapshot!(handle, @r###"
@@ -69,7 +69,7 @@ fn write_one_vector_in_multiple_trees() {
     let writer = Writer::prepare(&mut wtxn, handle.database, 0, 3).unwrap();
     writer.add_item(&mut wtxn, 0, &[0.0, 1.0, 2.0]).unwrap();
 
-    writer.build(&mut wtxn, rng(), Some(10)).unwrap();
+    writer.build(&mut wtxn, &mut rng(), Some(10)).unwrap();
     wtxn.commit().unwrap();
 
     insta::assert_display_snapshot!(handle, @r###"
@@ -101,7 +101,7 @@ fn write_vectors_until_there_is_a_descendants() {
         writer.add_item(&mut wtxn, id, &[i, i, i]).unwrap();
     }
 
-    writer.build(&mut wtxn, rng(), Some(1)).unwrap();
+    writer.build(&mut wtxn, &mut rng(), Some(1)).unwrap();
     wtxn.commit().unwrap();
 
     insta::assert_display_snapshot!(handle, @r###"
@@ -126,7 +126,7 @@ fn write_vectors_until_there_is_a_split() {
         writer.add_item(&mut wtxn, id, &[i, i, i]).unwrap();
     }
 
-    writer.build(&mut wtxn, rng(), Some(1)).unwrap();
+    writer.build(&mut wtxn, &mut rng(), Some(1)).unwrap();
     wtxn.commit().unwrap();
 
     insta::assert_display_snapshot!(handle, @r###"
@@ -153,7 +153,7 @@ fn write_a_lot_of_random_points() {
         writer.add_item(&mut wtxn, id, &vector).unwrap();
     }
 
-    writer.build(&mut wtxn, rng, Some(10)).unwrap();
+    writer.build(&mut wtxn, &mut rng, Some(10)).unwrap();
     wtxn.commit().unwrap();
 
     insta::assert_display_snapshot!(handle);
@@ -167,7 +167,7 @@ fn write_multiple_indexes() {
     for i in 0..5 {
         let writer = Writer::prepare(&mut wtxn, handle.database, i, 3).unwrap();
         writer.add_item(&mut wtxn, 0, &[0.0, 1.0, 2.0]).unwrap();
-        writer.build(&mut wtxn, rng(), Some(1)).unwrap();
+        writer.build(&mut wtxn, &mut rng(), Some(1)).unwrap();
     }
     wtxn.commit().unwrap();
 
