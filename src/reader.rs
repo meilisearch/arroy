@@ -236,13 +236,18 @@ impl<'t, D: Distance> Reader<'t, D> {
         Ok(output)
     }
 
+    #[cfg(feature = "plot")]
     /// Write the internal arroy graph in dot format into the provided writer.
-    pub fn plot_internals(&self, rtxn: &RoTxn, mut writer: impl io::Write) -> Result<()> {
+    pub fn plot_internals_tree_nodes(
+        &self,
+        rtxn: &RoTxn,
+        mut writer: impl io::Write,
+    ) -> Result<()> {
         writeln!(writer, "digraph {{")?;
         writeln!(writer, "\tlabel=metadata")?;
         writeln!(writer)?;
 
-        for tree in self.roots.iter().take(1) {
+        if let Some(tree) = self.roots.iter().next() {
             // subgraph {
             //   a -> b
             //   a -> b
@@ -273,14 +278,14 @@ impl<'t, D: Distance> Reader<'t, D> {
                             "\t\t{} -> {} [taillabel=\"{}\"]",
                             key.node.item,
                             left.item,
-                            self.nb_nodes(rtxn, left, &mut cache)?
+                            self.nb_sub_nodes(rtxn, left, &mut cache)?
                         )?;
                         writeln!(
                             writer,
                             "\t\t{} -> {} [taillabel=\"{}\"]",
                             key.node.item,
                             right.item,
-                            self.nb_nodes(rtxn, right, &mut cache)?
+                            self.nb_sub_nodes(rtxn, right, &mut cache)?
                         )?;
                         explore.push(Key::tree(self.index, left.item));
                         explore.push(Key::tree(self.index, right.item));
@@ -296,7 +301,9 @@ impl<'t, D: Distance> Reader<'t, D> {
         Ok(())
     }
 
-    fn nb_nodes(
+    #[cfg(feature = "plot")]
+    /// Return the number of nodes in a node.
+    fn nb_sub_nodes(
         &self,
         rtxn: &RoTxn,
         node_id: NodeId,
@@ -310,8 +317,8 @@ impl<'t, D: Distance> Reader<'t, D> {
             Node::Leaf(_) => Ok(1),
             Node::Descendants(Descendants { descendants }) => Ok(descendants.len()),
             Node::SplitPlaneNormal(SplitPlaneNormal { normal: _, left, right }) => {
-                let left = self.nb_nodes(rtxn, left, cache)?;
-                let right = self.nb_nodes(rtxn, right, cache)?;
+                let left = self.nb_sub_nodes(rtxn, left, cache)?;
+                let right = self.nb_sub_nodes(rtxn, right, cache)?;
                 let nb_descendants = left + right;
 
                 cache.insert(node_id, nb_descendants);

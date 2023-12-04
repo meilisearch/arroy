@@ -26,3 +26,13 @@ insta = "1.34.0"
 instant-distance = "0.6.1"
 rand = { version = "0.8.5", features = ["std_rng"] }
 tempfile = "3.8.1"
+
+[features]
+default = []
+
+# Enabling this feature provide a method on the reader that can plot its root node in the dot format.
+plot = []
+
+[[example]]
+name = "graph"
+required-features = ["plot"]
