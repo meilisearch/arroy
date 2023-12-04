@@ -263,8 +263,7 @@ impl<'t, D: Distance> Reader<'t, D> {
 
             let mut explore = vec![Key::tree(self.index, tree)];
             while let Some(key) = explore.pop() {
-                let node = self.database.get(rtxn, &key)?.unwrap();
-                match node {
+                match self.database.get(rtxn, &key)?.unwrap() {
                     Node::Leaf(_) => (),
                     Node::Descendants(Descendants { descendants: _ }) => {
                         writeln!(writer, "\t\t{} [label=\"{}\"]", key.node.item, key.node.item,)?
