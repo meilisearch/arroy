@@ -186,6 +186,8 @@ impl fmt::Debug for ItemIds<'_> {
 #[derive(Debug, Clone)]
 pub struct SplitPlaneNormal<'a> {
     pub normal: Cow<'a, UnalignedF32Slice>,
+    pub descendants: Cow<'a, RoaringBitmap>,
+
     pub left: NodeId,
     pub right: NodeId,
 }
@@ -204,10 +206,11 @@ impl<'a, D: Distance> BytesEncode<'a> for NodeCodec<D> {
                 bytes.extend_from_slice(bytes_of(header));
                 bytes.extend_from_slice(vector.as_bytes());
             }
-            Node::SplitPlaneNormal(SplitPlaneNormal { normal, left, right }) => {
+            Node::SplitPlaneNormal(SplitPlaneNormal { normal, descendants, left, right }) => {
                 bytes.push(SPLIT_PLANE_NORMAL_TAG);
                 bytes.extend_from_slice(&left.to_bytes());
                 bytes.extend_from_slice(&right.to_bytes());
+                descendants.serialize_into(&mut bytes)?;
                 bytes.extend_from_slice(normal.as_bytes());
             }
             Node::Descendants(Descendants { descendants }) => {
@@ -233,10 +236,15 @@ impl<'a, D: Distance> BytesDecode<'a> for NodeCodec<D> {
             [SPLIT_PLANE_NORMAL_TAG, bytes @ ..] => {
                 let (left, bytes) = NodeId::from_bytes(bytes);
                 let (right, bytes) = NodeId::from_bytes(bytes);
+                let descendants: Cow<'static, RoaringBitmap> =
+                    Cow::Owned(RoaringBitmap::deserialize_from(bytes)?);
+                let bytes = &bytes[descendants.serialized_size()..];
+
                 Ok(Node::SplitPlaneNormal(SplitPlaneNormal {
-                    normal: UnalignedF32Slice::from_bytes(bytes).map(Cow::Borrowed)?,
                     left,
                     right,
+                    descendants,
+                    normal: UnalignedF32Slice::from_bytes(bytes).map(Cow::Borrowed)?,
                 }))
             }
             [DESCENDANTS_TAG, bytes @ ..] => Ok(Node::Descendants(Descendants {

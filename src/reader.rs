@@ -90,7 +90,12 @@ impl<'t, D: Distance> Reader<'t, D> {
                 Node::Descendants(_) => {
                     Ok(TreeStats { depth: 1, dummy_normals: 0, split_nodes: 0, descendants: 1 })
                 }
-                Node::SplitPlaneNormal(SplitPlaneNormal { normal, left, right }) => {
+                Node::SplitPlaneNormal(SplitPlaneNormal {
+                    normal,
+                    left,
+                    right,
+                    descendants: _,
+                }) => {
                     let left = recursive_depth(rtxn, database, index, left)?;
                     let right = recursive_depth(rtxn, database, index, right)?;
                     let is_zero_normal = normal.iter().all(|f| f == 0.0) as usize;
@@ -221,10 +226,15 @@ impl<'t, D: Distance> Reader<'t, D> {
                         nns.extend(descendants.iter());
                     }
                 }
-                Node::SplitPlaneNormal(SplitPlaneNormal { normal, left, right }) => {
-                    let margin = D::margin_no_header(&normal, &query_leaf.vector);
-                    queue.push((OrderedFloat(D::pq_distance(dist, margin, Side::Left)), left));
-                    queue.push((OrderedFloat(D::pq_distance(dist, margin, Side::Right)), right));
+                Node::SplitPlaneNormal(SplitPlaneNormal { normal, left, right, descendants }) => {
+                    if candidates
+                        .map_or(true, |candidates| candidates.intersection_len(&descendants) > 0)
+                    {
+                        let margin = D::margin_no_header(&normal, &query_leaf.vector);
+                        queue.push((OrderedFloat(D::pq_distance(dist, margin, Side::Left)), left));
+                        queue
+                            .push((OrderedFloat(D::pq_distance(dist, margin, Side::Right)), right));
+                    }
                 }
             }
         }

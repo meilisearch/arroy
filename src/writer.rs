@@ -268,7 +268,7 @@ impl<D: Distance> Writer<D> {
                 children_left.push(item_id);
             }
             // Drop the firts half of the element from the original item indices
-            children_right = item_indices;
+            children_right = item_indices.clone();
             children_right.remove_range(0..=children_left.max().unwrap());
         }
 
@@ -276,6 +276,7 @@ impl<D: Distance> Writer<D> {
             normal: Cow::Owned(normal),
             left: self.make_tree(wtxn, children_left, false, rng)?,
             right: self.make_tree(wtxn, children_right, false, rng)?,
+            descendants: Cow::Owned(item_indices),
         };
 
         let new_node_id = self.create_item_id()?;

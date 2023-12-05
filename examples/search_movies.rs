@@ -3,7 +3,6 @@ use std::time::{Duration, Instant};
 use arroy::distances::DotProduct;
 use arroy::{Database, Reader};
 use heed::EnvOpenOptions;
-use roaring::RoaringBitmap;
 
 fn main() {
     let mut args = std::env::args();
@@ -31,13 +30,13 @@ fn main() {
 
     let mut durations = Vec::new();
 
-    // let filter = RoaringBitmap::from_sorted_iter(0..=50_000).unwrap();
+    let filter = roaring::RoaringBitmap::from_sorted_iter(0..=50_000).unwrap();
 
     println!("Starts querying all documents ...");
     for (id, _) in vectors.into_iter() {
         let now = Instant::now();
         reader.nns_by_item(&rtxn, id, 20, None, None).unwrap().unwrap();
-        // reader.nns_by_item(&rtxn, id, 20, None, Some(&filter)).unwrap().unwrap();
+        reader.nns_by_item(&rtxn, id, 20, None, Some(&filter)).unwrap().unwrap();
         durations.push(now.elapsed());
     }
     println!("Making the stats");
