@@ -169,14 +169,14 @@ fn filtering() {
     let rtxn = handle.env.read_txn().unwrap();
     let reader = Reader::<Euclidean>::open(&rtxn, 0, handle.database).unwrap();
 
-    let ret = reader.nns_by_item(&rtxn, 0, 5, None, Some(RoaringBitmap::from_iter(0..2))).unwrap();
+    let ret = reader.nns_by_item(&rtxn, 0, 5, None, Some(&RoaringBitmap::from_iter(0..2))).unwrap();
     insta::assert_display_snapshot!(NnsRes(ret), @r###"
     id(0): distance(0)
     id(1): distance(1)
     "###);
 
     let ret =
-        reader.nns_by_item(&rtxn, 0, 5, None, Some(RoaringBitmap::from_iter(98..1000))).unwrap();
+        reader.nns_by_item(&rtxn, 0, 5, None, Some(&RoaringBitmap::from_iter(98..1000))).unwrap();
     insta::assert_display_snapshot!(NnsRes(ret), @r###"
     id(98): distance(98)
     id(99): distance(99)
