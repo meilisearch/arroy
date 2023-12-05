@@ -132,11 +132,18 @@ impl fmt::Debug for UnalignedF32Slice {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct Descendants<'a> {
     // A descendants node can only contains references to the leaf nodes.
     // We can get and store their ids directly without the `Mode`.
     pub descendants: Cow<'a, RoaringBitmap>,
+}
+
+impl fmt::Debug for Descendants<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let descendants = self.descendants.iter().collect::<Vec<_>>();
+        f.debug_struct("Descendants").field("descendants", &descendants).finish()
+    }
 }
 
 #[derive(Clone)]
