@@ -7,6 +7,7 @@ use std::num::NonZeroUsize;
 
 use heed::RoTxn;
 use ordered_float::OrderedFloat;
+use roaring::RoaringBitmap;
 
 use crate::distance::Distance;
 use crate::internals::{KeyCodec, Side};
@@ -140,15 +141,19 @@ impl<'t, D: Distance> Reader<'t, D> {
     /// During the query it will inspect up to `search_k` nodes which defaults
     /// to `n_trees * count` if not provided. `search_k` gives you a run-time
     /// tradeoff between better accuracy and speed.
+    ///
+    /// The candidates are the list of vectors arroy should consider while running your search.
+    /// You're guaranteed that all the `ItemId` returned will be part of your candidates.
     pub fn nns_by_item(
         &self,
         rtxn: &'t RoTxn,
         item: ItemId,
         count: usize,
         search_k: Option<NonZeroUsize>,
+        candidates: Option<RoaringBitmap>,
     ) -> Result<Option<Vec<(ItemId, f32)>>> {
         match item_leaf(self.database, self.index, rtxn, item)? {
-            Some(leaf) => self.nns_by_leaf(rtxn, &leaf, count, search_k).map(Some),
+            Some(leaf) => self.nns_by_leaf(rtxn, &leaf, count, search_k, candidates).map(Some),
             None => Ok(None),
         }
     }
@@ -162,6 +167,7 @@ impl<'t, D: Distance> Reader<'t, D> {
         vector: &[f32],
         count: usize,
         search_k: Option<NonZeroUsize>,
+        candidates: Option<RoaringBitmap>,
     ) -> Result<Vec<(ItemId, f32)>> {
         if vector.len() != self.dimensions {
             return Err(Error::InvalidVecDimension {
@@ -172,7 +178,7 @@ impl<'t, D: Distance> Reader<'t, D> {
 
         let vector = UnalignedF32Slice::from_slice(vector);
         let leaf = Leaf { header: D::new_header(vector), vector: Cow::Borrowed(vector) };
-        self.nns_by_leaf(rtxn, &leaf, count, search_k)
+        self.nns_by_leaf(rtxn, &leaf, count, search_k, candidates)
     }
 
     fn nns_by_leaf(
@@ -181,6 +187,7 @@ impl<'t, D: Distance> Reader<'t, D> {
         query_leaf: &Leaf<D>,
         count: usize,
         search_k: Option<NonZeroUsize>,
+        candidates: Option<RoaringBitmap>,
     ) -> Result<Vec<(ItemId, f32)>> {
         // Since the datastructure describes a kind of btree, the capacity is something in the order of:
         // The number of root nodes + log2 of the total number of vectors.
