@@ -3,10 +3,10 @@ use std::borrow::Cow;
 
 use heed::types::{Bytes, DecodeIgnore};
 use heed::{MdbError, PutFlags, RoTxn, RwTxn};
-use rand::seq::SliceRandom;
 use rand::{Rng, SeedableRng};
 use rayon::iter::repeatn;
 use rayon::prelude::*;
+use roaring::RoaringBitmap;
 
 use crate::distance::Distance;
 use crate::internals::{KeyCodec, Side};
@@ -176,7 +176,7 @@ impl<D: Distance> Writer<D> {
         })?;
 
         let item_indices = self.item_indices(wtxn)?;
-        self.n_items = item_indices.len();
+        self.n_items = item_indices.len() as usize;
 
         log::debug!("started building trees for {} items...", self.n_items);
 
@@ -253,8 +253,8 @@ impl<D: Distance> Writer<D> {
     }
 
     // Fetches the item's ids, not the tree nodes ones.
-    fn item_indices(&self, wtxn: &mut RwTxn<'_>) -> heed::Result<Vec<ItemId>> {
-        let mut indices = Vec::new();
+    fn item_indices(&self, wtxn: &mut RwTxn<'_>) -> heed::Result<RoaringBitmap> {
+        let mut indices = RoaringBitmap::new();
         for result in self
             .database
             .remap_types::<PrefixCodec, DecodeIgnore>()
@@ -285,7 +285,7 @@ struct FrozzenReader<'a, D: Distance> {
 fn make_tree_in_file<D: Distance, R: Rng>(
     reader: &FrozzenReader<D>,
     rng: &mut R,
-    item_indices: &[ItemId],
+    item_indices: &RoaringBitmap,
     is_root: bool,
     tmp_nodes: &mut TmpNodes,
 ) -> Result<NodeId> {
@@ -294,22 +294,24 @@ fn make_tree_in_file<D: Distance, R: Rng>(
     let max_descendants = reader.dimensions;
 
     if item_indices.len() == 1 && !is_root {
-        return Ok(NodeId::item(item_indices[0]));
+        return Ok(NodeId::item(item_indices.min().unwrap()));
     }
 
-    if item_indices.len() <= max_descendants
+    if item_indices.len() as usize <= max_descendants
         && (!is_root || reader.n_items <= max_descendants || item_indices.len() == 1)
     {
         let item_id = reader.concurrent_node_ids.next();
-        let descendants = ItemIds::from_slice(item_indices);
+        // TODO directly store a roaring bitmap
+        let descendants: Vec<_> = item_indices.into_iter().collect();
+        let descendants = ItemIds::from_slice(&descendants);
         let item = Node::Descendants(Descendants { descendants });
         tmp_nodes.put::<NodeCodec<D>>(item_id, &item)?;
         return Ok(NodeId::tree(item_id));
     }
 
-    let children = ImmutableSubsetLeafs::from_item_ids(reader.leafs, item_indices.iter().copied());
-    let mut children_left = Vec::new();
-    let mut children_right = Vec::new();
+    let children = ImmutableSubsetLeafs::from_item_ids(reader.leafs, item_indices);
+    let mut children_left = RoaringBitmap::new();
+    let mut children_right = RoaringBitmap::new();
     let mut remaining_attempts = 3;
 
     let mut normal = loop {
@@ -317,12 +319,12 @@ fn make_tree_in_file<D: Distance, R: Rng>(
         children_right.clear();
 
         let normal = D::create_split(&children, rng)?;
-        for &item_id in item_indices {
+        for item_id in item_indices.iter() {
             let node = children.get(item_id)?.unwrap();
             match D::side(UnalignedF32Slice::from_slice(&normal), &node, rng) {
                 Side::Left => children_left.push(item_id),
                 Side::Right => children_right.push(item_id),
-            }
+            };
         }
 
         if split_imbalance(children_left.len(), children_right.len()) < 0.95
@@ -353,25 +355,24 @@ fn make_tree_in_file<D: Distance, R: Rng>(
     Ok(NodeId::tree(new_node_id))
 }
 
-/// Randomly and efficiently splits the items into
-/// the left and right children vectors.
+/// Randomly and efficiently splits the items into the left and right children vectors.
 fn randomly_split_children<R: Rng>(
     rng: &mut R,
-    item_indices: &[ItemId],
-    children_left: &mut Vec<u32>,
-    children_right: &mut Vec<u32>,
+    item_indices: &RoaringBitmap,
+    children_left: &mut RoaringBitmap,
+    children_right: &mut RoaringBitmap,
 ) {
     children_left.clear();
     children_right.clear();
 
-    // Put the items into a mutable area to shuffle it just after.
-    children_left.extend_from_slice(item_indices);
-    children_left.shuffle(rng);
-
     // Split it in half and put the right half into the right children's vector
-    let (left, right) = children_left.split_at(item_indices.len() / 2);
-    children_right.extend_from_slice(right);
-    children_left.truncate(left.len());
+    for item_id in item_indices {
+        if rng.gen() {
+            children_left.push(item_id);
+        } else {
+            children_right.push(item_id);
+        }
+    }
 }
 
 /// Clears everything but the leafs nodes (items).
@@ -394,7 +395,7 @@ fn clear_tree_nodes<D: Distance>(
     Ok(())
 }
 
-fn split_imbalance(left_indices_len: usize, right_indices_len: usize) -> f64 {
+fn split_imbalance(left_indices_len: u64, right_indices_len: u64) -> f64 {
     let ls = left_indices_len as f64;
     let rs = right_indices_len as f64;
     let f = ls / (ls + rs + f64::EPSILON); // Avoid 0/0

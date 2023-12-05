@@ -157,16 +157,13 @@ impl<'t, D: Distance> ImmutableLeafs<'t, D> {
 unsafe impl<D> Sync for ImmutableLeafs<'_, D> {}
 
 pub struct ImmutableSubsetLeafs<'t, D> {
-    subset: RoaringBitmap,
+    subset: &'t RoaringBitmap,
     leafs: &'t ImmutableLeafs<'t, D>,
 }
 
 impl<'t, D: Distance> ImmutableSubsetLeafs<'t, D> {
-    pub fn from_item_ids(
-        leafs: &'t ImmutableLeafs<'t, D>,
-        iterator: impl IntoIterator<Item = ItemId>,
-    ) -> Self {
-        ImmutableSubsetLeafs { subset: RoaringBitmap::from_iter(iterator), leafs }
+    pub fn from_item_ids(leafs: &'t ImmutableLeafs<'t, D>, subset: &'t RoaringBitmap) -> Self {
+        ImmutableSubsetLeafs { subset, leafs }
     }
 
     pub fn get(&self, item_id: ItemId) -> heed::Result<Option<Leaf<'t, D>>> {
