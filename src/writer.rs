@@ -255,21 +255,23 @@ impl<D: Distance> Writer<D> {
             remaining_attempts -= 1;
         };
 
-        if split_imbalance(children_left.len(), children_right.len()) > 0.99 {
-            // If we didn't find a hyperplane, just randomize sides as a last option
-            // and set the split plane to zero as a dummy plane.
+        // If we didn't find a hyperplane, just randomize sides as a last option
+        // and set the split plane to zero as a dummy plane.
+        while split_imbalance(children_left.len(), children_right.len()) > 0.99 {
             children_left.clear();
             children_right.clear();
             normal.fill(0.0);
-            let half = (item_indices.len() / 2) as usize;
 
-            // Insert the first half of the element in the left node
-            for item_id in item_indices.iter().take(half) {
-                children_left.push(item_id);
+            for node_id in item_indices.iter() {
+                match Side::random(rng) {
+                    Side::Left => {
+                        children_left.push(node_id);
+                    }
+                    Side::Right => {
+                        children_right.push(node_id);
+                    }
+                }
             }
-            // Drop the firts half of the element from the original item indices
-            children_right = item_indices;
-            children_right.remove_range(0..=children_left.max().unwrap());
         }
 
         let normal = SplitPlaneNormal {

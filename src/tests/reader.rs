@@ -91,8 +91,8 @@ fn two_dimension_on_a_line() {
     // if we can't look into enough nodes we find some random points
     let ret = reader.nns_by_item(&rtxn, 0, 5, NonZeroUsize::new(1)).unwrap();
     insta::assert_display_snapshot!(NnsRes(ret), @r###"
-    id(98): distance(98)
-    id(99): distance(99)
+    id(33): distance(33)
+    id(69): distance(69)
     "###);
 
     // if we can look into all the node there is no inifinite loop and it works
@@ -107,11 +107,11 @@ fn two_dimension_on_a_line() {
 
     let ret = reader.nns_by_item(&rtxn, 0, 5, None).unwrap();
     insta::assert_display_snapshot!(NnsRes(ret), @r###"
+    id(1): distance(1)
     id(2): distance(2)
     id(3): distance(3)
+    id(4): distance(4)
     id(5): distance(5)
-    id(6): distance(6)
-    id(8): distance(8)
     "###);
 }
 
@@ -138,10 +138,10 @@ fn two_dimension_on_a_column() {
     let ret = reader.nns_by_item(&rtxn, 0, 5, None).unwrap();
 
     insta::assert_display_snapshot!(NnsRes(ret), @r###"
+    id(1): distance(1)
     id(2): distance(2)
     id(3): distance(3)
+    id(4): distance(4)
     id(5): distance(5)
-    id(6): distance(6)
-    id(8): distance(8)
     "###);
 }
