@@ -6,6 +6,7 @@ use rand::Rng;
 use super::two_means;
 use crate::distance::Distance;
 use crate::node::{Leaf, UnalignedF32Slice};
+use crate::parallel::ImmutableSubsetLeafs;
 use crate::spaces::simple::dot_product;
 
 /// The Cosine similarity is a measure of similarity between two
@@ -48,14 +49,17 @@ impl Distance for Angular {
         node.header.norm = dot_product(&node.vector, &node.vector);
     }
 
-    fn create_split<R: Rng>(children: &[Leaf<Self>], rng: &mut R) -> Vec<f32> {
-        let [node_p, node_q] = two_means(rng, children, true);
+    fn create_split<R: Rng>(
+        children: &ImmutableSubsetLeafs<Self>,
+        rng: &mut R,
+    ) -> heed::Result<Vec<f32>> {
+        let [node_p, node_q] = two_means(rng, children, true)?;
         let vector = node_p.vector.iter().zip(node_q.vector.iter()).map(|(p, q)| p - q).collect();
         let mut normal =
             Leaf { header: NodeHeaderAngular { norm: 0.0 }, vector: Cow::Owned(vector) };
         Self::normalize(&mut normal);
 
-        normal.vector.into_owned()
+        Ok(normal.vector.into_owned())
     }
 
     fn margin_no_header(p: &UnalignedF32Slice, q: &UnalignedF32Slice) -> f32 {

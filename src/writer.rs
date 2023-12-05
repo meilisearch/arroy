@@ -12,7 +12,7 @@ use crate::distance::Distance;
 use crate::internals::{KeyCodec, Side};
 use crate::item_iter::ItemIter;
 use crate::node::{Descendants, ItemIds, Leaf, SplitPlaneNormal, UnalignedF32Slice};
-use crate::parallel::{ConcurrentNodeIds, ImmutableLeafs, TmpNodes};
+use crate::parallel::{ConcurrentNodeIds, ImmutableLeafs, ImmutableSubsetLeafs, TmpNodes};
 use crate::reader::item_leaf;
 use crate::{
     Database, Error, ItemId, Key, Metadata, MetadataCodec, Node, NodeCodec, NodeId, Prefix,
@@ -301,18 +301,13 @@ fn make_tree_in_file<D: Distance, R: Rng>(
         && (!is_root || reader.n_items <= max_descendants || item_indices.len() == 1)
     {
         let item_id = reader.concurrent_node_ids.next();
-        let item =
-            Node::Descendants(Descendants { descendants: ItemIds::from_slice(item_indices) });
+        let descendants = ItemIds::from_slice(item_indices);
+        let item = Node::Descendants(Descendants { descendants });
         tmp_nodes.put::<NodeCodec<D>>(item_id, &item)?;
         return Ok(NodeId::tree(item_id));
     }
 
-    let mut children = Vec::new();
-    for &item_id in item_indices {
-        let leaf = reader.leafs.get(item_id)?.unwrap();
-        children.push(leaf);
-    }
-
+    let children = ImmutableSubsetLeafs::from_item_ids(reader.leafs, item_indices.iter().copied());
     let mut children_left = Vec::new();
     let mut children_right = Vec::new();
     let mut remaining_attempts = 3;
@@ -321,11 +316,12 @@ fn make_tree_in_file<D: Distance, R: Rng>(
         children_left.clear();
         children_right.clear();
 
-        let normal = D::create_split(&children, rng);
-        for (&node_id, node) in item_indices.iter().zip(&children) {
-            match D::side(UnalignedF32Slice::from_slice(&normal), node, rng) {
-                Side::Left => children_left.push(node_id),
-                Side::Right => children_right.push(node_id),
+        let normal = D::create_split(&children, rng)?;
+        for &item_id in item_indices {
+            let node = children.get(item_id)?.unwrap();
+            match D::side(UnalignedF32Slice::from_slice(&normal), &node, rng) {
+                Side::Left => children_left.push(item_id),
+                Side::Right => children_right.push(item_id),
             }
         }
 

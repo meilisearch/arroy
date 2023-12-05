@@ -8,6 +8,7 @@ use super::two_means;
 use crate::distance::Distance;
 use crate::internals::KeyCodec;
 use crate::node::{Leaf, UnalignedF32Slice};
+use crate::parallel::ImmutableSubsetLeafs;
 use crate::spaces::simple::dot_product;
 use crate::{Node, NodeCodec};
 
@@ -79,8 +80,11 @@ impl Distance for DotProduct {
         node.header.norm = dot_product(&node.vector, &node.vector);
     }
 
-    fn create_split<R: Rng>(children: &[Leaf<Self>], rng: &mut R) -> Vec<f32> {
-        let [node_p, node_q] = two_means(rng, children, true);
+    fn create_split<R: Rng>(
+        children: &ImmutableSubsetLeafs<Self>,
+        rng: &mut R,
+    ) -> heed::Result<Vec<f32>> {
+        let [node_p, node_q] = two_means(rng, children, true)?;
         let vector = node_p.vector.iter().zip(node_q.vector.iter()).map(|(p, q)| p - q).collect();
         let mut normal = Leaf::<Self> {
             header: NodeHeaderDotProduct { norm: 0.0, extra_dim: 0.0 },
@@ -89,7 +93,7 @@ impl Distance for DotProduct {
         normal.header.extra_dim = node_p.header.extra_dim - node_q.header.extra_dim;
         Self::normalize(&mut normal);
 
-        normal.vector.into_owned()
+        Ok(normal.vector.into_owned())
     }
 
     fn margin(p: &Leaf<Self>, q: &Leaf<Self>) -> f32 {
