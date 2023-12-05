@@ -166,7 +166,7 @@ impl<D: Distance> Writer<D> {
                 _ => (),
             }
 
-            let tree_root_id = self.make_tree(wtxn, &item_indices, true, &mut rng)?;
+            let tree_root_id = self.make_tree(wtxn, item_indices.clone(), true, &mut rng)?;
             // make_tree must NEVER return a leaf when called as root
             thread_roots.push(tree_root_id.unwrap_tree());
         }
@@ -200,7 +200,7 @@ impl<D: Distance> Writer<D> {
     fn make_tree<R: Rng>(
         &mut self,
         wtxn: &mut RwTxn,
-        item_indices: &RoaringBitmap,
+        item_indices: RoaringBitmap,
         is_root: bool,
         rng: &mut R,
     ) -> Result<NodeId> {
@@ -217,7 +217,7 @@ impl<D: Distance> Writer<D> {
         {
             let item_id = self.create_item_id()?;
 
-            let item = Node::Descendants(Descendants { descendants: Cow::Borrowed(item_indices) });
+            let item = Node::Descendants(Descendants { descendants: Cow::Owned(item_indices) });
             self.database.put(wtxn, &Key::tree(self.index, item_id), &item)?;
             return Ok(NodeId::tree(item_id));
         }
@@ -268,14 +268,14 @@ impl<D: Distance> Writer<D> {
                 children_left.push(item_id);
             }
             // Drop the firts half of the element from the original item indices
-            children_right = item_indices.clone();
+            children_right = item_indices;
             children_right.remove_range(0..children_left.max().unwrap());
         }
 
         let normal = SplitPlaneNormal {
             normal: Cow::Owned(normal),
-            left: self.make_tree(wtxn, &children_left, false, rng)?,
-            right: self.make_tree(wtxn, &children_right, false, rng)?,
+            left: self.make_tree(wtxn, children_left, false, rng)?,
+            right: self.make_tree(wtxn, children_right, false, rng)?,
         };
 
         let new_node_id = self.create_item_id()?;
