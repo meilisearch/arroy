@@ -7,6 +7,7 @@ use std::num::NonZeroUsize;
 
 use heed::RoTxn;
 use ordered_float::OrderedFloat;
+use roaring::RoaringBitmap;
 
 use crate::distance::Distance;
 use crate::internals::{KeyCodec, Side};
@@ -190,16 +191,18 @@ impl<'t, D: Distance> Reader<'t, D> {
         // Insert all the root nodes and associate them to the highest distance.
         queue.extend(repeat(OrderedFloat(f32::INFINITY)).zip(self.roots.iter().map(NodeId::tree)));
 
-        let mut nns = Vec::new();
-        while nns.len() < search_k {
+        let mut nns = RoaringBitmap::new();
+        while nns.len() < search_k as u64 {
             let (OrderedFloat(dist), item) = match queue.pop() {
                 Some(out) => out,
                 None => break,
             };
 
             match self.database.get(rtxn, &Key::new(self.index, item))?.unwrap() {
-                Node::Leaf(_) => nns.push(item.unwrap_item()),
-                Node::Descendants(Descendants { descendants }) => nns.extend(descendants.iter()),
+                Node::Leaf(_) => {
+                    nns.insert(item.unwrap_item());
+                }
+                Node::Descendants(Descendants { descendants }) => nns |= descendants.into_owned(), // when coming from the DB descendants ARE owned
                 Node::SplitPlaneNormal(SplitPlaneNormal { normal, left, right }) => {
                     let margin = D::margin_no_header(&normal, &query_leaf.vector);
                     queue.push((OrderedFloat(D::pq_distance(dist, margin, Side::Left)), left));
@@ -210,10 +213,8 @@ impl<'t, D: Distance> Reader<'t, D> {
 
         // Get distances for all items
         // To avoid calculating distance multiple times for any items, sort by id and dedup by id.
-        nns.sort_unstable();
-        nns.dedup();
 
-        let mut nns_distances = Vec::with_capacity(nns.len());
+        let mut nns_distances = Vec::with_capacity(nns.len() as usize);
         for nn in nns {
             let leaf = match self.database.get(rtxn, &Key::item(self.index, nn))?.unwrap() {
                 Node::Leaf(leaf) => leaf,

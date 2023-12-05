@@ -107,11 +107,11 @@ fn two_dimension_on_a_line() {
 
     let ret = reader.nns_by_item(&rtxn, 0, 5, None).unwrap();
     insta::assert_display_snapshot!(NnsRes(ret), @r###"
+    id(0): distance(0)
+    id(1): distance(1)
     id(2): distance(2)
     id(3): distance(3)
-    id(5): distance(5)
-    id(6): distance(6)
-    id(8): distance(8)
+    id(4): distance(4)
     "###);
 }
 
@@ -138,10 +138,10 @@ fn two_dimension_on_a_column() {
     let ret = reader.nns_by_item(&rtxn, 0, 5, None).unwrap();
 
     insta::assert_display_snapshot!(NnsRes(ret), @r###"
+    id(0): distance(0)
+    id(1): distance(1)
     id(2): distance(2)
     id(3): distance(3)
-    id(5): distance(5)
-    id(6): distance(6)
-    id(8): distance(8)
+    id(4): distance(4)
     "###);
 }
