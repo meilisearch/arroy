@@ -3,7 +3,6 @@ use std::time::{Duration, Instant};
 use arroy::distances::DotProduct;
 use arroy::{Database, Reader};
 use heed::EnvOpenOptions;
-use roaring::RoaringBitmap;
 
 fn main() {
     let mut args = std::env::args();
@@ -31,7 +30,7 @@ fn main() {
 
     let mut durations = Vec::new();
 
-    // let filter = RoaringBitmap::from_sorted_iter(0..=50_000).unwrap();
+    // let filter = roaring::RoaringBitmap::from_sorted_iter(0..=50_000).unwrap();
 
     println!("Starts querying all documents ...");
     for (id, _) in vectors.into_iter() {
