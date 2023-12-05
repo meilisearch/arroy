@@ -4,6 +4,7 @@ use std::borrow::Cow;
 use heed::types::DecodeIgnore;
 use heed::{MdbError, PutFlags, RoTxn, RwTxn};
 use rand::Rng;
+use roaring::RoaringBitmap;
 
 use crate::distance::Distance;
 use crate::internals::{KeyCodec, Side};
@@ -24,7 +25,7 @@ pub struct Writer<D: Distance> {
     index: u16,
     dimensions: usize,
     // non-initiliazed until build is called.
-    n_items: usize,
+    n_items: u64,
     // non-initiliazed until build is called.
     next_tree_id: u32,
     // We know the root nodes points to tree-nodes.
@@ -161,7 +162,7 @@ impl<D: Distance> Writer<D> {
         loop {
             match n_trees {
                 Some(n_trees) if thread_roots.len() >= n_trees => break,
-                None if self.next_tree_id as usize >= self.n_items => break,
+                None if self.next_tree_id >= (self.n_items - 1) as u32 => break,
                 _ => (),
             }
 
@@ -199,7 +200,7 @@ impl<D: Distance> Writer<D> {
     fn make_tree<R: Rng>(
         &mut self,
         wtxn: &mut RwTxn,
-        item_indices: &[ItemId],
+        item_indices: &RoaringBitmap,
         is_root: bool,
         rng: &mut R,
     ) -> Result<NodeId> {
@@ -208,29 +209,28 @@ impl<D: Distance> Writer<D> {
         let max_descendants = self.dimensions;
 
         if item_indices.len() == 1 && !is_root {
-            return Ok(NodeId::item(item_indices[0]));
+            return Ok(NodeId::item(item_indices.min().unwrap()));
         }
 
-        if item_indices.len() <= max_descendants
-            && (!is_root || self.n_items <= max_descendants || item_indices.len() == 1)
+        if item_indices.len() <= max_descendants as u64
+            && (!is_root || self.n_items <= max_descendants as u64 || item_indices.len() == 1)
         {
             let item_id = self.create_item_id()?;
 
-            let item =
-                Node::Descendants(Descendants { descendants: ItemIds::from_slice(item_indices) });
+            let item = Node::Descendants(Descendants { descendants: Cow::Borrowed(item_indices) });
             self.database.put(wtxn, &Key::tree(self.index, item_id), &item)?;
             return Ok(NodeId::tree(item_id));
         }
 
         let mut children = Vec::new();
-        for &item_id in item_indices {
+        for item_id in item_indices.iter() {
             let node = self.database.get(wtxn, &Key::item(self.index, item_id))?.unwrap();
             let leaf = node.leaf().unwrap();
             children.push(leaf);
         }
 
-        let mut children_left = Vec::new();
-        let mut children_right = Vec::new();
+        let mut children_left = RoaringBitmap::new();
+        let mut children_right = RoaringBitmap::new();
         let mut remaining_attempts = 3;
 
         let mut normal = loop {
@@ -238,11 +238,12 @@ impl<D: Distance> Writer<D> {
             children_right.clear();
 
             let normal = D::create_split(&children, rng);
-            for (&node_id, node) in item_indices.iter().zip(&children) {
-                match D::side(UnalignedF32Slice::from_slice(&normal), node, rng) {
+            for (node_id, node) in item_indices.iter().zip(&children) {
+                // It is safe to push the value since they come from a roaring bitmap
+                let _ = match D::side(UnalignedF32Slice::from_slice(&normal), node, rng) {
                     Side::Left => children_left.push(node_id),
                     Side::Right => children_right.push(node_id),
-                }
+                };
             }
 
             if split_imbalance(children_left.len(), children_right.len()) < 0.95
@@ -254,19 +255,21 @@ impl<D: Distance> Writer<D> {
             remaining_attempts -= 1;
         };
 
-        // If we didn't find a hyperplane, just randomize sides as a last option
-        // and set the split plane to zero as a dummy plane.
-        while split_imbalance(children_left.len(), children_right.len()) > 0.99 {
+        if split_imbalance(children_left.len(), children_right.len()) > 0.99 {
+            // If we didn't find a hyperplane, just randomize sides as a last option
+            // and set the split plane to zero as a dummy plane.
             children_left.clear();
             children_right.clear();
             normal.fill(0.0);
+            let half = (item_indices.len() / 2) as usize;
 
-            for &node_id in item_indices {
-                match Side::random(rng) {
-                    Side::Left => children_left.push(node_id),
-                    Side::Right => children_right.push(node_id),
-                }
+            // Insert the first half of the element in the left node
+            for item_id in item_indices.iter().take(half) {
+                children_left.push(item_id);
             }
+            // Drop the firts half of the element from the original item indices
+            children_right = item_indices.clone();
+            children_right.remove_range(0..children_left.max().unwrap());
         }
 
         let normal = SplitPlaneNormal {
@@ -293,8 +296,8 @@ impl<D: Distance> Writer<D> {
     }
 
     // Fetches the item's ids, not the tree nodes ones.
-    fn item_indices(&self, wtxn: &mut RwTxn<'_>) -> heed::Result<Vec<ItemId>> {
-        let mut indices = Vec::new();
+    fn item_indices(&self, wtxn: &mut RwTxn<'_>) -> heed::Result<RoaringBitmap> {
+        let mut indices = RoaringBitmap::new();
         for result in self
             .database
             .remap_types::<PrefixCodec, DecodeIgnore>()
@@ -329,7 +332,7 @@ fn clear_tree_nodes<D: Distance>(
     Ok(())
 }
 
-fn split_imbalance(left_indices_len: usize, right_indices_len: usize) -> f64 {
+fn split_imbalance(left_indices_len: u64, right_indices_len: u64) -> f64 {
     let ls = left_indices_len as f64;
     let rs = right_indices_len as f64;
     let f = ls / (ls + rs + f64::EPSILON); // Avoid 0/0

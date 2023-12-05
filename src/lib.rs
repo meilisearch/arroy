@@ -83,6 +83,7 @@ mod spaces;
 mod stats;
 mod writer;
 
+mod roaring;
 #[cfg(test)]
 mod tests;
 

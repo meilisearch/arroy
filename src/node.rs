@@ -5,6 +5,7 @@ use std::mem::{size_of, transmute};
 use bytemuck::{bytes_of, cast_slice, pod_collect_to_vec, pod_read_unaligned};
 use byteorder::{ByteOrder, NativeEndian};
 use heed::{BoxedError, BytesDecode, BytesEncode};
+use roaring::RoaringBitmap;
 
 use crate::distance::Distance;
 use crate::{ItemId, NodeId};
@@ -135,7 +136,7 @@ impl fmt::Debug for UnalignedF32Slice {
 pub struct Descendants<'a> {
     // A descendants node can only contains references to the leaf nodes.
     // We can get and store their ids directly without the `Mode`.
-    pub descendants: ItemIds<'a>,
+    pub descendants: Cow<'a, RoaringBitmap>,
 }
 
 #[derive(Clone)]
@@ -204,7 +205,7 @@ impl<'a, D: Distance> BytesEncode<'a> for NodeCodec<D> {
             }
             Node::Descendants(Descendants { descendants }) => {
                 bytes.push(DESCENDANTS_TAG);
-                bytes.extend_from_slice(descendants.raw_bytes());
+                descendants.serialize_into(&mut bytes)?;
             }
         }
         Ok(Cow::Owned(bytes))
@@ -231,9 +232,9 @@ impl<'a, D: Distance> BytesDecode<'a> for NodeCodec<D> {
                     right,
                 }))
             }
-            [DESCENDANTS_TAG, bytes @ ..] => {
-                Ok(Node::Descendants(Descendants { descendants: ItemIds::from_bytes(bytes) }))
-            }
+            [DESCENDANTS_TAG, bytes @ ..] => Ok(Node::Descendants(Descendants {
+                descendants: Cow::Owned(RoaringBitmap::deserialize_from(bytes)?),
+            })),
             unknown => panic!("What the fuck is an {unknown:?}"),
         }
     }

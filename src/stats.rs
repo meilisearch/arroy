@@ -2,7 +2,7 @@
 #[derive(Debug, Clone)]
 pub struct Stats {
     /// Number of leaf node or item vectors.
-    pub leaf: usize,
+    pub leaf: u64,
     /// The stats of each individual tree.
     pub tree_stats: Vec<TreeStats>,
 }

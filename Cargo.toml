@@ -16,6 +16,7 @@ byteorder = "1.5.0"
 heed = { version = "0.20.0-alpha.9", default-features = false }
 ordered-float = "4.1.1"
 rand = { version = "0.8.5", features = ["alloc"] }
+roaring = "0.10.2"
 thiserror = "1.0.50"
 
 [dev-dependencies]
