@@ -150,7 +150,7 @@ impl<'t, D: Distance> Reader<'t, D> {
         item: ItemId,
         count: usize,
         search_k: Option<NonZeroUsize>,
-        candidates: Option<RoaringBitmap>,
+        candidates: Option<&RoaringBitmap>,
     ) -> Result<Option<Vec<(ItemId, f32)>>> {
         match item_leaf(self.database, self.index, rtxn, item)? {
             Some(leaf) => self.nns_by_leaf(rtxn, &leaf, count, search_k, candidates).map(Some),
@@ -167,7 +167,7 @@ impl<'t, D: Distance> Reader<'t, D> {
         vector: &[f32],
         count: usize,
         search_k: Option<NonZeroUsize>,
-        candidates: Option<RoaringBitmap>,
+        candidates: Option<&RoaringBitmap>,
     ) -> Result<Vec<(ItemId, f32)>> {
         if vector.len() != self.dimensions {
             return Err(Error::InvalidVecDimension {
@@ -187,7 +187,7 @@ impl<'t, D: Distance> Reader<'t, D> {
         query_leaf: &Leaf<D>,
         count: usize,
         search_k: Option<NonZeroUsize>,
-        candidates: Option<RoaringBitmap>,
+        candidates: Option<&RoaringBitmap>,
     ) -> Result<Vec<(ItemId, f32)>> {
         // Since the datastructure describes a kind of btree, the capacity is something in the order of:
         // The number of root nodes + log2 of the total number of vectors.
@@ -206,7 +206,7 @@ impl<'t, D: Distance> Reader<'t, D> {
 
             match self.database.get(rtxn, &Key::new(self.index, item))?.unwrap() {
                 Node::Leaf(_) => {
-                    if let Some(ref candidates) = candidates {
+                    if let Some(candidates) = candidates {
                         if candidates.contains(item.item) {
                             nns.push(item.unwrap_item())
                         }
@@ -215,7 +215,7 @@ impl<'t, D: Distance> Reader<'t, D> {
                     }
                 }
                 Node::Descendants(Descendants { descendants }) => {
-                    if let Some(ref candidates) = candidates {
+                    if let Some(candidates) = candidates {
                         nns.extend((descendants.into_owned() & candidates).iter());
                     } else {
                         nns.extend(descendants.iter());
