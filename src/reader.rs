@@ -227,9 +227,16 @@ impl<'t, D: Distance> Reader<'t, D> {
                     }
                 }
                 Node::SplitPlaneNormal(SplitPlaneNormal { normal, left, right, descendants }) => {
-                    if candidates
-                        .map_or(true, |candidates| candidates.intersection_len(&descendants) > 0)
-                    {
+                    let mut skip = false;
+                    if let Some(candidates) = candidates {
+                        let len = candidates.intersection_len(&descendants);
+                        if (len as usize) < (search_k / self.roots.len()) {
+                            nns.extend(candidates & descendants.as_ref());
+                            skip = true;
+                        }
+                    }
+
+                    if !skip {
                         let margin = D::margin_no_header(&normal, &query_leaf.vector);
                         queue.push((OrderedFloat(D::pq_distance(dist, margin, Side::Left)), left));
                         queue
