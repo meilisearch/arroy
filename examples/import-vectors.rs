@@ -101,6 +101,7 @@ fn main() -> Result<(), heed::BoxedError> {
     println!();
 
     println!("Building the arroy internal trees...");
+    let now = Instant::now();
     writer.build(&mut wtxn, &mut rng, n_trees).unwrap();
     wtxn.commit().unwrap();
     println!("Took {:.2?} to build", now.elapsed());

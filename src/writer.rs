@@ -167,6 +167,8 @@ impl<D: Distance> Writer<D> {
         rng: &mut R,
         n_trees: Option<usize>,
     ) -> Result<()> {
+        log::debug!("started preprocessing the items...");
+
         D::preprocess(wtxn, |wtxn| {
             Ok(self
                 .database
