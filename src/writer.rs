@@ -269,7 +269,7 @@ impl<D: Distance> Writer<D> {
             }
             // Drop the firts half of the element from the original item indices
             children_right = item_indices;
-            children_right.remove_range(0..children_left.max().unwrap());
+            children_right.remove_range(0..=children_left.max().unwrap());
         }
 
         let normal = SplitPlaneNormal {
