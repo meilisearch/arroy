@@ -205,8 +205,22 @@ impl<'t, D: Distance> Reader<'t, D> {
             };
 
             match self.database.get(rtxn, &Key::new(self.index, item))?.unwrap() {
-                Node::Leaf(_) => nns.push(item.unwrap_item()),
-                Node::Descendants(Descendants { descendants }) => nns.extend(descendants.iter()),
+                Node::Leaf(_) => {
+                    if let Some(ref candidates) = candidates {
+                        if candidates.contains(item.item) {
+                            nns.push(item.unwrap_item())
+                        }
+                    } else {
+                        nns.push(item.unwrap_item())
+                    }
+                }
+                Node::Descendants(Descendants { descendants }) => {
+                    if let Some(ref candidates) = candidates {
+                        nns.extend((descendants.into_owned() & candidates).iter());
+                    } else {
+                        nns.extend(descendants.iter());
+                    }
+                }
                 Node::SplitPlaneNormal(SplitPlaneNormal { normal, left, right }) => {
                     let margin = D::margin_no_header(&normal, &query_leaf.vector);
                     queue.push((OrderedFloat(D::pq_distance(dist, margin, Side::Left)), left));

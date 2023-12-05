@@ -46,7 +46,7 @@ fn main() -> Result<()> {
     let search_k =
         if is_precise { NonZeroUsize::new(NUMBER_FETCHED * reader.n_trees() * 20) } else { None };
 
-    let arroy_results = reader.nns_by_item(&rtxn, 0, NUMBER_FETCHED, search_k)?.unwrap();
+    let arroy_results = reader.nns_by_item(&rtxn, 0, NUMBER_FETCHED, search_k, None)?.unwrap();
     eprintln!("took {:.02?} to find into arroy", before.elapsed());
 
     let first = Point(reader.item_vector(&rtxn, 0)?.unwrap());
