@@ -1,5 +1,6 @@
 use std::any::TypeId;
 use std::borrow::Cow;
+use std::path::PathBuf;
 
 use heed::types::{Bytes, DecodeIgnore};
 use heed::{MdbError, PutFlags, RoTxn, RwTxn};
@@ -27,6 +28,8 @@ pub struct Writer<D: Distance> {
     database: Database<D>,
     index: u16,
     dimensions: usize,
+    /// The folder in which tempfile will write its temporary files.
+    tmpdir: Option<PathBuf>,
     // non-initiliazed until build is called.
     n_items: u64,
     // We know the root nodes points to tree-nodes.
@@ -44,7 +47,7 @@ impl<D: Distance> Writer<D> {
     ) -> Result<Writer<D>> {
         let database: Database<D> = database.remap_data_type();
         clear_tree_nodes(wtxn, database, index)?;
-        Ok(Writer { database, index, dimensions, n_items: 0, roots: Vec::new() })
+        Ok(Writer { database, index, dimensions, tmpdir: None, n_items: 0, roots: Vec::new() })
     }
 
     /// Returns a writer after having deleted the tree nodes and rewrote all the items
@@ -77,6 +80,14 @@ impl<D: Distance> Writer<D> {
 
         let Writer { database, index, dimensions, n_items, roots } = self;
         Ok(Writer { database: database.remap_data_type(), index, dimensions, n_items, roots })
+    }
+
+    /// Specifies the folder in which arroy will write temporary files when building the tree.
+    ///
+    /// If specified it uses the [`tempfile::tempfile_in`] function, otherwise it will
+    /// use the default [`tempfile::tempfile`] function which uses the OS temporary directory.
+    pub fn set_tmpdir(&mut self, path: impl Into<PathBuf>) {
+        self.tmpdir = Some(path.into());
     }
 
     /// Returns an `Option`al vector previous stored in this database.
