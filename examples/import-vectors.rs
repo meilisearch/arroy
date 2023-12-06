@@ -8,7 +8,7 @@ use std::time::Instant;
 use arroy::distances::DotProduct;
 use arroy::{Database, Writer};
 use clap::Parser;
-use heed::EnvOpenOptions;
+use heed::{EnvFlags, EnvOpenOptions};
 use rand::rngs::StdRng;
 use rand::SeedableRng;
 
@@ -30,19 +30,40 @@ struct Cli {
     #[arg(long, default_value_t = 768)]
     dimensions: usize,
 
+    /// Use the MDB_WRITEMAP option to reduce the memory usage of LMDB.
+    #[arg(long)]
+    write_map: bool,
+
+    /// Do not try to append items into the database.
+    #[arg(long)]
+    no_append: bool,
+
+    /// The number of tress to generate.
+    #[arg(long)]
+    n_trees: Option<usize>,
+
     /// The seed to generate the internal trees.
     #[arg(long, default_value_t = 42)]
     seed: u64,
 }
 
 fn main() -> Result<(), heed::BoxedError> {
-    let Cli { database, map_size, dimensions, seed } = Cli::parse();
+    env_logger::init();
+
+    let Cli { database, map_size, dimensions, write_map, no_append, n_trees, seed } = Cli::parse();
 
     let mut rng = StdRng::seed_from_u64(seed);
     let reader = BufReader::new(std::io::stdin());
 
     let _ = fs::create_dir_all(&database);
-    let env = EnvOpenOptions::new().map_size(map_size).open(&database).unwrap();
+
+    // Open the environment with the appropriate flags.
+    let flags = if write_map { EnvFlags::WRITE_MAP } else { EnvFlags::empty() };
+    let mut env_builder = EnvOpenOptions::new();
+    env_builder.map_size(map_size);
+    unsafe { env_builder.flags(flags) };
+    let env = env_builder.open(&database).unwrap();
+
     let mut wtxn = env.write_txn().unwrap();
     let database: Database<DotProduct> = env.create_database(&mut wtxn, None)?;
     let writer = Writer::<DotProduct>::prepare(&mut wtxn, database, 0, dimensions)?;
@@ -68,8 +89,11 @@ fn main() -> Result<(), heed::BoxedError> {
             .map(|s| s.trim().parse::<f32>().unwrap())
             .collect();
 
-        assert_eq!(vector.len(), dimensions);
-        writer.add_item(&mut wtxn, id, &vector)?;
+        if no_append {
+            writer.add_item(&mut wtxn, id, &vector)?;
+        } else {
+            writer.append_item(&mut wtxn, id, &vector)?;
+        }
         count += 1;
     }
     println!("Took {:.2?} to parse and insert into arroy", now.elapsed());
@@ -78,7 +102,7 @@ fn main() -> Result<(), heed::BoxedError> {
 
     println!("Building the arroy internal trees...");
     let now = Instant::now();
-    writer.build(&mut wtxn, &mut rng, None)?;
+    writer.build(&mut wtxn, &mut rng, n_trees).unwrap();
     wtxn.commit().unwrap();
     println!("Took {:.2?} to build", now.elapsed());
 

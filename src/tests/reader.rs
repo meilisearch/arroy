@@ -43,7 +43,7 @@ fn open_db_with_wrong_dimension() {
     let writer = Writer::prepare(&mut wtxn, handle.database, 0, 2).unwrap();
     writer.add_item(&mut wtxn, 0, &[0.0, 0.0]).unwrap();
 
-    writer.build(&mut wtxn, rng(), Some(1)).unwrap();
+    writer.build(&mut wtxn, &mut rng(), Some(1)).unwrap();
     wtxn.commit().unwrap();
 
     let rtxn = handle.env.read_txn().unwrap();
@@ -59,7 +59,7 @@ fn open_db_with_wrong_distance() {
     let writer = Writer::prepare(&mut wtxn, handle.database, 0, 2).unwrap();
     writer.add_item(&mut wtxn, 0, &[0.0, 0.0]).unwrap();
 
-    writer.build(&mut wtxn, rng(), Some(1)).unwrap();
+    writer.build(&mut wtxn, &mut rng(), Some(1)).unwrap();
     wtxn.commit().unwrap();
 
     let rtxn = handle.env.read_txn().unwrap();
@@ -84,7 +84,7 @@ fn two_dimension_on_a_line() {
         writer.add_item(&mut wtxn, i, &[i as f32, 0.0]).unwrap();
     }
 
-    writer.build(&mut wtxn, rng(), Some(50)).unwrap();
+    writer.build(&mut wtxn, &mut rng(), Some(50)).unwrap();
     wtxn.commit().unwrap();
 
     let rtxn = handle.env.read_txn().unwrap();
@@ -93,8 +93,8 @@ fn two_dimension_on_a_line() {
     // if we can't look into enough nodes we find some random points
     let ret = reader.nns_by_item(&rtxn, 0, 5, NonZeroUsize::new(1), None).unwrap();
     insta::assert_display_snapshot!(NnsRes(ret), @r###"
-    id(33): distance(33)
-    id(69): distance(69)
+    id(48): distance(48)
+    id(92): distance(92)
     "###);
 
     // if we can look into all the node there is no inifinite loop and it works
@@ -132,7 +132,7 @@ fn two_dimension_on_a_column() {
         writer.add_item(&mut wtxn, i, &[0.0, i as f32]).unwrap();
     }
 
-    writer.build(&mut wtxn, rng(), Some(50)).unwrap();
+    writer.build(&mut wtxn, &mut rng(), Some(50)).unwrap();
     wtxn.commit().unwrap();
 
     let rtxn = handle.env.read_txn().unwrap();
@@ -163,7 +163,7 @@ fn filtering() {
         writer.add_item(&mut wtxn, i, &[0.0, i as f32]).unwrap();
     }
 
-    writer.build(&mut wtxn, rng(), Some(50)).unwrap();
+    writer.build(&mut wtxn, &mut rng(), Some(50)).unwrap();
     wtxn.commit().unwrap();
 
     let rtxn = handle.env.read_txn().unwrap();

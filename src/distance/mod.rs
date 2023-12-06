@@ -6,11 +6,11 @@ pub use dot_product::{DotProduct, NodeHeaderDotProduct};
 pub use euclidean::{Euclidean, NodeHeaderEuclidean};
 use heed::{RwPrefix, RwTxn};
 pub use manhattan::{Manhattan, NodeHeaderManhattan};
-use rand::seq::SliceRandom;
 use rand::Rng;
 
 use crate::internals::{KeyCodec, Side};
 use crate::node::{Leaf, UnalignedF32Slice};
+use crate::parallel::ImmutableSubsetLeafs;
 use crate::spaces::simple::dot_product;
 use crate::NodeCodec;
 
@@ -22,7 +22,7 @@ mod manhattan;
 /// A trait used by arroy to compute the distances,
 /// compute the split planes, and normalize user vectors.
 #[allow(missing_docs)]
-pub trait Distance: Sized + Clone + fmt::Debug + 'static {
+pub trait Distance: Send + Sync + Sized + Clone + fmt::Debug + 'static {
     /// A header structure with informations related to the
     type Header: Pod + Zeroable + fmt::Debug;
 
@@ -74,7 +74,10 @@ pub trait Distance: Sized + Clone + fmt::Debug + 'static {
             .for_each(|(x, n)| *x = (*x * c + n / norm) / (c + 1.0));
     }
 
-    fn create_split<R: Rng>(children: &[Leaf<Self>], rng: &mut R) -> Vec<f32>;
+    fn create_split<R: Rng>(
+        children: &ImmutableSubsetLeafs<Self>,
+        rng: &mut R,
+    ) -> heed::Result<Vec<f32>>;
 
     fn margin(p: &Leaf<Self>, q: &Leaf<Self>) -> f32 {
         Self::margin_no_header(&p.vector, &q.vector)
@@ -105,9 +108,9 @@ pub trait Distance: Sized + Clone + fmt::Debug + 'static {
 
 fn two_means<D: Distance, R: Rng>(
     rng: &mut R,
-    leafs: &[Leaf<D>],
+    leafs: &ImmutableSubsetLeafs<D>,
     cosine: bool,
-) -> [Leaf<'static, D>; 2] {
+) -> heed::Result<[Leaf<'static, D>; 2]> {
     // This algorithm is a huge heuristic. Empirically it works really well, but I
     // can't motivate it well. The basic idea is to keep two centroids and assign
     // points to either one of them. We weight each centroid by the number of points
@@ -115,9 +118,9 @@ fn two_means<D: Distance, R: Rng>(
 
     const ITERATION_STEPS: usize = 200;
 
-    let mut random_nodes = leafs.choose_multiple(rng, 2);
-    let mut leaf_p = random_nodes.next().unwrap().clone().into_owned();
-    let mut leaf_q = random_nodes.next().unwrap().clone().into_owned();
+    let [leaf_p, leaf_q] = leafs.choose_two(rng)?.unwrap();
+    let mut leaf_p = leaf_p.into_owned();
+    let mut leaf_q = leaf_q.into_owned();
 
     if cosine {
         D::normalize(&mut leaf_p);
@@ -130,23 +133,23 @@ fn two_means<D: Distance, R: Rng>(
     let mut ic = 1.0;
     let mut jc = 1.0;
     for _ in 0..ITERATION_STEPS {
-        let node_k = leafs.choose(rng).unwrap();
-        let di = ic * D::non_built_distance(&leaf_p, node_k);
-        let dj = jc * D::non_built_distance(&leaf_q, node_k);
-        let norm = if cosine { D::norm(node_k) } else { 1.0 };
+        let node_k = leafs.choose(rng)?.unwrap();
+        let di = ic * D::non_built_distance(&leaf_p, &node_k);
+        let dj = jc * D::non_built_distance(&leaf_q, &node_k);
+        let norm = if cosine { D::norm(&node_k) } else { 1.0 };
         if norm.is_nan() || norm <= 0.0 {
             continue;
         }
         if di < dj {
-            Distance::update_mean(&mut leaf_p, node_k, norm, ic);
+            Distance::update_mean(&mut leaf_p, &node_k, norm, ic);
             Distance::init(&mut leaf_p);
             ic += 1.0;
         } else if dj < di {
-            Distance::update_mean(&mut leaf_q, node_k, norm, jc);
+            Distance::update_mean(&mut leaf_q, &node_k, norm, jc);
             Distance::init(&mut leaf_q);
             jc += 1.0;
         }
     }
 
-    [leaf_p, leaf_q]
+    Ok([leaf_p, leaf_q])
 }
