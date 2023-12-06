@@ -175,7 +175,23 @@ impl<D: Distance> Writer<D> {
 
     /// Deletes an item stored in this database and returns `true` if it existed.
     pub fn del_item(&self, wtxn: &mut RwTxn, item: ItemId) -> Result<bool> {
-        Ok(self.database.delete(wtxn, &Key::item(self.index, item))?)
+        if self.database.delete(wtxn, &Key::item(self.index, item))? {
+            let mut updated = self
+                .database
+                .remap_data_type::<RoaringBitmapCodec>()
+                .get(wtxn, &Key::updated(self.index))?
+                .unwrap_or_default();
+            updated.insert(item);
+            self.database.remap_data_type::<RoaringBitmapCodec>().put(
+                wtxn,
+                &Key::updated(self.index),
+                &updated,
+            )?;
+
+            Ok(true)
+        } else {
+            Ok(false)
+        }
     }
 
     /// Removes everything in the database, user items and internal tree nodes.
