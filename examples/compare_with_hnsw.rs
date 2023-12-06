@@ -75,7 +75,7 @@ fn load_into_arroy(
     dimensions: usize,
     points: &[Point],
 ) -> Result<()> {
-    let writer = Writer::<Euclidean>::prepare(&mut wtxn, database, 0, dimensions)?;
+    let writer = Writer::<Euclidean>::new(database, 0, dimensions)?;
     for (i, Point(vector)) in points.iter().enumerate() {
         writer.add_item(&mut wtxn, i.try_into().unwrap(), &vector[..])?;
     }

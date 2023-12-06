@@ -15,6 +15,7 @@ use crate::item_iter::ItemIter;
 use crate::node::{Descendants, ItemIds, Leaf, SplitPlaneNormal, UnalignedF32Slice};
 use crate::parallel::{ConcurrentNodeIds, ImmutableLeafs, ImmutableSubsetLeafs, TmpNodes};
 use crate::reader::item_leaf;
+use crate::roaring::RoaringBitmapCodec;
 use crate::{
     Database, Error, ItemId, Key, Metadata, MetadataCodec, Node, NodeCodec, NodeId, Prefix,
     PrefixCodec, Result,
@@ -30,24 +31,13 @@ pub struct Writer<D: Distance> {
     dimensions: usize,
     /// The folder in which tempfile will write its temporary files.
     tmpdir: Option<PathBuf>,
-    // non-initiliazed until build is called.
-    n_items: u64,
-    // We know the root nodes points to tree-nodes.
-    roots: Vec<ItemId>,
 }
 
 impl<D: Distance> Writer<D> {
-    /// Returns a writer after having deleted the tree nodes to be able to modify items
-    /// safely.
-    pub fn prepare(
-        wtxn: &mut RwTxn,
-        database: Database<D>,
-        index: u16,
-        dimensions: usize,
-    ) -> Result<Writer<D>> {
+    /// Creates a new writer from a database, index and dimensions.
+    pub fn new(database: Database<D>, index: u16, dimensions: usize) -> Result<Writer<D>> {
         let database: Database<D> = database.remap_data_type();
-        clear_tree_nodes(wtxn, database, index)?;
-        Ok(Writer { database, index, dimensions, tmpdir: None, n_items: 0, roots: Vec::new() })
+        Ok(Writer { database, index, dimensions, tmpdir: None })
     }
 
     /// Returns a writer after having deleted the tree nodes and rewrote all the items
@@ -78,15 +68,8 @@ impl<D: Distance> Writer<D> {
             }
         }
 
-        let Writer { database, index, dimensions, tmpdir, n_items, roots } = self;
-        Ok(Writer {
-            database: database.remap_data_type(),
-            index,
-            dimensions,
-            tmpdir,
-            n_items,
-            roots,
-        })
+        let Writer { database, index, dimensions, tmpdir } = self;
+        Ok(Writer { database: database.remap_data_type(), index, dimensions, tmpdir })
     }
 
     /// Specifies the folder in which arroy will write temporary files when building the tree.
@@ -138,7 +121,20 @@ impl<D: Distance> Writer<D> {
 
         let vector = UnalignedF32Slice::from_slice(vector);
         let leaf = Leaf { header: D::new_header(vector), vector: Cow::Borrowed(vector) };
-        Ok(self.database.put(wtxn, &Key::item(self.index, item), &Node::Leaf(leaf))?)
+        self.database.put(wtxn, &Key::item(self.index, item), &Node::Leaf(leaf))?;
+        let mut updated = self
+            .database
+            .remap_data_type::<RoaringBitmapCodec>()
+            .get(wtxn, &Key::updated(self.index))?
+            .unwrap_or_default();
+        updated.insert(item);
+        self.database.remap_data_type::<RoaringBitmapCodec>().put(
+            wtxn,
+            &Key::updated(self.index),
+            &updated,
+        )?;
+
+        Ok(())
     }
 
     /// Attempt to append an item into the database. It is generaly faster to append an item than insert it.
@@ -158,10 +154,23 @@ impl<D: Distance> Writer<D> {
         let leaf = Leaf { header: D::new_header(vector), vector: Cow::Borrowed(vector) };
         let key = Key::item(self.index, item);
         match self.database.put_with_flags(wtxn, PutFlags::APPEND, &key, &Node::Leaf(leaf)) {
-            Ok(()) => Ok(()),
-            Err(heed::Error::Mdb(MdbError::KeyExist)) => Err(Error::InvalidItemAppend),
-            Err(e) => Err(e.into()),
+            Ok(()) => (),
+            Err(heed::Error::Mdb(MdbError::KeyExist)) => return Err(Error::InvalidItemAppend),
+            Err(e) => return Err(e.into()),
         }
+        let mut updated = self
+            .database
+            .remap_data_type::<RoaringBitmapCodec>()
+            .get(wtxn, &Key::updated(self.index))?
+            .unwrap_or_default();
+        updated.insert(item);
+        self.database.remap_data_type::<RoaringBitmapCodec>().put(
+            wtxn,
+            &Key::updated(self.index),
+            &updated,
+        )?;
+
+        Ok(())
     }
 
     /// Deletes an item stored in this database and returns `true` if it existed.
@@ -194,7 +203,7 @@ impl<D: Distance> Writer<D> {
     /// by using the [`rayon::ThreadPoolBuilder`] and the
     /// [`rayon::ThreadPool::install`] to use it.
     pub fn build<R: Rng + SeedableRng>(
-        mut self,
+        self,
         wtxn: &mut RwTxn,
         rng: &mut R,
         n_trees: Option<usize>,
@@ -210,15 +219,16 @@ impl<D: Distance> Writer<D> {
         })?;
 
         let item_indices = self.item_indices(wtxn)?;
-        self.n_items = item_indices.len();
+        let n_items = item_indices.len();
+        let mut roots = Vec::new();
 
-        log::debug!("started building trees for {} items...", self.n_items);
+        log::debug!("started building trees for {} items...", n_items);
 
         let concurrent_node_ids = ConcurrentNodeIds::new(0);
         let frozzen_reader = FrozzenReader {
             leafs: &ImmutableLeafs::new(wtxn, self.database, self.index)?,
             dimensions: self.dimensions,
-            n_items: self.n_items,
+            n_items,
             // The globally incrementing node ids that are shared between threads.
             concurrent_node_ids: &concurrent_node_ids,
         };
@@ -235,7 +245,7 @@ impl<D: Distance> Writer<D> {
                 // but continue to generate trees if the number of trees is specified
                 .take_any_while(|_| match n_trees {
                     Some(_) => true,
-                    None => concurrent_node_ids.current() < self.n_items,
+                    None => concurrent_node_ids.current() < n_items,
                 })
                 .map(|(i, seed)| {
                     log::debug!("started generating tree {i:X}...");
@@ -267,7 +277,7 @@ impl<D: Distance> Writer<D> {
             }
         }
 
-        self.roots.append(&mut thread_roots);
+        roots.append(&mut thread_roots);
 
         log::debug!("started writing the metadata...");
 
@@ -275,8 +285,8 @@ impl<D: Distance> Writer<D> {
         // This way we can load them faster without reading the whole database.
         let metadata = Metadata {
             dimensions: self.dimensions.try_into().unwrap(),
-            n_items: self.n_items.try_into().unwrap(),
-            roots: ItemIds::from_slice(&self.roots),
+            items: item_indices,
+            roots: ItemIds::from_slice(&roots),
             distance: D::name(),
         };
         match self.database.remap_data_type::<MetadataCodec>().put_with_flags(

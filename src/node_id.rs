@@ -41,6 +41,10 @@ impl NodeId {
         Self { mode: NodeMode::Metadata, item: 0 }
     }
 
+    pub const fn updated() -> Self {
+        Self { mode: NodeMode::Metadata, item: 1 }
+    }
+
     pub const fn tree(item: u32) -> Self {
         Self { mode: NodeMode::Tree, item }
     }
