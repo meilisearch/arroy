@@ -30,7 +30,7 @@ Arroy was built by [@Kerollmops](https://github.com/Kerollmops) and [@irevoire](
 - Build index on disk to enable indexing big datasets that won't fit into memory using LMDB
 - Multithreaded tree building using rayon
 - Additional features compared to Annoy
-  - Filter when querying ([planned](https://github.com/meilisearch/arroy/issues/5))
+  - Filter when querying
   - Incrementally update the tree without rebuilding it from scratch ([planned](https://github.com/meilisearch/arroy/issues/21))
   - Store and Modify different indexes atomically using LMDB (indexes are identified by an `u16`)
   - Modify the items list **in place** while performing queries using LMDB
