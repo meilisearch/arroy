@@ -156,16 +156,19 @@ impl<'t, D: Distance> ImmutableLeafs<'t, D> {
 
 unsafe impl<D> Sync for ImmutableLeafs<'_, D> {}
 
+/// A subset of leafs that are accessible for read.
 pub struct ImmutableSubsetLeafs<'t, D> {
     subset: &'t RoaringBitmap,
     leafs: &'t ImmutableLeafs<'t, D>,
 }
 
 impl<'t, D: Distance> ImmutableSubsetLeafs<'t, D> {
+    /// Creates a subset view of the available leafs.
     pub fn from_item_ids(leafs: &'t ImmutableLeafs<'t, D>, subset: &'t RoaringBitmap) -> Self {
         ImmutableSubsetLeafs { subset, leafs }
     }
 
+    /// Returns the leafs identified by the given ID in the subset.
     pub fn get(&self, item_id: ItemId) -> heed::Result<Option<Leaf<'t, D>>> {
         if self.subset.contains(item_id) {
             self.leafs.get(item_id)
@@ -174,6 +177,7 @@ impl<'t, D: Distance> ImmutableSubsetLeafs<'t, D> {
         }
     }
 
+    /// Randomly selects two leafs verified to be different.
     pub fn choose_two<R: Rng>(&self, rng: &mut R) -> heed::Result<Option<[Leaf<'t, D>; 2]>> {
         let indexes = index::sample(rng, self.subset.len() as usize, 2);
         let first = match self.subset.select(indexes.index(0) as u32) {
@@ -187,6 +191,7 @@ impl<'t, D: Distance> ImmutableSubsetLeafs<'t, D> {
         Ok(first.zip(second).map(|(a, b)| [a, b]))
     }
 
+    /// Randomly select one leaf out of this subset.
     pub fn choose<R: Rng>(&self, rng: &mut R) -> heed::Result<Option<Leaf<'t, D>>> {
         if self.subset.is_empty() {
             Ok(None)

@@ -178,7 +178,7 @@ impl<D: Distance> Writer<D> {
         })?;
 
         let item_indices = self.item_indices(wtxn)?;
-        self.n_items = item_indices.len(); // TODO use u64
+        self.n_items = item_indices.len();
 
         log::debug!("started building trees for {} items...", self.n_items);
 
