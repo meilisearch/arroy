@@ -137,7 +137,7 @@ fn write_vectors_until_there_is_a_split() {
     Item 2: Leaf(Leaf { header: NodeHeaderAngular { norm: 0.0 }, vector: [2.0000, 2.0000, 2.0000] })
     Item 3: Leaf(Leaf { header: NodeHeaderAngular { norm: 0.0 }, vector: [3.0000, 3.0000, 3.0000] })
     Tree 0: Descendants(Descendants { descendants: [1, 2, 3] })
-    Tree 1: SplitPlaneNormal(SplitPlaneNormal { normal: [0.5774, 0.5774, 0.5774], left: NodeId { mode: Item, item: 0 }, right: NodeId { mode: Tree, item: 0 } })
+    Tree 1: SplitPlaneNormal(SplitPlaneNormal { normal: [-0.5774, -0.5774, -0.5774], left: NodeId { mode: Tree, item: 0 }, right: NodeId { mode: Item, item: 0 } })
     Root: Metadata { dimensions: 3, n_items: 4, roots: [1], distance: "euclidean" }
     "###);
 }

@@ -70,6 +70,8 @@ impl<D: Distance> fmt::Display for DatabaseHandle<D> {
 }
 
 fn create_database<D: Distance>() -> DatabaseHandle<D> {
+    let _ = rayon::ThreadPoolBuilder::new().num_threads(1).build_global();
+
     let dir = tempfile::tempdir().unwrap();
     let env = EnvOpenOptions::new().map_size(200 * 1024 * 1024).open(dir.path()).unwrap();
     let mut wtxn = env.write_txn().unwrap();
