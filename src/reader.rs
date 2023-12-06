@@ -142,8 +142,7 @@ impl<'t, D: Distance> Reader<'t, D> {
     /// to `n_trees * count` if not provided. `search_k` gives you a run-time
     /// tradeoff between better accuracy and speed.
     ///
-    /// The candidates are the list of vectors arroy should consider while running your search.
-    /// You're guaranteed that all the `ItemId` returned will be part of your candidates.
+    /// The candidates parameter corresponds to the subset of item ids arroy will return.
     pub fn nns_by_item(
         &self,
         rtxn: &'t RoTxn,
