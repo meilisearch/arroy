@@ -163,7 +163,7 @@ fn filtering() {
         writer.add_item(&mut wtxn, i, &[0.0, i as f32]).unwrap();
     }
 
-    writer.build(&mut wtxn, rng(), Some(50)).unwrap();
+    writer.build(&mut wtxn, &mut rng(), Some(50)).unwrap();
     wtxn.commit().unwrap();
 
     let rtxn = handle.env.read_txn().unwrap();

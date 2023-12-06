@@ -28,7 +28,7 @@ pub struct Writer<D: Distance> {
     index: u16,
     dimensions: usize,
     // non-initiliazed until build is called.
-    n_items: usize,
+    n_items: u64,
     // We know the root nodes points to tree-nodes.
     roots: Vec<ItemId>,
 }
@@ -178,7 +178,7 @@ impl<D: Distance> Writer<D> {
         })?;
 
         let item_indices = self.item_indices(wtxn)?;
-        self.n_items = item_indices.len() as usize; // TODO use u64
+        self.n_items = item_indices.len(); // TODO use u64
 
         log::debug!("started building trees for {} items...", self.n_items);
 
@@ -203,7 +203,7 @@ impl<D: Distance> Writer<D> {
                 // but continue to generate trees if the number of trees is specified
                 .take_any_while(|_| match n_trees {
                     Some(_) => true,
-                    None => (concurrent_node_ids.current() as usize) < (self.n_items - 1),
+                    None => (concurrent_node_ids.current() as u64) < (self.n_items - 1),
                 })
                 .map(|(i, seed)| {
                     log::debug!("started generating tree {i:X}...");
@@ -281,7 +281,7 @@ impl<D: Distance> Writer<D> {
 struct FrozzenReader<'a, D: Distance> {
     leafs: &'a ImmutableLeafs<'a, D>,
     dimensions: usize,
-    n_items: usize,
+    n_items: u64,
     concurrent_node_ids: &'a ConcurrentNodeIds,
 }
 
@@ -297,20 +297,17 @@ fn make_tree_in_file<D: Distance, R: Rng>(
 ) -> Result<NodeId> {
     // we simplify the max descendants (_K) thing by considering
     // that we can fit as much descendants as the number of dimensions
-    let max_descendants = reader.dimensions;
+    let max_descendants = reader.dimensions as u64;
 
     if item_indices.len() == 1 && !is_root {
         return Ok(NodeId::item(item_indices.min().unwrap()));
     }
 
-    if item_indices.len() as usize <= max_descendants
+    if item_indices.len() <= max_descendants
         && (!is_root || reader.n_items <= max_descendants || item_indices.len() == 1)
     {
         let item_id = reader.concurrent_node_ids.next();
-        // TODO directly store a roaring bitmap
-        let descendants: Vec<_> = item_indices.into_iter().collect();
-        let descendants = ItemIds::from_slice(&descendants);
-        let item = Node::Descendants(Descendants { descendants });
+        let item = Node::Descendants(Descendants { descendants: Cow::Borrowed(item_indices) });
         tmp_nodes.put::<NodeCodec<D>>(item_id, &item)?;
         return Ok(NodeId::tree(item_id));
     }

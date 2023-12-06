@@ -191,7 +191,8 @@ impl<'t, D: Distance> ImmutableSubsetLeafs<'t, D> {
         if self.subset.is_empty() {
             Ok(None)
         } else {
-            let index = rng.gen_range(0..self.subset.len() as u32); // TODO fix this
+            let ubound = (self.subset.len() - 1) as u32;
+            let index = rng.gen_range(0..=ubound);
             match self.subset.select(index) {
                 Some(item_id) => self.leafs.get(item_id),
                 None => Ok(None),
