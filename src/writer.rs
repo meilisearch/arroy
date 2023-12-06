@@ -178,7 +178,7 @@ impl<D: Distance> Writer<D> {
         })?;
 
         let item_indices = self.item_indices(wtxn)?;
-        self.n_items = item_indices.len() as usize;
+        self.n_items = item_indices.len() as usize; // TODO use u64
 
         log::debug!("started building trees for {} items...", self.n_items);
 
@@ -200,7 +200,11 @@ impl<D: Distance> Writer<D> {
             repeatn(rng.next_u64(), n_trees.unwrap_or(usize::MAX))
                 .enumerate()
                 // Stop generating trees once the number of tree nodes are generated
-                .take_any_while(|_| concurrent_node_ids.current() as usize <= self.n_items)
+                // but continue to generate trees if the number of trees is specified
+                .take_any_while(|_| match n_trees {
+                    Some(_) => true,
+                    None => (concurrent_node_ids.current() as usize) < (self.n_items - 1),
+                })
                 .map(|(i, seed)| {
                     log::debug!("started generating tree {i:X}...");
                     let mut rng = R::seed_from_u64(seed + (i as u64));
