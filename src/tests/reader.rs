@@ -4,6 +4,7 @@ use std::num::NonZeroUsize;
 use roaring::RoaringBitmap;
 
 use super::*;
+use crate::distance::Angular;
 use crate::distances::{Euclidean, Manhattan};
 use crate::{ItemId, Reader, Writer};
 
@@ -78,7 +79,7 @@ fn search_in_db_with_a_single_vector() {
     // https://github.com/meilisearch/meilisearch/pull/4296
     let handle = create_database::<Angular>();
     let mut wtxn = handle.env.write_txn().unwrap();
-    let writer = Writer::prepare(&mut wtxn, handle.database, 0, 3).unwrap();
+    let writer = Writer::new(handle.database, 0, 3).unwrap();
     writer.add_item(&mut wtxn, 0, &[0.00397, 0.553, 0.0]).unwrap();
 
     writer.build(&mut wtxn, &mut rng(), None).unwrap();

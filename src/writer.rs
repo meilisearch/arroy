@@ -13,7 +13,9 @@ use crate::distance::Distance;
 use crate::internals::{KeyCodec, Side};
 use crate::item_iter::ItemIter;
 use crate::node::{Descendants, ItemIds, Leaf, SplitPlaneNormal, UnalignedF32Slice};
-use crate::parallel::{ConcurrentNodeIds, ImmutableLeafs, ImmutableSubsetLeafs, TmpNodes};
+use crate::parallel::{
+    ConcurrentNodeIds, ImmutableLeafs, ImmutableSubsetLeafs, TmpNodes, TmpNodesReader,
+};
 use crate::reader::item_leaf;
 use crate::roaring::RoaringBitmapCodec;
 use crate::{
@@ -236,10 +238,19 @@ impl<D: Distance> Writer<D> {
 
         let item_indices = self.item_indices(wtxn)?;
         let n_items = item_indices.len();
+        let metadata = self
+            .database
+            .remap_data_type::<MetadataCodec>()
+            .get(wtxn, &Key::metadata(self.index))?;
+        let updated_items = self
+            .database
+            .remap_data_type::<RoaringBitmapCodec>()
+            .get(wtxn, &Key::updated(self.index))?;
         let mut roots = Vec::new();
 
-        log::debug!("started building trees for {} items...", n_items);
+        log::debug!("Getting a reference to your {} items...", n_items);
 
+        // TODO: do not starts at 0
         let concurrent_node_ids = ConcurrentNodeIds::new(0);
         let frozzen_reader = FrozzenReader {
             leafs: &ImmutableLeafs::new(wtxn, self.database, self.index)?,
@@ -249,41 +260,29 @@ impl<D: Distance> Writer<D> {
             concurrent_node_ids: &concurrent_node_ids,
         };
 
+        // TODO: Insert the updated elements into the already existing trees
+        if let Some(metadata) = metadata {
+            log::debug!(
+                "started inserting new items {} in {} trees...",
+                n_items,
+                metadata.roots.len()
+            );
+            self.update_trees(rng, &metadata, n_trees, &item_indices, &frozzen_reader)?;
+
+            todo!("{:?}", updated_items);
+        }
+
+        // In any case we may be missing a bunch of root nodes after inserting the new elements
+
+        // TODO: Create the new trees if necessary
+        log::debug!("started building trees for {} items...", n_items);
         log::debug!(
             "running {} parallel tree building...",
             n_trees.map_or_else(|| "an unknown number of".to_string(), |n| n.to_string())
         );
 
-        let results: Result<(Vec<_>, Vec<_>)> =
-            repeatn(rng.next_u64(), n_trees.unwrap_or(usize::MAX))
-                .enumerate()
-                // Stop generating trees once the number of tree nodes are generated
-                // but continue to generate trees if the number of trees is specified
-                .take_any_while(|_| match n_trees {
-                    Some(_) => true,
-                    None => concurrent_node_ids.current() < n_items,
-                })
-                .map(|(i, seed)| {
-                    log::debug!("started generating tree {i:X}...");
-                    let mut rng = R::seed_from_u64(seed.wrapping_add(i as u64));
-                    let mut tmp_nodes = match self.tmpdir.as_ref() {
-                        Some(path) => TmpNodes::new_in(path)?,
-                        None => TmpNodes::new()?,
-                    };
-                    let root_id = make_tree_in_file(
-                        &frozzen_reader,
-                        &mut rng,
-                        &item_indices,
-                        true,
-                        &mut tmp_nodes,
-                    )?;
-                    log::debug!("finished generating tree {i:X}");
-                    // make_tree will NEVER return a leaf when called as root
-                    Ok((root_id.unwrap_tree(), tmp_nodes.into_bytes_reader()?))
-                })
-                .collect();
-
-        let (mut thread_roots, tmp_nodes) = results?;
+        let (mut thread_roots, tmp_nodes) =
+            self.build_trees(rng, n_trees, &item_indices, &frozzen_reader)?;
         log::debug!("started writing the tree nodes of {} trees...", tmp_nodes.len());
         for (i, tmp_node) in tmp_nodes.into_iter().enumerate() {
             log::debug!("started writing the {} tree nodes of the {i}nth trees...", tmp_node.len());
@@ -317,6 +316,71 @@ impl<D: Distance> Writer<D> {
         }
 
         Ok(())
+    }
+
+    fn update_trees<R: Rng + SeedableRng>(
+        &self,
+        rng: &mut R,
+        metadata: &Metadata,
+        n_trees: Option<usize>,
+        item_indices: &RoaringBitmap,
+        frozen_reader: &FrozzenReader<D>,
+    ) -> Result<Vec<TmpNodesReader>> {
+        let n_items = item_indices.len();
+        let concurrent_node_ids = frozen_reader.concurrent_node_ids;
+
+        repeatn(rng.next_u64(), metadata.roots.len())
+            .enumerate()
+            .map(|(i, seed)| {
+                log::debug!("started generating tree {i:X}...");
+                let mut rng = R::seed_from_u64(seed.wrapping_add(i as u64));
+                let mut tmp_nodes: TmpNodes<NodeCodec<D>> = match self.tmpdir.as_ref() {
+                    Some(path) => TmpNodes::new_in(path)?,
+                    None => TmpNodes::new()?,
+                };
+                todo!("update a single tree");
+                // let root_id =
+                //     make_tree_in_file(frozen_reader, &mut rng, item_indices, true, &mut tmp_nodes)?;
+                log::debug!("finished generating tree {i:X}");
+                // make_tree will NEVER return a leaf when called as root
+                Ok(tmp_nodes.into_bytes_reader()?)
+            })
+            .collect()
+    }
+
+    fn build_trees<R: Rng + SeedableRng>(
+        &self,
+        rng: &mut R,
+        n_trees: Option<usize>,
+        item_indices: &RoaringBitmap,
+        frozen_reader: &FrozzenReader<D>,
+    ) -> Result<(Vec<ItemId>, Vec<TmpNodesReader>)> {
+        let n_items = item_indices.len();
+        let concurrent_node_ids = frozen_reader.concurrent_node_ids;
+
+        // TODO: Do not enter if we have enough tree
+        repeatn(rng.next_u64(), n_trees.unwrap_or(usize::MAX))
+            .enumerate()
+            // Stop generating trees once the number of tree nodes are generated
+            // but continue to generate trees if the number of trees is specified
+            .take_any_while(|_| match n_trees {
+                Some(_) => true,
+                None => concurrent_node_ids.current() < n_items,
+            })
+            .map(|(i, seed)| {
+                log::debug!("started generating tree {i:X}...");
+                let mut rng = R::seed_from_u64(seed.wrapping_add(i as u64));
+                let mut tmp_nodes = match self.tmpdir.as_ref() {
+                    Some(path) => TmpNodes::new_in(path)?,
+                    None => TmpNodes::new()?,
+                };
+                let root_id =
+                    make_tree_in_file(frozen_reader, &mut rng, item_indices, true, &mut tmp_nodes)?;
+                log::debug!("finished generating tree {i:X}");
+                // make_tree will NEVER return a leaf when called as root
+                Ok((root_id.unwrap_tree(), tmp_nodes.into_bytes_reader()?))
+            })
+            .collect()
     }
 
     // Fetches the item's ids, not the tree nodes ones.
