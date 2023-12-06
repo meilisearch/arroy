@@ -6,7 +6,6 @@ use rand::rngs::StdRng;
 use rand::SeedableRng;
 use tempfile::TempDir;
 
-use crate::distances::Angular;
 use crate::roaring::RoaringBitmapCodec;
 use crate::{Database, Distance, MetadataCodec, NodeCodec, NodeMode};
 
@@ -29,7 +28,7 @@ impl<D: Distance> fmt::Display for DatabaseHandle<D> {
         let mut last_mode = NodeMode::Item;
 
         for result in
-            self.database.remap_data_type::<LazyDecode<NodeCodec<Angular>>>().iter(&rtxn).unwrap()
+            self.database.remap_data_type::<LazyDecode<NodeCodec<D>>>().iter(&rtxn).unwrap()
         {
             let (key, lazy_node) = result.unwrap();
 
