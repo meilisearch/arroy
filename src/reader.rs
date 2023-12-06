@@ -206,12 +206,8 @@ impl<'t, D: Distance> Reader<'t, D> {
 
             match self.database.get(rtxn, &Key::new(self.index, item))?.unwrap() {
                 Node::Leaf(_) => {
-                    if let Some(candidates) = candidates {
-                        if candidates.contains(item.item) {
-                            nns.push(item.unwrap_item())
-                        }
-                    } else {
-                        nns.push(item.unwrap_item())
+                    if candidates.map_or(true, |c| c.contains(item.item)) {
+                        nns.push(item.unwrap_item());
                     }
                 }
                 Node::Descendants(Descendants { descendants }) => {
