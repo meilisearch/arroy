@@ -218,7 +218,7 @@ impl<D: Distance> Writer<D> {
                     )?;
                     log::debug!("finished generating tree {i:X}");
                     // make_tree will NEVER return a leaf when called as root
-                    Ok((root_id.unwrap_tree(), tmp_nodes.into_reader()?))
+                    Ok((root_id.unwrap_tree(), tmp_nodes.into_bytes_reader()?))
                 })
                 .collect();
 
@@ -293,7 +293,7 @@ fn make_tree_in_file<D: Distance, R: Rng>(
     rng: &mut R,
     item_indices: &RoaringBitmap,
     is_root: bool,
-    tmp_nodes: &mut TmpNodes,
+    tmp_nodes: &mut TmpNodes<NodeCodec<D>>,
 ) -> Result<NodeId> {
     // we simplify the max descendants (_K) thing by considering
     // that we can fit as much descendants as the number of dimensions
@@ -308,7 +308,7 @@ fn make_tree_in_file<D: Distance, R: Rng>(
     {
         let item_id = reader.concurrent_node_ids.next().try_into().unwrap();
         let item = Node::Descendants(Descendants { descendants: Cow::Borrowed(item_indices) });
-        tmp_nodes.put::<NodeCodec<D>>(item_id, &item)?;
+        tmp_nodes.put(item_id, &item)?;
         return Ok(NodeId::tree(item_id));
     }
 
@@ -353,7 +353,7 @@ fn make_tree_in_file<D: Distance, R: Rng>(
     };
 
     let new_node_id = reader.concurrent_node_ids.next().try_into().unwrap();
-    tmp_nodes.put::<NodeCodec<D>>(new_node_id, &Node::SplitPlaneNormal(normal))?;
+    tmp_nodes.put(new_node_id, &Node::SplitPlaneNormal(normal))?;
 
     Ok(NodeId::tree(new_node_id))
 }

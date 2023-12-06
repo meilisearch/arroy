@@ -16,21 +16,27 @@ use crate::key::{Prefix, PrefixCodec};
 use crate::{Database, Distance, ItemId, Result};
 
 /// A structure to store the tree nodes out of the heed database.
-pub struct TmpNodes {
+pub struct TmpNodes<DE> {
     file: BufWriter<File>,
     ids: RoaringBitmap,
     bounds: Vec<usize>,
+    _marker: marker::PhantomData<DE>,
 }
 
-impl TmpNodes {
+impl<'a, DE: BytesEncode<'a>> TmpNodes<DE> {
     /// Creates an empty `TmpNodes`.
-    pub fn new() -> heed::Result<TmpNodes> {
+    pub fn new() -> heed::Result<TmpNodes<DE>> {
         let file = tempfile::tempfile().map(BufWriter::new)?;
-        Ok(TmpNodes { file, ids: RoaringBitmap::new(), bounds: vec![0] })
+        Ok(TmpNodes {
+            file,
+            ids: RoaringBitmap::new(),
+            bounds: vec![0],
+            _marker: marker::PhantomData,
+        })
     }
 
     /// Append a new node in the file.
-    pub fn put<'a, DE: BytesEncode<'a>>(
+    pub fn put(
         // TODO move that in the type
         &mut self,
         item: u32,
@@ -45,7 +51,7 @@ impl TmpNodes {
     }
 
     /// Converts it into a readers to be able to read the nodes.
-    pub fn into_reader(self) -> Result<TmpNodesReader> {
+    pub fn into_bytes_reader(self) -> Result<TmpNodesReader> {
         let file = self.file.into_inner().map_err(|iie| iie.into_error())?;
         let mmap = unsafe { Mmap::map(&file)? };
         mmap.advise(Advice::Sequential)?;
