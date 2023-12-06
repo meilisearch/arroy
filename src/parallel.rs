@@ -2,6 +2,7 @@ use core::slice;
 use std::fs::File;
 use std::io::{BufWriter, Write};
 use std::marker;
+use std::path::Path;
 use std::sync::atomic::{AtomicU64, Ordering};
 
 use heed::types::Bytes;
@@ -26,9 +27,18 @@ pub struct TmpNodes<DE> {
 impl<'a, DE: BytesEncode<'a>> TmpNodes<DE> {
     /// Creates an empty `TmpNodes`.
     pub fn new() -> heed::Result<TmpNodes<DE>> {
-        let file = tempfile::tempfile().map(BufWriter::new)?;
         Ok(TmpNodes {
-            file,
+            file: tempfile::tempfile().map(BufWriter::new)?,
+            ids: RoaringBitmap::new(),
+            bounds: vec![0],
+            _marker: marker::PhantomData,
+        })
+    }
+
+    /// Creates an empty `TmpNodes` in the defined folder.
+    pub fn new_in(path: &Path) -> heed::Result<TmpNodes<DE>> {
+        Ok(TmpNodes {
+            file: tempfile::tempfile_in(path).map(BufWriter::new)?,
             ids: RoaringBitmap::new(),
             bounds: vec![0],
             _marker: marker::PhantomData,

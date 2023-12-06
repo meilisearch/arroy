@@ -78,8 +78,15 @@ impl<D: Distance> Writer<D> {
             }
         }
 
-        let Writer { database, index, dimensions, n_items, roots } = self;
-        Ok(Writer { database: database.remap_data_type(), index, dimensions, n_items, roots })
+        let Writer { database, index, dimensions, tmpdir, n_items, roots } = self;
+        Ok(Writer {
+            database: database.remap_data_type(),
+            index,
+            dimensions,
+            tmpdir,
+            n_items,
+            roots,
+        })
     }
 
     /// Specifies the folder in which arroy will write temporary files when building the tree.
@@ -219,7 +226,10 @@ impl<D: Distance> Writer<D> {
                 .map(|(i, seed)| {
                     log::debug!("started generating tree {i:X}...");
                     let mut rng = R::seed_from_u64(seed.wrapping_add(i as u64));
-                    let mut tmp_nodes = TmpNodes::new()?;
+                    let mut tmp_nodes = match self.tmpdir.as_ref() {
+                        Some(path) => TmpNodes::new_in(path)?,
+                        None => TmpNodes::new()?,
+                    };
                     let root_id = make_tree_in_file(
                         &frozzen_reader,
                         &mut rng,
