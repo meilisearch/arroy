@@ -1,6 +1,8 @@
 use std::fmt::Display;
 use std::num::NonZeroUsize;
 
+use roaring::RoaringBitmap;
+
 use super::*;
 use crate::distances::{Euclidean, Manhattan};
 use crate::{ItemId, Reader, Writer};
@@ -46,7 +48,7 @@ fn open_db_with_wrong_dimension() {
 
     let rtxn = handle.env.read_txn().unwrap();
     let reader = Reader::<Euclidean>::open(&rtxn, 0, handle.database).unwrap();
-    let ret = reader.nns_by_vector(&rtxn, &[1.0, 2.0, 3.0], 5, None).unwrap_err();
+    let ret = reader.nns_by_vector(&rtxn, &[1.0, 2.0, 3.0], 5, None, None).unwrap_err();
     insta::assert_display_snapshot!(ret, @"Invalid vector dimensions. Got 3 but expected 2.");
 }
 
@@ -89,14 +91,14 @@ fn two_dimension_on_a_line() {
     let reader = Reader::<Euclidean>::open(&rtxn, 0, handle.database).unwrap();
 
     // if we can't look into enough nodes we find some random points
-    let ret = reader.nns_by_item(&rtxn, 0, 5, NonZeroUsize::new(1)).unwrap();
+    let ret = reader.nns_by_item(&rtxn, 0, 5, NonZeroUsize::new(1), None).unwrap();
     insta::assert_display_snapshot!(NnsRes(ret), @r###"
     id(33): distance(33)
     id(69): distance(69)
     "###);
 
     // if we can look into all the node there is no inifinite loop and it works
-    let ret = reader.nns_by_item(&rtxn, 0, 5, NonZeroUsize::new(usize::MAX)).unwrap();
+    let ret = reader.nns_by_item(&rtxn, 0, 5, NonZeroUsize::new(usize::MAX), None).unwrap();
     insta::assert_display_snapshot!(NnsRes(ret), @r###"
     id(0): distance(0)
     id(1): distance(1)
@@ -105,7 +107,7 @@ fn two_dimension_on_a_line() {
     id(4): distance(4)
     "###);
 
-    let ret = reader.nns_by_item(&rtxn, 0, 5, None).unwrap();
+    let ret = reader.nns_by_item(&rtxn, 0, 5, None, None).unwrap();
     insta::assert_display_snapshot!(NnsRes(ret), @r###"
     id(1): distance(1)
     id(2): distance(2)
@@ -135,7 +137,7 @@ fn two_dimension_on_a_column() {
 
     let rtxn = handle.env.read_txn().unwrap();
     let reader = Reader::<Euclidean>::open(&rtxn, 0, handle.database).unwrap();
-    let ret = reader.nns_by_item(&rtxn, 0, 5, None).unwrap();
+    let ret = reader.nns_by_item(&rtxn, 0, 5, None, None).unwrap();
 
     insta::assert_display_snapshot!(NnsRes(ret), @r###"
     id(1): distance(1)
@@ -143,5 +145,40 @@ fn two_dimension_on_a_column() {
     id(3): distance(3)
     id(4): distance(4)
     id(5): distance(5)
+    "###);
+}
+
+#[test]
+fn filtering() {
+    let handle = create_database();
+    let mut wtxn = handle.env.write_txn().unwrap();
+    let writer = Writer::prepare(&mut wtxn, handle.database, 0, 2).unwrap();
+    // We'll draw a simple line over the y as seen below
+    // (0,0) # . . . . .
+    // (0,1) # . . . . .
+    // (0,2) # . . . . .
+    // (0,3) # . . . . .
+    // [...]
+    for i in 0..100 {
+        writer.add_item(&mut wtxn, i, &[0.0, i as f32]).unwrap();
+    }
+
+    writer.build(&mut wtxn, rng(), Some(50)).unwrap();
+    wtxn.commit().unwrap();
+
+    let rtxn = handle.env.read_txn().unwrap();
+    let reader = Reader::<Euclidean>::open(&rtxn, 0, handle.database).unwrap();
+
+    let ret = reader.nns_by_item(&rtxn, 0, 5, None, Some(&RoaringBitmap::from_iter(0..2))).unwrap();
+    insta::assert_display_snapshot!(NnsRes(ret), @r###"
+    id(0): distance(0)
+    id(1): distance(1)
+    "###);
+
+    let ret =
+        reader.nns_by_item(&rtxn, 0, 5, None, Some(&RoaringBitmap::from_iter(98..1000))).unwrap();
+    insta::assert_display_snapshot!(NnsRes(ret), @r###"
+    id(98): distance(98)
+    id(99): distance(99)
     "###);
 }
