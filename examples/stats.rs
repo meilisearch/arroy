@@ -60,7 +60,7 @@ fn main() -> anyhow::Result<()> {
         "That makes a total of: {} tree nodes. {:.2}% of all the nodes",
         split_nodes_sum + descendants_sum,
         (split_nodes_sum + descendants_sum) as f64
-            / (split_nodes_sum + descendants_sum + leaf) as f64
+            / (split_nodes_sum as u64 + descendants_sum as u64 + leaf) as f64
             * 100.,
     );
 

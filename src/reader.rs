@@ -24,7 +24,7 @@ pub struct Reader<'t, D: Distance> {
     index: u16,
     roots: ItemIds<'t>,
     dimensions: usize,
-    n_items: usize,
+    n_items: u64,
     _marker: marker::PhantomData<D>,
 }
 
@@ -49,7 +49,7 @@ impl<'t, D: Distance> Reader<'t, D> {
             index,
             roots: metadata.roots,
             dimensions: metadata.dimensions.try_into().unwrap(),
-            n_items: metadata.n_items.try_into().unwrap(),
+            n_items: metadata.n_items.into(),
             _marker: marker::PhantomData,
         })
     }
@@ -65,7 +65,7 @@ impl<'t, D: Distance> Reader<'t, D> {
     }
 
     /// Returns the number of vectors stored in the index.
-    pub fn n_items(&self) -> usize {
+    pub fn n_items(&self) -> u64 {
         self.n_items
     }
 
@@ -254,7 +254,7 @@ impl<'t, D: Distance> Reader<'t, D> {
             //   b -> a
             // }
 
-            let mut cache = std::collections::HashMap::<NodeId, usize>::new();
+            let mut cache = std::collections::HashMap::<NodeId, u64>::new();
 
             // Start creating the graph
             writeln!(writer, "\tsubgraph {{")?;
@@ -306,8 +306,8 @@ impl<'t, D: Distance> Reader<'t, D> {
         &self,
         rtxn: &RoTxn,
         node_id: NodeId,
-        cache: &mut std::collections::HashMap<NodeId, usize>,
-    ) -> Result<usize> {
+        cache: &mut std::collections::HashMap<NodeId, u64>,
+    ) -> Result<u64> {
         if let Some(count) = cache.get(&node_id) {
             return Ok(*count);
         }
