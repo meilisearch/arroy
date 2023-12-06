@@ -89,12 +89,12 @@ impl ConcurrentNodeIds {
 
     /// Returns and increment the ID you can use as a NodeId.
     pub fn next(&self) -> u32 {
-        self.0.fetch_add(1, Ordering::SeqCst)
+        self.0.fetch_add(1, Ordering::Relaxed)
     }
 
     /// Returns the current id.
     pub fn current(&self) -> u32 {
-        self.0.load(Ordering::SeqCst)
+        self.0.load(Ordering::Relaxed)
     }
 }
 
