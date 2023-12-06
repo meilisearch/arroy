@@ -2,11 +2,11 @@ use core::slice;
 use std::fs::File;
 use std::io::{BufWriter, Write};
 use std::marker;
-use std::sync::atomic::{AtomicU32, Ordering};
+use std::sync::atomic::{AtomicU64, Ordering};
 
 use heed::types::Bytes;
 use heed::{BytesDecode, BytesEncode, RoTxn};
-use memmap2::Mmap;
+use memmap2::{Advice, Mmap};
 use rand::seq::index;
 use rand::Rng;
 use roaring::RoaringBitmap;
@@ -18,7 +18,7 @@ use crate::{Database, Distance, ItemId, Result};
 /// A structure to store the tree nodes out of the heed database.
 pub struct TmpNodes {
     file: BufWriter<File>,
-    ids: Vec<u32>,
+    ids: RoaringBitmap,
     bounds: Vec<usize>,
 }
 
@@ -26,11 +26,12 @@ impl TmpNodes {
     /// Creates an empty `TmpNodes`.
     pub fn new() -> heed::Result<TmpNodes> {
         let file = tempfile::tempfile().map(BufWriter::new)?;
-        Ok(TmpNodes { file, ids: Vec::new(), bounds: vec![0] })
+        Ok(TmpNodes { file, ids: RoaringBitmap::new(), bounds: vec![0] })
     }
 
     /// Append a new node in the file.
     pub fn put<'a, DE: BytesEncode<'a>>(
+        // TODO move that in the type
         &mut self,
         item: u32,
         data: &'a DE::EItem,
@@ -46,30 +47,28 @@ impl TmpNodes {
     /// Converts it into a readers to be able to read the nodes.
     pub fn into_reader(self) -> Result<TmpNodesReader> {
         let file = self.file.into_inner().map_err(|iie| iie.into_error())?;
-        Ok(TmpNodesReader {
-            mmap: unsafe { Mmap::map(&file)? },
-            ids: self.ids,
-            bounds: self.bounds,
-        })
+        let mmap = unsafe { Mmap::map(&file)? };
+        mmap.advise(Advice::Sequential)?;
+        Ok(TmpNodesReader { mmap, ids: self.ids, bounds: self.bounds })
     }
 }
 
 /// A reader of nodes stored in a file.
 pub struct TmpNodesReader {
     mmap: Mmap,
-    ids: Vec<u32>,
+    ids: RoaringBitmap,
     bounds: Vec<usize>,
 }
 
 impl TmpNodesReader {
     /// The number of nodes stored in this file.
-    pub fn len(&self) -> usize {
+    pub fn len(&self) -> u64 {
         self.ids.len()
     }
 
     /// Returns an forward iterator over the nodes.
     pub fn iter(&self) -> impl Iterator<Item = (u32, &[u8])> {
-        self.ids.iter().zip(self.bounds.windows(2)).map(|(&id, bounds)| {
+        self.ids.iter().zip(self.bounds.windows(2)).map(|(id, bounds)| {
             let [start, end] = [bounds[0], bounds[1]];
             (id, &self.mmap[start..end])
         })
@@ -79,21 +78,21 @@ impl TmpNodesReader {
 /// A concurrent ID generate that will never return the same ID twice.
 #[derive(Debug)]
 #[repr(transparent)]
-pub struct ConcurrentNodeIds(AtomicU32);
+pub struct ConcurrentNodeIds(AtomicU64);
 
 impl ConcurrentNodeIds {
     /// Creates the ID generator starting at the given number.
     pub fn new(v: u32) -> ConcurrentNodeIds {
-        ConcurrentNodeIds(AtomicU32::new(v))
+        ConcurrentNodeIds(AtomicU64::new(v.into()))
     }
 
     /// Returns and increment the ID you can use as a NodeId.
-    pub fn next(&self) -> u32 {
+    pub fn next(&self) -> u64 {
         self.0.fetch_add(1, Ordering::Relaxed)
     }
 
     /// Returns the current id.
-    pub fn current(&self) -> u32 {
+    pub fn current(&self) -> u64 {
         self.0.load(Ordering::Relaxed)
     }
 }

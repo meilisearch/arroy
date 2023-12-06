@@ -203,11 +203,11 @@ impl<D: Distance> Writer<D> {
                 // but continue to generate trees if the number of trees is specified
                 .take_any_while(|_| match n_trees {
                     Some(_) => true,
-                    None => (concurrent_node_ids.current() as u64) < (self.n_items - 1),
+                    None => concurrent_node_ids.current() < (self.n_items - 1),
                 })
                 .map(|(i, seed)| {
                     log::debug!("started generating tree {i:X}...");
-                    let mut rng = R::seed_from_u64(seed + (i as u64));
+                    let mut rng = R::seed_from_u64(seed.wrapping_add(i as u64));
                     let mut tmp_nodes = TmpNodes::new()?;
                     let root_id = make_tree_in_file(
                         &frozzen_reader,
@@ -217,7 +217,7 @@ impl<D: Distance> Writer<D> {
                         &mut tmp_nodes,
                     )?;
                     log::debug!("finished generating tree {i:X}");
-                    // make_tree must NEVER return a leaf when called as root
+                    // make_tree will NEVER return a leaf when called as root
                     Ok((root_id.unwrap_tree(), tmp_nodes.into_reader()?))
                 })
                 .collect();
@@ -306,7 +306,7 @@ fn make_tree_in_file<D: Distance, R: Rng>(
     if item_indices.len() <= max_descendants
         && (!is_root || reader.n_items <= max_descendants || item_indices.len() == 1)
     {
-        let item_id = reader.concurrent_node_ids.next();
+        let item_id = reader.concurrent_node_ids.next().try_into().unwrap();
         let item = Node::Descendants(Descendants { descendants: Cow::Borrowed(item_indices) });
         tmp_nodes.put::<NodeCodec<D>>(item_id, &item)?;
         return Ok(NodeId::tree(item_id));
@@ -352,7 +352,7 @@ fn make_tree_in_file<D: Distance, R: Rng>(
         right: make_tree_in_file(reader, rng, &children_right, false, tmp_nodes)?,
     };
 
-    let new_node_id = reader.concurrent_node_ids.next();
+    let new_node_id = reader.concurrent_node_ids.next().try_into().unwrap();
     tmp_nodes.put::<NodeCodec<D>>(new_node_id, &Node::SplitPlaneNormal(normal))?;
 
     Ok(NodeId::tree(new_node_id))
@@ -370,11 +370,10 @@ fn randomly_split_children<R: Rng>(
 
     // Split it in half and put the right half into the right children's vector
     for item_id in item_indices {
-        if rng.gen() {
-            children_left.push(item_id);
-        } else {
-            children_right.push(item_id);
-        }
+        match Side::random(rng) {
+            Side::Left => children_left.push(item_id),
+            Side::Right => children_right.push(item_id),
+        };
     }
 }
 
