@@ -5,6 +5,7 @@ use std::iter::repeat;
 use std::marker;
 use std::num::NonZeroUsize;
 
+use heed::types::DecodeIgnore;
 use heed::RoTxn;
 use ordered_float::OrderedFloat;
 use roaring::RoaringBitmap;
@@ -128,6 +129,15 @@ impl<'t, D: Distance> Reader<'t, D> {
     /// Returns `true` if the index is empty.
     pub fn is_empty(&self, rtxn: &RoTxn) -> Result<bool> {
         self.iter(rtxn).map(|mut iter| iter.next().is_none())
+    }
+
+    /// Returns `true` if the database contains the given item.
+    pub fn contains_item(&self, rtxn: &RoTxn, item: ItemId) -> Result<bool> {
+        self.database
+            .remap_data_type::<DecodeIgnore>()
+            .get(rtxn, &Key::item(self.index, item))
+            .map(|opt| opt.is_some())
+            .map_err(Into::into)
     }
 
     /// Returns an iterator over the items vector.
