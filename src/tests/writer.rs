@@ -253,3 +253,66 @@ fn write_random_vectors_to_random_indexes() {
     }
     wtxn.commit().unwrap();
 }
+
+#[test]
+fn overwrite_one_document_incremental() {
+    let handle = create_database::<Euclidean>();
+    let mut rng = rng();
+    let mut wtxn = handle.env.write_txn().unwrap();
+    let writer = Writer::new(handle.database, 0, 2).unwrap();
+
+    for i in 0..6 {
+        writer.add_item(&mut wtxn, i, &[i as f32, 0.]).unwrap();
+    }
+    writer.build(&mut wtxn, &mut rng, Some(1)).unwrap();
+    wtxn.commit().unwrap();
+
+    insta::assert_display_snapshot!(handle, @r###"
+    ==================
+    Dumping index 0
+    Item 0: Leaf(Leaf { header: NodeHeaderEuclidean { bias: 0.0 }, vector: [0.0000, 0.0000] })
+    Item 1: Leaf(Leaf { header: NodeHeaderEuclidean { bias: 0.0 }, vector: [1.0000, 0.0000] })
+    Item 2: Leaf(Leaf { header: NodeHeaderEuclidean { bias: 0.0 }, vector: [2.0000, 0.0000] })
+    Item 3: Leaf(Leaf { header: NodeHeaderEuclidean { bias: 0.0 }, vector: [3.0000, 0.0000] })
+    Item 4: Leaf(Leaf { header: NodeHeaderEuclidean { bias: 0.0 }, vector: [4.0000, 0.0000] })
+    Item 5: Leaf(Leaf { header: NodeHeaderEuclidean { bias: 0.0 }, vector: [5.0000, 0.0000] })
+    Tree 0: Descendants(Descendants { descendants: [1, 3] })
+    Tree 1: SplitPlaneNormal(SplitPlaneNormal { normal: [0.0000, 0.0000], left: NodeId { mode: Tree, item: 0 }, right: NodeId { mode: Item, item: 2 } })
+    Tree 2: Descendants(Descendants { descendants: [4, 5] })
+    Tree 3: SplitPlaneNormal(SplitPlaneNormal { normal: [0.0000, 0.0000], left: NodeId { mode: Tree, item: 1 }, right: NodeId { mode: Tree, item: 2 } })
+    Tree 4: SplitPlaneNormal(SplitPlaneNormal { normal: [1.0000, 0.0000], left: NodeId { mode: Item, item: 0 }, right: NodeId { mode: Tree, item: 3 } })
+    Root: Metadata { dimensions: 2, items: RoaringBitmap<[0, 1, 2, 3, 4, 5]>, roots: [4], distance: "euclidean" }
+    item_ids: RoaringBitmap<[0, 1, 2, 3, 4, 5]>
+    "###);
+
+    let mut wtxn = handle.env.write_txn().unwrap();
+
+    let writer = Writer::new(handle.database, 0, 2).unwrap();
+
+    writer.add_item(&mut wtxn, 0, &[6., 0.]).unwrap();
+
+    writer.build(&mut wtxn, &mut rng, Some(1)).unwrap();
+    wtxn.commit().unwrap();
+
+    insta::assert_display_snapshot!(handle, @r###"
+    ==================
+    Dumping index 0
+    Item 0: Leaf(Leaf { header: NodeHeaderEuclidean { bias: 0.0 }, vector: [6.0000, 0.0000] })
+    Item 1: Leaf(Leaf { header: NodeHeaderEuclidean { bias: 0.0 }, vector: [1.0000, 0.0000] })
+    Item 2: Leaf(Leaf { header: NodeHeaderEuclidean { bias: 0.0 }, vector: [2.0000, 0.0000] })
+    Item 3: Leaf(Leaf { header: NodeHeaderEuclidean { bias: 0.0 }, vector: [3.0000, 0.0000] })
+    Item 4: Leaf(Leaf { header: NodeHeaderEuclidean { bias: 0.0 }, vector: [4.0000, 0.0000] })
+    Item 5: Leaf(Leaf { header: NodeHeaderEuclidean { bias: 0.0 }, vector: [5.0000, 0.0000] })
+    Tree 0: Descendants(Descendants { descendants: [1, 3] })
+    Tree 1: SplitPlaneNormal(SplitPlaneNormal { normal: [0.0000, 0.0000], left: NodeId { mode: Tree, item: 0 }, right: NodeId { mode: Item, item: 2 } })
+    Tree 2: Descendants(Descendants { descendants: [4, 5] })
+    Tree 3: SplitPlaneNormal(SplitPlaneNormal { normal: [0.0000, 0.0000], left: NodeId { mode: Tree, item: 1 }, right: NodeId { mode: Tree, item: 2 } })
+    Tree 4: Descendants(Descendants { descendants: [1, 4] })
+    Tree 5: Descendants(Descendants { descendants: [2, 5] })
+    Tree 6: SplitPlaneNormal(SplitPlaneNormal { normal: [0.0000, 0.0000], left: NodeId { mode: Item, item: 3 }, right: NodeId { mode: Tree, item: 5 } })
+    Tree 7: SplitPlaneNormal(SplitPlaneNormal { normal: [0.0000, 0.0000], left: NodeId { mode: Tree, item: 4 }, right: NodeId { mode: Tree, item: 6 } })
+    Tree 8: SplitPlaneNormal(SplitPlaneNormal { normal: [0.0000, 0.0000], left: NodeId { mode: Item, item: 0 }, right: NodeId { mode: Tree, item: 7 } })
+    Root: Metadata { dimensions: 2, items: RoaringBitmap<[0, 1, 2, 3, 4, 5]>, roots: [4, 8], distance: "euclidean" }
+    item_ids: RoaringBitmap<[0, 1, 2, 3, 4, 5]>
+    "###);
+}

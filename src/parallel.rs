@@ -14,6 +14,7 @@ use roaring::RoaringBitmap;
 
 use crate::internals::{KeyCodec, Leaf, NodeCodec};
 use crate::key::{Prefix, PrefixCodec};
+use crate::node::Node;
 use crate::{Database, Distance, ItemId, Result};
 
 /// A structure to store the tree nodes out of the heed database.
@@ -221,3 +222,69 @@ impl<'t, D: Distance> ImmutableSubsetLeafs<'t, D> {
         }
     }
 }
+
+/// A struture used to keep a list of all the tree nodes in the tree.
+///
+/// It is safe to share between threads as the pointer are pointing
+/// in the mmapped file and the transaction is kept here and therefore
+/// no longer touches the database.
+pub struct ImmutableTrees<'t, D> {
+    tree_ids: RoaringBitmap,
+    constant_length: Option<usize>,
+    offsets: Vec<*const u8>,
+    _marker: marker::PhantomData<(&'t (), D)>,
+}
+
+impl<'t, D: Distance> ImmutableTrees<'t, D> {
+    /// Creates the structure by fetching all the root pointers
+    /// and keeping the transaction making the pointers valid.
+    pub fn new(rtxn: &'t RoTxn, database: Database<D>, index: u16) -> heed::Result<Self> {
+        let mut tree_ids = RoaringBitmap::new();
+        // let mut constant_length = None;
+        let mut offsets = Vec::new();
+
+        let iter = database
+            .remap_types::<PrefixCodec, Bytes>()
+            .prefix_iter(rtxn, &Prefix::tree(index))?
+            .remap_key_type::<KeyCodec>();
+
+        for result in iter {
+            let (key, bytes) = result?;
+            let tree_id = key.node.unwrap_tree();
+            // trees are not of constentant size but is that really an issue?
+            // assert_eq!(*constant_length.get_or_insert(bytes.len()), bytes.len());
+            assert!(tree_ids.push(tree_id));
+            offsets.push(bytes.as_ptr());
+        }
+
+        Ok(ImmutableTrees {
+            tree_ids,
+            // We'll always give the encoder a slice of the maximum size
+            // TODO: That may be UB, we need to fix it
+            constant_length: Some(usize::MAX),
+            offsets,
+            _marker: marker::PhantomData,
+        })
+    }
+
+    /// Returns the tree node identified by the given ID.
+    pub fn get(&self, item_id: ItemId) -> heed::Result<Option<Node<'t, D>>> {
+        let len = match self.constant_length {
+            Some(len) => len,
+            None => return Ok(None),
+        };
+        let ptr = match self
+            .tree_ids
+            .rank(item_id)
+            .checked_sub(1)
+            .and_then(|offset| self.offsets.get(offset as usize))
+        {
+            Some(ptr) => *ptr,
+            None => return Ok(None),
+        };
+        let bytes = unsafe { slice::from_raw_parts(ptr, len) };
+        NodeCodec::bytes_decode(bytes).map_err(heed::Error::Decoding).map(Some)
+    }
+}
+
+unsafe impl<D> Sync for ImmutableTrees<'_, D> {}
