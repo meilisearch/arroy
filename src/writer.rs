@@ -267,7 +267,6 @@ impl<D: Distance> Writer<D> {
 
         log::debug!("Getting a reference to your {} items...", n_items);
 
-        // TODO: do not starts at 0
         let concurrent_node_ids = ConcurrentNodeIds::new(self.next_tree_node(wtxn)?);
         let frozzen_reader = FrozzenReader {
             // TODO: We may not need the leafs or the trees. Can we do something about it?
@@ -316,7 +315,19 @@ impl<D: Distance> Writer<D> {
             }
         }
 
-        roots.append(&mut thread_roots);
+        if thread_roots.is_empty() {
+            // we may have too many nodes
+            log::debug!("Deleting the extraneous trees...");
+            self.delete_extra_trees(
+                wtxn,
+                &mut roots,
+                n_trees,
+                concurrent_node_ids.current(),
+                n_items,
+            )?;
+        } else {
+            roots.append(&mut thread_roots);
+        }
 
         log::debug!("started writing the metadata...");
 
@@ -468,6 +479,65 @@ impl<D: Distance> Writer<D> {
                 Ok((root_id.unwrap_tree(), tmp_nodes.into_bytes_reader()?))
             })
             .collect()
+    }
+
+    /// Delete any extraneous trees.
+    fn delete_extra_trees(
+        &self,
+        wtxn: &mut RwTxn,
+        roots: &mut Vec<ItemId>,
+        nb_trees: Option<usize>,
+        nb_tree_nodes: u64,
+        nb_items: u64,
+    ) -> Result<()> {
+        if let Some(nb_trees) = nb_trees {
+            if roots.len() > nb_trees {
+                // we have too many trees and must delete some of them
+                let to_delete = roots.len() - nb_trees;
+
+                // we want to delete the oldest tree first since they're probably
+                // the less precise one
+                let new_roots = roots.split_off(to_delete);
+                let to_delete = std::mem::replace(roots, new_roots);
+                log::debug!("Deleting {} trees", to_delete.len());
+
+                for tree in to_delete {
+                    self.delete_tree(wtxn, NodeId::tree(tree))?;
+                }
+            }
+        } else {
+            // 1. Estimate the number of nodes per tree
+            let nodes_per_tree = nb_tree_nodes / roots.len() as u64;
+            // 2. Estimate the number of tree we need to have AT LEAST as much tree-nodes than items
+            let expected_number_of_trees = nb_items / nodes_per_tree;
+
+            // We can call ourselves back with the specified number of trees
+            self.delete_extra_trees(
+                wtxn,
+                roots,
+                Some(expected_number_of_trees as usize),
+                nb_tree_nodes,
+                nb_items,
+            )?;
+        }
+
+        Ok(())
+    }
+
+    fn delete_tree(&self, wtxn: &mut RwTxn, node: NodeId) -> Result<()> {
+        let key = Key::new(self.index, node);
+        match self.database.get(wtxn, &key)?.ok_or(Error::MissingNode)? {
+            // the leafs are shared between the trees, we MUST NOT delete them.
+            Node::Leaf(_) => Ok(()),
+            Node::Descendants(_) => {
+                self.database.delete(wtxn, &key).map(|_| ()).map_err(Error::from)
+            }
+            Node::SplitPlaneNormal(SplitPlaneNormal { normal: _, left, right }) => {
+                self.delete_tree(wtxn, left)?;
+                self.delete_tree(wtxn, right)?;
+                self.database.delete(wtxn, &key).map(|_| ()).map_err(Error::from)
+            }
+        }
     }
 
     // Fetches the item's ids, not the tree nodes ones.

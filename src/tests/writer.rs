@@ -312,3 +312,67 @@ fn overwrite_one_document_incremental() {
     item_ids: RoaringBitmap<[0, 1, 2, 3, 4, 5]>
     "###);
 }
+
+#[test]
+fn delete_extraneous_tree() {
+    let handle = create_database::<Euclidean>();
+    let mut rng = rng();
+
+    let mut wtxn = handle.env.write_txn().unwrap();
+    let writer = Writer::new(handle.database, 0, 4).unwrap();
+    for i in 0..4 {
+        writer.add_item(&mut wtxn, i, &[i as f32, 0., 0., 0.]).unwrap();
+    }
+    // 4 nodes of 4 dimensions should create 3 trees by default.
+    writer.build(&mut wtxn, &mut rng, None).unwrap();
+    wtxn.commit().unwrap();
+
+    insta::assert_display_snapshot!(handle, @r###"
+    ==================
+    Dumping index 0
+    Item 0: Leaf(Leaf { header: NodeHeaderEuclidean { bias: 0.0 }, vector: [0.0000, 0.0000, 0.0000, 0.0000] })
+    Item 1: Leaf(Leaf { header: NodeHeaderEuclidean { bias: 0.0 }, vector: [1.0000, 0.0000, 0.0000, 0.0000] })
+    Item 2: Leaf(Leaf { header: NodeHeaderEuclidean { bias: 0.0 }, vector: [2.0000, 0.0000, 0.0000, 0.0000] })
+    Item 3: Leaf(Leaf { header: NodeHeaderEuclidean { bias: 0.0 }, vector: [3.0000, 0.0000, 0.0000, 0.0000] })
+    Tree 0: Descendants(Descendants { descendants: [0, 1, 2, 3] })
+    Tree 1: Descendants(Descendants { descendants: [0, 1, 2, 3] })
+    Tree 2: Descendants(Descendants { descendants: [0, 1, 2, 3] })
+    Root: Metadata { dimensions: 4, items: RoaringBitmap<[0, 1, 2, 3]>, roots: [0, 1, 2], distance: "euclidean" }
+    item_ids: RoaringBitmap<[0, 1, 2, 3]>
+    "###);
+
+    let mut wtxn = handle.env.write_txn().unwrap();
+    let writer = Writer::new(handle.database, 0, 2).unwrap();
+    writer.build(&mut wtxn, &mut rng, Some(2)).unwrap();
+    wtxn.commit().unwrap();
+
+    insta::assert_display_snapshot!(handle, @r###"
+    ==================
+    Dumping index 0
+    Item 0: Leaf(Leaf { header: NodeHeaderEuclidean { bias: 0.0 }, vector: [0.0000, 0.0000, 0.0000, 0.0000] })
+    Item 1: Leaf(Leaf { header: NodeHeaderEuclidean { bias: 0.0 }, vector: [1.0000, 0.0000, 0.0000, 0.0000] })
+    Item 2: Leaf(Leaf { header: NodeHeaderEuclidean { bias: 0.0 }, vector: [2.0000, 0.0000, 0.0000, 0.0000] })
+    Item 3: Leaf(Leaf { header: NodeHeaderEuclidean { bias: 0.0 }, vector: [3.0000, 0.0000, 0.0000, 0.0000] })
+    Tree 1: Descendants(Descendants { descendants: [0, 1, 2, 3] })
+    Tree 2: Descendants(Descendants { descendants: [0, 1, 2, 3] })
+    Root: Metadata { dimensions: 2, items: RoaringBitmap<[0, 1, 2, 3]>, roots: [1, 2], distance: "euclidean" }
+    item_ids: RoaringBitmap<[0, 1, 2, 3]>
+    "###);
+
+    let mut wtxn = handle.env.write_txn().unwrap();
+    let writer = Writer::new(handle.database, 0, 2).unwrap();
+    writer.build(&mut wtxn, &mut rng, Some(1)).unwrap();
+    wtxn.commit().unwrap();
+
+    insta::assert_display_snapshot!(handle, @r###"
+    ==================
+    Dumping index 0
+    Item 0: Leaf(Leaf { header: NodeHeaderEuclidean { bias: 0.0 }, vector: [0.0000, 0.0000, 0.0000, 0.0000] })
+    Item 1: Leaf(Leaf { header: NodeHeaderEuclidean { bias: 0.0 }, vector: [1.0000, 0.0000, 0.0000, 0.0000] })
+    Item 2: Leaf(Leaf { header: NodeHeaderEuclidean { bias: 0.0 }, vector: [2.0000, 0.0000, 0.0000, 0.0000] })
+    Item 3: Leaf(Leaf { header: NodeHeaderEuclidean { bias: 0.0 }, vector: [3.0000, 0.0000, 0.0000, 0.0000] })
+    Tree 2: Descendants(Descendants { descendants: [0, 1, 2, 3] })
+    Root: Metadata { dimensions: 2, items: RoaringBitmap<[0, 1, 2, 3]>, roots: [2], distance: "euclidean" }
+    item_ids: RoaringBitmap<[0, 1, 2, 3]>
+    "###);
+}
