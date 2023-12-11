@@ -280,7 +280,7 @@ impl<D: Distance> Writer<D> {
         };
 
         // TODO: Insert the updated elements into the already existing trees
-        if let Some(metadata) = metadata {
+        if let Some(ref metadata) = metadata {
             // If there was metadata in the index we should delete them to let rest of the indexing process go as planned
 
             log::debug!(
@@ -302,8 +302,11 @@ impl<D: Distance> Writer<D> {
             n_trees.map_or_else(|| "an unknown number of".to_string(), |n| n.to_string())
         );
 
+        let n_trees_to_build = n_trees
+            .zip(metadata)
+            .map(|(n_trees, metadata)| n_trees.saturating_sub(metadata.roots.len()));
         let (mut thread_roots, tmp_nodes) =
-            self.build_trees(rng, n_trees, &item_indices, &frozzen_reader)?;
+            self.build_trees(rng, n_trees_to_build, &item_indices, &frozzen_reader)?;
         log::debug!("started writing the tree nodes of {} trees...", tmp_nodes.len());
         for (i, tmp_node) in tmp_nodes.into_iter().enumerate() {
             log::debug!("started writing the {} tree nodes of the {i}nth trees...", tmp_node.len());

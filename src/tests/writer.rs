@@ -307,12 +307,8 @@ fn overwrite_one_document_incremental() {
     Tree 1: SplitPlaneNormal(SplitPlaneNormal { normal: [0.0000, 0.0000], left: NodeId { mode: Tree, item: 0 }, right: NodeId { mode: Item, item: 2 } })
     Tree 2: Descendants(Descendants { descendants: [4, 5] })
     Tree 3: SplitPlaneNormal(SplitPlaneNormal { normal: [0.0000, 0.0000], left: NodeId { mode: Tree, item: 1 }, right: NodeId { mode: Tree, item: 2 } })
-    Tree 4: Descendants(Descendants { descendants: [1, 4] })
-    Tree 5: Descendants(Descendants { descendants: [2, 5] })
-    Tree 6: SplitPlaneNormal(SplitPlaneNormal { normal: [0.0000, 0.0000], left: NodeId { mode: Item, item: 3 }, right: NodeId { mode: Tree, item: 5 } })
-    Tree 7: SplitPlaneNormal(SplitPlaneNormal { normal: [0.0000, 0.0000], left: NodeId { mode: Tree, item: 4 }, right: NodeId { mode: Tree, item: 6 } })
-    Tree 8: SplitPlaneNormal(SplitPlaneNormal { normal: [0.0000, 0.0000], left: NodeId { mode: Item, item: 0 }, right: NodeId { mode: Tree, item: 7 } })
-    Root: Metadata { dimensions: 2, items: RoaringBitmap<[0, 1, 2, 3, 4, 5]>, roots: [4, 8], distance: "euclidean" }
+    Tree 4: SplitPlaneNormal(SplitPlaneNormal { normal: [1.0000, 0.0000], left: NodeId { mode: Item, item: 0 }, right: NodeId { mode: Tree, item: 3 } })
+    Root: Metadata { dimensions: 2, items: RoaringBitmap<[0, 1, 2, 3, 4, 5]>, roots: [4], distance: "euclidean" }
     item_ids: RoaringBitmap<[0, 1, 2, 3, 4, 5]>
     "###);
 }
