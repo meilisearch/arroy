@@ -1,5 +1,6 @@
 use std::any::TypeId;
 use std::borrow::Cow;
+use std::mem;
 use std::path::PathBuf;
 
 use heed::types::{Bytes, DecodeIgnore};
@@ -252,24 +253,24 @@ impl<D: Distance> Writer<D> {
 
         let item_indices = self.item_indices(wtxn)?;
         let n_items = item_indices.len();
-        let metadata = self
-            .database
-            .remap_data_type::<MetadataCodec>()
-            .get(wtxn, &Key::metadata(self.index))?;
         let updated_items = self
             .database
             .remap_data_type::<RoaringBitmapCodec>()
             .get(wtxn, &Key::updated(self.index))?
             .unwrap_or_default();
         let deleted_items = &updated_items - &item_indices;
+
+        let metadata = self
+            .database
+            .remap_data_type::<MetadataCodec>()
+            .get(wtxn, &Key::metadata(self.index))?;
         let mut roots =
-            metadata.as_ref().map_or(Vec::new(), |metadata| metadata.roots.iter().collect());
+            metadata.as_ref().map_or_else(Vec::new, |metadata| metadata.roots.iter().collect());
 
         log::debug!("Getting a reference to your {} items...", n_items);
 
         let concurrent_node_ids = ConcurrentNodeIds::new(self.next_tree_node(wtxn)?);
         let frozzen_reader = FrozzenReader {
-            // TODO: We may not need the leafs or the trees. Can we do something about it?
             leafs: &ImmutableLeafs::new(wtxn, self.database, self.index)?,
             trees: &ImmutableTrees::new(wtxn, self.database, self.index)?,
             dimensions: self.dimensions,
@@ -279,33 +280,36 @@ impl<D: Distance> Writer<D> {
         };
 
         // TODO: Insert the updated elements into the already existing trees
+        // If there is metadata it means that we already have trees and we must update them
         if let Some(ref metadata) = metadata {
-            // If there was metadata in the index we should delete them to let rest of the indexing process go as planned
-
             log::debug!(
                 "started inserting new items {} in {} trees...",
                 n_items,
                 metadata.roots.len()
             );
+            // NOTE: We should probably keep a list of the updated tree nodes alongside a list
+            //       of all existing tree node IDs. This way we can keep track of the tree nodes
+            //       in which we need to delete the deleted items.
             self.update_trees(rng, metadata, &updated_items, &deleted_items, &frozzen_reader)?;
 
             // todo!("{:?}", updated_items);
         }
 
-        // In any case we may be missing a bunch of root nodes after inserting the new elements
-
-        // TODO: Create the new trees if necessary
         log::debug!("started building trees for {} items...", n_items);
         log::debug!(
             "running {} parallel tree building...",
             n_trees.map_or_else(|| "an unknown number of".to_string(), |n| n.to_string())
         );
 
+        // Once we updated the current trees we also need to create the new missing trees
+        // So we can run the normal path of building trees from scratch.
         let n_trees_to_build = n_trees
             .zip(metadata)
-            .map(|(n_trees, metadata)| n_trees.saturating_sub(metadata.roots.len()));
+            .map(|(n_trees, metadata)| n_trees.saturating_sub(metadata.roots.len()))
+            .or(n_trees);
         let (mut thread_roots, tmp_nodes) =
             self.build_trees(rng, n_trees_to_build, &item_indices, &frozzen_reader)?;
+
         log::debug!("started writing the tree nodes of {} trees...", tmp_nodes.len());
         for (i, tmp_node) in tmp_nodes.into_iter().enumerate() {
             log::debug!("started writing the {} tree nodes of the {i}nth trees...", tmp_node.len());
@@ -342,12 +346,9 @@ impl<D: Distance> Writer<D> {
             &Key::metadata(self.index),
             &metadata,
         ) {
-            Ok(_) => (),
-            Err(heed::Error::Mdb(MdbError::KeyExist)) => return Err(Error::DatabaseFull),
-            Err(e) => return Err(e.into()),
+            Ok(_) => Ok(()),
+            Err(e) => Err(e.into()),
         }
-
-        Ok(())
     }
 
     fn update_trees<R: Rng + SeedableRng>(
@@ -393,6 +394,9 @@ impl<D: Distance> Writer<D> {
     ) -> Result<Option<NodeId>> {
         match current_node.mode {
             NodeMode::Item => {
+                // TODO This is wrong we must generate a new node id and don't use the current ID
+                //      as it could refer to an ItemId and we are only writing Tree Node IDs.
+
                 // We were called on a specific item, we should create a descendants node
                 let mut descendants = item_indices.clone();
                 descendants.insert(current_node.item);
@@ -403,9 +407,13 @@ impl<D: Distance> Writer<D> {
                 return Ok(Some(current_node));
             }
             NodeMode::Tree => {
-                match frozen_reader.trees.get(current_node.item)?.expect("should not happen") {
-                    Node::Leaf(_) => unreachable!("we searched in the trees, that's impossible"),
+                match frozen_reader.trees.get(current_node.item)?.unwrap() {
+                    Node::Leaf(_) => unreachable!(),
                     Node::Descendants(Descendants { descendants }) => {
+                        // TODO it the number of items in this descendant node is too high
+                        //      (number of dims). Replace this node by a split node and multiple
+                        //      other nodes.
+
                         // insert all of our IDs in the descendants
                         let new_descendants = descendants.into_owned() | item_indices;
                         tmp_nodes.put(
@@ -417,7 +425,7 @@ impl<D: Distance> Writer<D> {
                         return Ok(Some(current_node));
                     }
                     Node::SplitPlaneNormal(SplitPlaneNormal { normal, left, right }) => {
-                        // Iterato over all nodes in item_indices and regenerate two roaring bitmaps
+                        // Split the item_indices into two bitmaps on the left and right of this normal
                         let mut left_ids = RoaringBitmap::new();
                         let mut right_ids = RoaringBitmap::new();
 
@@ -429,14 +437,26 @@ impl<D: Distance> Writer<D> {
                             };
                         }
 
-                        self.update_nodes_in_file(frozen_reader, rng, left, &left_ids, tmp_nodes)?;
-                        self.update_nodes_in_file(
+                        let new_left = self.update_nodes_in_file(
+                            frozen_reader,
+                            rng,
+                            left,
+                            &left_ids,
+                            tmp_nodes,
+                        )?;
+                        let new_right = self.update_nodes_in_file(
                             frozen_reader,
                             rng,
                             right,
                             &right_ids,
                             tmp_nodes,
                         )?;
+
+                        // TODO we must update this split node as we could have generated
+                        //      a new node by replacing the potential leaf.
+                        //
+                        //      We can avoid replacing this split node when the
+                        //      left and right ids are the same.
 
                         Ok(None)
                     }
@@ -456,7 +476,6 @@ impl<D: Distance> Writer<D> {
         let n_items = item_indices.len();
         let concurrent_node_ids = frozen_reader.concurrent_node_ids;
 
-        // TODO: Do not enter if we have enough tree
         repeatn(rng.next_u64(), n_trees.unwrap_or(usize::MAX))
             .enumerate()
             // Stop generating trees once the number of tree nodes are generated
@@ -490,35 +509,29 @@ impl<D: Distance> Writer<D> {
         nb_tree_nodes: u64,
         nb_items: u64,
     ) -> Result<()> {
-        if let Some(nb_trees) = nb_trees {
-            if roots.len() > nb_trees {
-                // we have too many trees and must delete some of them
-                let to_delete = roots.len() - nb_trees;
-
-                // we want to delete the oldest tree first since they're probably
-                // the less precise one
-                let new_roots = roots.split_off(to_delete);
-                let to_delete = std::mem::replace(roots, new_roots);
-                log::debug!("Deleting {} trees", to_delete.len());
-
-                for tree in to_delete {
-                    self.delete_tree(wtxn, NodeId::tree(tree))?;
-                }
+        let nb_trees = match nb_trees {
+            Some(nb_trees) => nb_trees,
+            None => {
+                // 1. Estimate the number of nodes per tree
+                let nodes_per_tree = nb_tree_nodes / roots.len() as u64;
+                // 2. Estimate the number of tree we need to have AT LEAST as much tree-nodes than items
+                (nb_items / nodes_per_tree) as usize
             }
-        } else {
-            // 1. Estimate the number of nodes per tree
-            let nodes_per_tree = nb_tree_nodes / roots.len() as u64;
-            // 2. Estimate the number of tree we need to have AT LEAST as much tree-nodes than items
-            let expected_number_of_trees = nb_items / nodes_per_tree;
+        };
 
-            // We can call ourselves back with the specified number of trees
-            self.delete_extra_trees(
-                wtxn,
-                roots,
-                Some(expected_number_of_trees as usize),
-                nb_tree_nodes,
-                nb_items,
-            )?;
+        if roots.len() > nb_trees {
+            // we have too many trees and must delete some of them
+            let to_delete = roots.len() - nb_trees;
+
+            // we want to delete the oldest tree first since they're probably
+            // the less precise one
+            let new_roots = roots.split_off(to_delete);
+            let to_delete = mem::replace(roots, new_roots);
+            log::debug!("Deleting {} trees", to_delete.len());
+
+            for tree in to_delete {
+                self.delete_tree(wtxn, NodeId::tree(tree))?;
+            }
         }
 
         Ok(())
