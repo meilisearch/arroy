@@ -287,7 +287,7 @@ impl<D: Distance> Writer<D> {
                 n_items,
                 metadata.roots.len()
             );
-            self.update_trees(rng, &metadata, &updated_items, &deleted_items, &frozzen_reader)?;
+            self.update_trees(rng, metadata, &updated_items, &deleted_items, &frozzen_reader)?;
 
             // todo!("{:?}", updated_items);
         }
