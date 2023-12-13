@@ -11,7 +11,7 @@ jobs:
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        os: [ubuntu-latest, macos-latest-xlarge]
+        os: [ubuntu-latest, macos-latest-xlarge, windows-latest]
         rust:
           - stable
           - beta

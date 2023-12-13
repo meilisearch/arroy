@@ -7,7 +7,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 
 use heed::types::Bytes;
 use heed::{BytesDecode, BytesEncode, RoTxn};
-use memmap2::{Advice, Mmap};
+use memmap2::Mmap;
 use rand::seq::index;
 use rand::Rng;
 use roaring::RoaringBitmap;
@@ -64,7 +64,8 @@ impl<'a, DE: BytesEncode<'a>> TmpNodes<DE> {
     pub fn into_bytes_reader(self) -> Result<TmpNodesReader> {
         let file = self.file.into_inner().map_err(|iie| iie.into_error())?;
         let mmap = unsafe { Mmap::map(&file)? };
-        mmap.advise(Advice::Sequential)?;
+        #[cfg(unix)]
+        mmap.advise(memmap2::Advice::Sequential)?;
         Ok(TmpNodesReader { mmap, ids: self.ids, bounds: self.bounds })
     }
 }
