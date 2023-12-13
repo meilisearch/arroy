@@ -34,19 +34,25 @@ impl Distance for Angular {
     }
 
     fn built_distance(p: &Leaf<Self>, q: &Leaf<Self>) -> f32 {
-        let pp = p.header.norm;
-        let qq = q.header.norm;
+        let pn = p.header.norm;
+        let qn = q.header.norm;
         let pq = dot_product(&p.vector, &q.vector);
-        let ppqq = pp * qq;
-        if ppqq >= f32::MIN_POSITIVE {
-            2.0 - 2.0 * pq / ppqq.sqrt()
-        } else {
-            2.0 // cos is 0
-        }
+        let pnqn = pn * qn;
+        let cos = pq / pnqn;
+
+        // cos is [-1; 1]
+        // cos =  0. -> 0.5
+        // cos = -1. -> 1.0
+        // cos =  1. -> 0.0
+        (1.0 - cos) / 2.0
+    }
+
+    fn normalized_distance(d: f32) -> f32 {
+        d
     }
 
     fn init(node: &mut Leaf<Self>) {
-        node.header.norm = dot_product(&node.vector, &node.vector);
+        node.header.norm = dot_product(&node.vector, &node.vector).sqrt();
     }
 
     fn create_split<R: Rng>(
