@@ -38,13 +38,16 @@ impl Distance for Angular {
         let qn = q.header.norm;
         let pq = dot_product(&p.vector, &q.vector);
         let pnqn = pn * qn;
-        let cos = pq / pnqn;
-
-        // cos is [-1; 1]
-        // cos =  0. -> 0.5
-        // cos = -1. -> 1.0
-        // cos =  1. -> 0.0
-        (1.0 - cos) / 2.0
+        if pnqn != 0.0 {
+            let cos = pq / pnqn;
+            // cos is [-1; 1]
+            // cos =  0. -> 0.5
+            // cos = -1. -> 1.0
+            // cos =  1. -> 0.0
+            (1.0 - cos) / 2.0
+        } else {
+            0.0
+        }
     }
 
     fn normalized_distance(d: f32) -> f32 {
