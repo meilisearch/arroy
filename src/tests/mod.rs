@@ -9,6 +9,7 @@ use tempfile::TempDir;
 use crate::distances::Angular;
 use crate::{Database, Distance, MetadataCodec, NodeCodec, NodeMode};
 
+mod angular;
 mod reader;
 mod writer;
 
