@@ -126,6 +126,16 @@ impl<'t, D: Distance> Reader<'t, D> {
         Ok(item_leaf(self.database, self.index, rtxn, item)?.map(|leaf| leaf.vector.into_owned()))
     }
 
+    /// Returns the distance between items `i` and `j`.
+    pub fn distance_by_items(&self, rtxn: &RoTxn, i: ItemId, j: ItemId) -> Result<Option<f32>> {
+        let i = item_leaf(self.database, self.index, rtxn, i)?;
+        let j = item_leaf(self.database, self.index, rtxn, j)?;
+        match i.zip(j) {
+            Some((i, j)) => Ok(Some(D::normalized_distance(D::built_distance(&i, &j)))),
+            None => Ok(None),
+        }
+    }
+
     /// Returns `true` if the index is empty.
     pub fn is_empty(&self, rtxn: &RoTxn) -> Result<bool> {
         self.iter(rtxn).map(|mut iter| iter.next().is_none())
