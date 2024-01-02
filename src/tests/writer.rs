@@ -289,7 +289,7 @@ fn overwrite_one_document_incremental() {
 
     let writer = Writer::new(handle.database, 0, 2).unwrap();
 
-    writer.add_item(&mut wtxn, 0, &[6., 0.]).unwrap();
+    writer.add_item(&mut wtxn, 3, &[6., 0.]).unwrap();
 
     writer.build(&mut wtxn, &mut rng, Some(1)).unwrap();
     wtxn.commit().unwrap();
@@ -297,10 +297,10 @@ fn overwrite_one_document_incremental() {
     insta::assert_display_snapshot!(handle, @r###"
     ==================
     Dumping index 0
-    Item 0: Leaf(Leaf { header: NodeHeaderEuclidean { bias: 0.0 }, vector: [6.0000, 0.0000] })
+    Item 0: Leaf(Leaf { header: NodeHeaderEuclidean { bias: 0.0 }, vector: [0.0000, 0.0000] })
     Item 1: Leaf(Leaf { header: NodeHeaderEuclidean { bias: 0.0 }, vector: [1.0000, 0.0000] })
     Item 2: Leaf(Leaf { header: NodeHeaderEuclidean { bias: 0.0 }, vector: [2.0000, 0.0000] })
-    Item 3: Leaf(Leaf { header: NodeHeaderEuclidean { bias: 0.0 }, vector: [3.0000, 0.0000] })
+    Item 3: Leaf(Leaf { header: NodeHeaderEuclidean { bias: 0.0 }, vector: [6.0000, 0.0000] })
     Item 4: Leaf(Leaf { header: NodeHeaderEuclidean { bias: 0.0 }, vector: [4.0000, 0.0000] })
     Item 5: Leaf(Leaf { header: NodeHeaderEuclidean { bias: 0.0 }, vector: [5.0000, 0.0000] })
     Tree 0: Descendants(Descendants { descendants: [1, 3] })
