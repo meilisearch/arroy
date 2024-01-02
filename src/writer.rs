@@ -223,7 +223,7 @@ impl<D: Distance> Writer<D> {
             .remap_types::<KeyCodec, DecodeIgnore>()
             .next()
             .transpose()?
-            .map(|(key, _)| key.node.item)
+            .map(|(key, _)| key.node.item + 1)
             .unwrap_or_default())
     }
 
@@ -383,7 +383,7 @@ impl<D: Distance> Writer<D> {
                     Some(path) => TmpNodes::new_in(path)?,
                     None => TmpNodes::new()?,
                 };
-                let _id = self.update_nodes_in_file(
+                self.update_nodes_in_file(
                     frozen_reader,
                     &mut rng,
                     NodeId::tree(root),
@@ -414,15 +414,21 @@ impl<D: Distance> Writer<D> {
                 // TODO This is wrong we must generate a new node id and don't use the current ID
                 //      as it could refer to an ItemId and we are only writing Tree Node IDs.
 
-                println!("here, made a tree node {}", current_node.item);
                 // We were called on a specific item, we should create a descendants node
                 let mut descendants = item_indices.clone();
                 descendants.insert(current_node.item);
+                let node_id = frozen_reader.concurrent_node_ids.next();
+                // TODO: is this valid? Why are we using an u64 for the concurrent node ids
+                let node_id = NodeId::tree(node_id as u32);
+                println!(
+                    "crafted a new descendants with id {:?}, containing ids {:?}",
+                    node_id, descendants
+                );
                 tmp_nodes.put(
-                    current_node.item,
+                    node_id.item,
                     &Node::Descendants(Descendants { descendants: Cow::Owned(descendants) }),
                 )?;
-                return Ok(Some(current_node));
+                return Ok(Some(node_id));
             }
             NodeMode::Tree => {
                 match frozen_reader.trees.get(current_node.item)?.unwrap() {
@@ -472,11 +478,23 @@ impl<D: Distance> Writer<D> {
                             tmp_nodes,
                         )?;
 
-                        // TODO we must update this split node as we could have generated
-                        //      a new node by replacing the potential leaf.
-                        //
-                        //      We can avoid replacing this split node when the
-                        //      left and right ids are the same.
+                        // if either the left or the right changed we must update ourselves
+                        let new_left = new_left.unwrap_or(left);
+                        let new_right = new_right.unwrap_or(right);
+
+                        if new_left != left || new_right != right {
+                            tmp_nodes.put(
+                                current_node.item,
+                                &Node::SplitPlaneNormal(SplitPlaneNormal {
+                                    normal,
+                                    left: new_left,
+                                    right: new_right,
+                                }),
+                            )?;
+                            return Ok(None);
+                        }
+
+                        // TODO: Should we update the normals if something changed
 
                         Ok(None)
                     }
