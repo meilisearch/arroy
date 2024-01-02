@@ -279,6 +279,8 @@ impl<D: Distance> Writer<D> {
             concurrent_node_ids: &concurrent_node_ids,
         };
 
+        let mut nodes_to_write = Vec::new();
+
         // TODO: Insert the updated elements into the already existing trees
         // If there is metadata it means that we already have trees and we must update them
         if let Some(ref metadata) = metadata {
@@ -290,7 +292,9 @@ impl<D: Distance> Writer<D> {
             // NOTE: We should probably keep a list of the updated tree nodes alongside a list
             //       of all existing tree node IDs. This way we can keep track of the tree nodes
             //       in which we need to delete the deleted items.
-            self.update_trees(rng, metadata, &updated_items, &deleted_items, &frozzen_reader)?;
+            let mut tmp_nodes_reader =
+                self.update_trees(rng, metadata, &updated_items, &deleted_items, &frozzen_reader)?;
+            nodes_to_write.append(&mut tmp_nodes_reader);
 
             // todo!("{:?}", updated_items);
         }
@@ -307,11 +311,12 @@ impl<D: Distance> Writer<D> {
             .zip(metadata)
             .map(|(n_trees, metadata)| n_trees.saturating_sub(metadata.roots.len()))
             .or(n_trees);
-        let (mut thread_roots, tmp_nodes) =
+        let (mut thread_roots, mut tmp_nodes) =
             self.build_trees(rng, n_trees_to_build, &item_indices, &frozzen_reader)?;
+        nodes_to_write.append(&mut tmp_nodes);
 
         log::debug!("started writing the tree nodes of {} trees...", tmp_nodes.len());
-        for (i, tmp_node) in tmp_nodes.into_iter().enumerate() {
+        for (i, tmp_node) in nodes_to_write.into_iter().enumerate() {
             log::debug!("started writing the {} tree nodes of the {i}nth trees...", tmp_node.len());
             for (item_id, item_bytes) in tmp_node.iter() {
                 let key = Key::tree(self.index, item_id);
@@ -333,7 +338,14 @@ impl<D: Distance> Writer<D> {
             roots.append(&mut thread_roots);
         }
 
-        log::debug!("started writing the metadata...");
+        log::debug!("reset the updated items...");
+        self.database.remap_data_type::<RoaringBitmapCodec>().put(
+            wtxn,
+            &Key::updated(self.index),
+            &RoaringBitmap::new(),
+        )?;
+
+        log::debug!("write the metadata...");
 
         let metadata = Metadata {
             dimensions: self.dimensions.try_into().unwrap(),
@@ -360,6 +372,7 @@ impl<D: Distance> Writer<D> {
         frozen_reader: &FrozzenReader<D>,
     ) -> Result<Vec<TmpNodesReader>> {
         let roots: Vec<_> = metadata.roots.iter().collect();
+        println!("calling everyone with the list of updated items: {updated_items:?}");
 
         repeatn(rng.next_u64(), metadata.roots.len())
             .zip(roots)
@@ -392,11 +405,16 @@ impl<D: Distance> Writer<D> {
         item_indices: &RoaringBitmap,
         tmp_nodes: &mut TmpNodes<NodeCodec<D>>,
     ) -> Result<Option<NodeId>> {
+        if item_indices.is_empty() {
+            return Ok(None);
+        }
+        println!("item indices: {item_indices:?}");
         match current_node.mode {
             NodeMode::Item => {
                 // TODO This is wrong we must generate a new node id and don't use the current ID
                 //      as it could refer to an ItemId and we are only writing Tree Node IDs.
 
+                println!("here, made a tree node {}", current_node.item);
                 // We were called on a specific item, we should create a descendants node
                 let mut descendants = item_indices.clone();
                 descendants.insert(current_node.item);
@@ -437,6 +455,7 @@ impl<D: Distance> Writer<D> {
                             };
                         }
 
+                        println!("Calling myself on left node with {left_ids:?}");
                         let new_left = self.update_nodes_in_file(
                             frozen_reader,
                             rng,
@@ -444,6 +463,7 @@ impl<D: Distance> Writer<D> {
                             &left_ids,
                             tmp_nodes,
                         )?;
+                        println!("Calling myself on right node with {right_ids:?}");
                         let new_right = self.update_nodes_in_file(
                             frozen_reader,
                             rng,

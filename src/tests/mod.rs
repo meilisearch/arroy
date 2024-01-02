@@ -64,13 +64,13 @@ impl<D: Distance> fmt::Display for DatabaseHandle<D> {
                     writeln!(f, "Root: {metadata:?}")?;
                 }
                 NodeMode::Metadata if key.node.item == 1 => {
-                    let item_ids = self
+                    let updated_item_ids = self
                         .database
                         .remap_data_type::<RoaringBitmapCodec>()
                         .get(&rtxn, &key)
                         .unwrap()
                         .unwrap();
-                    writeln!(f, "item_ids: {item_ids:?}")?;
+                    writeln!(f, "updated_item_ids: {updated_item_ids:?}")?;
                 }
                 NodeMode::Metadata => {
                     panic!()
