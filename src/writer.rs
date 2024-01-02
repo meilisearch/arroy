@@ -372,7 +372,6 @@ impl<D: Distance> Writer<D> {
         frozen_reader: &FrozzenReader<D>,
     ) -> Result<Vec<TmpNodesReader>> {
         let roots: Vec<_> = metadata.roots.iter().collect();
-        println!("calling everyone with the list of updated items: {updated_items:?}");
 
         repeatn(rng.next_u64(), metadata.roots.len())
             .zip(roots)
@@ -408,7 +407,6 @@ impl<D: Distance> Writer<D> {
         if item_indices.is_empty() {
             return Ok(None);
         }
-        println!("item indices: {item_indices:?}");
         match current_node.mode {
             NodeMode::Item => {
                 // TODO This is wrong we must generate a new node id and don't use the current ID
@@ -420,10 +418,6 @@ impl<D: Distance> Writer<D> {
                 let node_id = frozen_reader.concurrent_node_ids.next();
                 // TODO: is this valid? Why are we using an u64 for the concurrent node ids
                 let node_id = NodeId::tree(node_id as u32);
-                println!(
-                    "crafted a new descendants with id {:?}, containing ids {:?}",
-                    node_id, descendants
-                );
                 tmp_nodes.put(
                     node_id.item,
                     &Node::Descendants(Descendants { descendants: Cow::Owned(descendants) }),
@@ -461,7 +455,6 @@ impl<D: Distance> Writer<D> {
                             };
                         }
 
-                        println!("Calling myself on left node with {left_ids:?}");
                         let new_left = self.update_nodes_in_file(
                             frozen_reader,
                             rng,
@@ -469,7 +462,6 @@ impl<D: Distance> Writer<D> {
                             &left_ids,
                             tmp_nodes,
                         )?;
-                        println!("Calling myself on right node with {right_ids:?}");
                         let new_right = self.update_nodes_in_file(
                             frozen_reader,
                             rng,
@@ -491,7 +483,6 @@ impl<D: Distance> Writer<D> {
                                     right: new_right,
                                 }),
                             )?;
-                            return Ok(None);
                         }
 
                         // TODO: Should we update the normals if something changed
