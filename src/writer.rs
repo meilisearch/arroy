@@ -235,7 +235,7 @@ impl<D: Distance> Writer<D> {
                 // but continue to generate trees if the number of trees is specified
                 .take_any_while(|_| match n_trees {
                     Some(_) => true,
-                    None => concurrent_node_ids.current() < (self.n_items - 1).max(1),
+                    None => concurrent_node_ids.current() < self.n_items,
                 })
                 .map(|(i, seed)| {
                     log::debug!("started generating tree {i:X}...");

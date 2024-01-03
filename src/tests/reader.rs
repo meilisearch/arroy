@@ -74,6 +74,26 @@ fn open_db_with_wrong_distance() {
 }
 
 #[test]
+fn search_in_db_with_a_single_vector() {
+    // https://github.com/meilisearch/meilisearch/pull/4296
+    let handle = create_database::<Angular>();
+    let mut wtxn = handle.env.write_txn().unwrap();
+    let writer = Writer::prepare(&mut wtxn, handle.database, 0, 3).unwrap();
+    writer.add_item(&mut wtxn, 0, &[0.00397, 0.553, 0.0]).unwrap();
+
+    writer.build(&mut wtxn, &mut rng(), None).unwrap();
+    wtxn.commit().unwrap();
+
+    let rtxn = handle.env.read_txn().unwrap();
+    let reader = Reader::<Angular>::open(&rtxn, 0, handle.database).unwrap();
+
+    let ret = reader.nns_by_item(&rtxn, 0, 1, None, None).unwrap();
+    insta::assert_display_snapshot!(NnsRes(ret), @r###"
+    id(0): distance(0)
+    "###);
+}
+
+#[test]
 fn two_dimension_on_a_line() {
     let handle = create_database();
     let mut wtxn = handle.env.write_txn().unwrap();
