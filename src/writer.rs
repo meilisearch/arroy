@@ -258,7 +258,12 @@ impl<D: Distance> Writer<D> {
             .remap_data_type::<RoaringBitmapCodec>()
             .get(wtxn, &Key::updated(self.index))?
             .unwrap_or_default();
-        let deleted_items = &updated_items - &item_indices;
+        println!("updated_items: {:?}, item_indices: {:?}", updated_items, item_indices);
+        // while iterating on the nodes we want to delete all the modified element even if they are being inserted right after.
+        // TODO: if we could now which elements are inserted for the first time `to_delete` could be smaller
+        let to_delete = &updated_items;
+        let to_insert = &item_indices & &updated_items;
+        println!("to_delete: {:?}, to_insert: {:?}", to_delete, to_insert);
 
         let metadata = self
             .database
@@ -293,7 +298,7 @@ impl<D: Distance> Writer<D> {
             //       of all existing tree node IDs. This way we can keep track of the tree nodes
             //       in which we need to delete the deleted items.
             let mut tmp_nodes_reader =
-                self.update_trees(rng, metadata, &updated_items, &deleted_items, &frozzen_reader)?;
+                self.update_trees(rng, metadata, &to_insert, &to_delete, &frozzen_reader)?;
             nodes_to_write.append(&mut tmp_nodes_reader);
 
             // todo!("{:?}", updated_items);
@@ -367,11 +372,13 @@ impl<D: Distance> Writer<D> {
         &self,
         rng: &mut R,
         metadata: &Metadata,
-        updated_items: &RoaringBitmap,
-        deleted_items: &RoaringBitmap,
+        to_insert: &RoaringBitmap,
+        to_delete: &RoaringBitmap,
         frozen_reader: &FrozzenReader<D>,
     ) -> Result<Vec<TmpNodesReader>> {
         let roots: Vec<_> = metadata.roots.iter().collect();
+        println!("must insert: {to_insert:?}");
+        println!("must delete: {to_delete:?}");
 
         repeatn(rng.next_u64(), metadata.roots.len())
             .zip(roots)
@@ -382,11 +389,13 @@ impl<D: Distance> Writer<D> {
                     Some(path) => TmpNodes::new_in(path)?,
                     None => TmpNodes::new()?,
                 };
+                /// TODO: if the returned value contains a node id we must update our root node for this tree
                 self.update_nodes_in_file(
                     frozen_reader,
                     &mut rng,
                     NodeId::tree(root),
-                    updated_items,
+                    to_insert,
+                    to_delete,
                     &mut tmp_nodes,
                 )?;
                 log::debug!("finished generating tree {root:X}");
@@ -396,24 +405,24 @@ impl<D: Distance> Writer<D> {
             .collect()
     }
 
+    /// Update the nodes that changed and delete the deleted nodes all at once.
+    /// Run in O(n) on the total number of nodes.
     fn update_nodes_in_file<R: Rng>(
         &self,
         frozen_reader: &FrozzenReader<D>,
         rng: &mut R,
         current_node: NodeId,
-        item_indices: &RoaringBitmap,
+        updated_items: &RoaringBitmap,
+        deleted_items: &RoaringBitmap,
         tmp_nodes: &mut TmpNodes<NodeCodec<D>>,
     ) -> Result<Option<NodeId>> {
-        if item_indices.is_empty() {
+        if updated_items.is_empty() && deleted_items.is_empty() {
             return Ok(None);
         }
         match current_node.mode {
             NodeMode::Item => {
-                // TODO This is wrong we must generate a new node id and don't use the current ID
-                //      as it could refer to an ItemId and we are only writing Tree Node IDs.
-
                 // We were called on a specific item, we should create a descendants node
-                let mut descendants = item_indices.clone();
+                let mut descendants = updated_items.clone();
                 descendants.insert(current_node.item);
                 let node_id = frozen_reader.concurrent_node_ids.next();
                 // TODO: is this valid? Why are we using an u64 for the concurrent node ids
@@ -428,26 +437,30 @@ impl<D: Distance> Writer<D> {
                 match frozen_reader.trees.get(current_node.item)?.unwrap() {
                     Node::Leaf(_) => unreachable!(),
                     Node::Descendants(Descendants { descendants }) => {
-                        // TODO it the number of items in this descendant node is too high
-                        //      (number of dims). Replace this node by a split node and multiple
-                        //      other nodes.
+                        let mut descendants = descendants.into_owned();
+                        // remove all the deleted IDs before inserting the new elements.
+                        descendants -= deleted_items;
 
                         // insert all of our IDs in the descendants
-                        let new_descendants = descendants.into_owned() | item_indices;
+                        descendants |= updated_items;
+
+                        /// TODO it the number of items in this descendant node is too high
+                        //      (number of dims). Replace this node by a split node and multiple
+                        //      other nodes.
                         tmp_nodes.put(
                             current_node.item,
                             &Node::Descendants(Descendants {
-                                descendants: Cow::Owned(new_descendants),
+                                descendants: Cow::Owned(descendants),
                             }),
                         )?;
-                        return Ok(Some(current_node));
+                        return Ok(None);
                     }
                     Node::SplitPlaneNormal(SplitPlaneNormal { normal, left, right }) => {
                         // Split the item_indices into two bitmaps on the left and right of this normal
                         let mut left_ids = RoaringBitmap::new();
                         let mut right_ids = RoaringBitmap::new();
 
-                        for leaf in item_indices {
+                        for leaf in updated_items {
                             let query = frozen_reader.leafs.get(leaf)?.unwrap();
                             match D::side(&normal, &query, rng) {
                                 Side::Left => left_ids.insert(leaf),
@@ -460,6 +473,7 @@ impl<D: Distance> Writer<D> {
                             rng,
                             left,
                             &left_ids,
+                            deleted_items,
                             tmp_nodes,
                         )?;
                         let new_right = self.update_nodes_in_file(
@@ -467,6 +481,7 @@ impl<D: Distance> Writer<D> {
                             rng,
                             right,
                             &right_ids,
+                            deleted_items,
                             tmp_nodes,
                         )?;
 
@@ -485,7 +500,7 @@ impl<D: Distance> Writer<D> {
                             )?;
                         }
 
-                        // TODO: Should we update the normals if something changed
+                        // TODO: Should we update the normals if something changed?
 
                         Ok(None)
                     }
