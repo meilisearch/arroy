@@ -44,6 +44,25 @@ fn use_u32_max_for_a_vec() {
 }
 
 #[test]
+fn write_one_vector() {
+    let handle = create_database::<Euclidean>();
+    let mut wtxn = handle.env.write_txn().unwrap();
+    let writer = Writer::prepare(&mut wtxn, handle.database, 0, 3).unwrap();
+    writer.add_item(&mut wtxn, 0, &[0.0, 1.0, 2.0]).unwrap();
+
+    writer.build(&mut wtxn, &mut rng(), None).unwrap();
+    wtxn.commit().unwrap();
+
+    insta::assert_display_snapshot!(handle, @r###"
+    ==================
+    Dumping index 0
+    Item 0: Leaf(Leaf { header: NodeHeaderAngular { norm: 0.0 }, vector: [0.0000, 1.0000, 2.0000] })
+    Tree 0: Descendants(Descendants { descendants: [0] })
+    Root: Metadata { dimensions: 3, n_items: 1, roots: [0], distance: "euclidean" }
+    "###);
+}
+
+#[test]
 fn write_one_vector_in_one_tree() {
     let handle = create_database::<Euclidean>();
     let mut wtxn = handle.env.write_txn().unwrap();
