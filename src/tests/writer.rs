@@ -314,6 +314,134 @@ fn overwrite_one_document_incremental() {
 }
 
 #[test]
+fn delete_one_element_in_a_one_document_db() {
+    let handle = create_database::<Euclidean>();
+    let mut rng = rng();
+    let mut wtxn = handle.env.write_txn().unwrap();
+    let writer = Writer::new(handle.database, 0, 2).unwrap();
+
+    // first, insert a bunch of elements
+    writer.add_item(&mut wtxn, 0, &[0., 0.]).unwrap();
+    writer.build(&mut wtxn, &mut rng, Some(1)).unwrap();
+    wtxn.commit().unwrap();
+
+    insta::assert_display_snapshot!(handle, @r###"
+    ==================
+    Dumping index 0
+    Item 0: Leaf(Leaf { header: NodeHeaderEuclidean { bias: 0.0 }, vector: [0.0000, 0.0000] })
+    Tree 0: Descendants(Descendants { descendants: [0] })
+    Root: Metadata { dimensions: 2, items: RoaringBitmap<[0]>, roots: [0], distance: "euclidean" }
+    updated_item_ids: RoaringBitmap<[]>
+    "###);
+
+    let mut wtxn = handle.env.write_txn().unwrap();
+    let writer = Writer::new(handle.database, 0, 2).unwrap();
+
+    writer.del_item(&mut wtxn, 0).unwrap();
+
+    writer.build(&mut wtxn, &mut rng, Some(1)).unwrap();
+    wtxn.commit().unwrap();
+
+    insta::assert_display_snapshot!(handle, @r###"
+    ==================
+    Dumping index 0
+    Tree 0: Descendants(Descendants { descendants: [] })
+    Root: Metadata { dimensions: 2, items: RoaringBitmap<[]>, roots: [0], distance: "euclidean" }
+    updated_item_ids: RoaringBitmap<[]>
+    "###);
+}
+
+#[test]
+fn delete_one_element_in_a_descendant() {
+    let handle = create_database::<Euclidean>();
+    let mut rng = rng();
+    let mut wtxn = handle.env.write_txn().unwrap();
+    let writer = Writer::new(handle.database, 0, 2).unwrap();
+
+    // first, insert a bunch of elements
+    writer.add_item(&mut wtxn, 0, &[0., 0.]).unwrap();
+    writer.add_item(&mut wtxn, 1, &[1., 0.]).unwrap();
+    writer.build(&mut wtxn, &mut rng, Some(1)).unwrap();
+    wtxn.commit().unwrap();
+
+    insta::assert_display_snapshot!(handle, @r###"
+    ==================
+    Dumping index 0
+    Item 0: Leaf(Leaf { header: NodeHeaderEuclidean { bias: 0.0 }, vector: [0.0000, 0.0000] })
+    Item 1: Leaf(Leaf { header: NodeHeaderEuclidean { bias: 0.0 }, vector: [1.0000, 0.0000] })
+    Tree 0: Descendants(Descendants { descendants: [0, 1] })
+    Root: Metadata { dimensions: 2, items: RoaringBitmap<[0, 1]>, roots: [0], distance: "euclidean" }
+    updated_item_ids: RoaringBitmap<[]>
+    "###);
+
+    let mut wtxn = handle.env.write_txn().unwrap();
+    let writer = Writer::new(handle.database, 0, 2).unwrap();
+
+    writer.del_item(&mut wtxn, 0).unwrap();
+
+    writer.build(&mut wtxn, &mut rng, Some(1)).unwrap();
+    wtxn.commit().unwrap();
+
+    insta::assert_display_snapshot!(handle, @r###"
+    ==================
+    Dumping index 0
+    Item 1: Leaf(Leaf { header: NodeHeaderEuclidean { bias: 0.0 }, vector: [1.0000, 0.0000] })
+    Tree 0: Descendants(Descendants { descendants: [1] })
+    Root: Metadata { dimensions: 2, items: RoaringBitmap<[1]>, roots: [0], distance: "euclidean" }
+    updated_item_ids: RoaringBitmap<[]>
+    "###);
+}
+
+#[test]
+fn delete_one_leaf_in_a_split() {
+    let handle = create_database::<Euclidean>();
+    let mut rng = rng();
+    let mut wtxn = handle.env.write_txn().unwrap();
+    let writer = Writer::new(handle.database, 0, 2).unwrap();
+
+    // first, insert a bunch of elements
+    writer.add_item(&mut wtxn, 0, &[0., 0.]).unwrap();
+    writer.add_item(&mut wtxn, 1, &[1., 0.]).unwrap();
+    writer.add_item(&mut wtxn, 2, &[2., 0.]).unwrap();
+    writer.build(&mut wtxn, &mut rng, Some(1)).unwrap();
+    wtxn.commit().unwrap();
+
+    insta::assert_display_snapshot!(handle, @r###"
+    ==================
+    Dumping index 0
+    Item 0: Leaf(Leaf { header: NodeHeaderEuclidean { bias: 0.0 }, vector: [0.0000, 0.0000] })
+    Item 1: Leaf(Leaf { header: NodeHeaderEuclidean { bias: 0.0 }, vector: [1.0000, 0.0000] })
+    Item 2: Leaf(Leaf { header: NodeHeaderEuclidean { bias: 0.0 }, vector: [2.0000, 0.0000] })
+    Tree 0: Descendants(Descendants { descendants: [1, 2] })
+    Tree 1: SplitPlaneNormal(SplitPlaneNormal { normal: [1.0000, 0.0000], left: NodeId { mode: Item, item: 0 }, right: NodeId { mode: Tree, item: 0 } })
+    Root: Metadata { dimensions: 2, items: RoaringBitmap<[0, 1, 2]>, roots: [1], distance: "euclidean" }
+    updated_item_ids: RoaringBitmap<[]>
+    "###);
+
+    let mut wtxn = handle.env.write_txn().unwrap();
+    let writer = Writer::new(handle.database, 0, 2).unwrap();
+
+    writer.del_item(&mut wtxn, 0).unwrap();
+
+    println!("HERE");
+    writer.build(&mut wtxn, &mut rng, Some(1)).unwrap();
+    wtxn.commit().unwrap();
+
+    // after deleting the leaf, the split node should be replaced by a descendant
+    insta::assert_display_snapshot!(handle, @r###"
+    ==================
+    Dumping index 0
+    Item 1: Leaf(Leaf { header: NodeHeaderEuclidean { bias: 0.0 }, vector: [1.0000, 0.0000] })
+    Item 2: Leaf(Leaf { header: NodeHeaderEuclidean { bias: 0.0 }, vector: [2.0000, 0.0000] })
+    Tree 0: Descendants(Descendants { descendants: [1, 2] })
+    ree 1: SplitPlaneNormal(SplitPlaneNormal { normal: [1.0000, 0.0000], left: NodeId { mode: Tree, item: 2 }, right: NodeId { mode: Tree, item: 0 } })
+    Tree 2: Descendants(Descendants { descendants: [0] })
+    Root: Metadata { dimensions: 2, items: RoaringBitmap<[1, 2]>, roots: [1], distance: "euclidean" }
+    updated_item_ids: RoaringBitmap<[]>
+    "###);
+}
+
+#[test]
 fn delete_one_element() {
     let handle = create_database::<Euclidean>();
     let mut rng = rng();
@@ -346,7 +474,6 @@ fn delete_one_element() {
     "###);
 
     let mut wtxn = handle.env.write_txn().unwrap();
-
     let writer = Writer::new(handle.database, 0, 2).unwrap();
 
     writer.del_item(&mut wtxn, 3).unwrap();
@@ -362,14 +489,40 @@ fn delete_one_element() {
     Item 2: Leaf(Leaf { header: NodeHeaderEuclidean { bias: 0.0 }, vector: [2.0000, 0.0000] })
     Item 4: Leaf(Leaf { header: NodeHeaderEuclidean { bias: 0.0 }, vector: [4.0000, 0.0000] })
     Item 5: Leaf(Leaf { header: NodeHeaderEuclidean { bias: 0.0 }, vector: [5.0000, 0.0000] })
-    Tree 0: Descendants(Descendants { descendants: [1] })
-    Tree 1: SplitPlaneNormal(SplitPlaneNormal { normal: [0.0000, 0.0000], left: NodeId { mode: Tree, item: 0 }, right: NodeId { mode: Tree, item: 6 } })
+    Tree 1: Descendants(Desendants { descendants: [1, 2, 3] })
     Tree 2: Descendants(Descendants { descendants: [4, 5] })
     Tree 3: SplitPlaneNormal(SplitPlaneNormal { normal: [0.0000, 0.0000], left: NodeId { mode: Tree, item: 1 }, right: NodeId { mode: Tree, item: 2 } })
     Tree 4: SplitPlaneNormal(SplitPlaneNormal { normal: [1.0000, 0.0000], left: NodeId { mode: Tree, item: 5 }, right: NodeId { mode: Tree, item: 3 } })
     Tree 5: Descendants(Descendants { descendants: [0] })
     Tree 6: Descendants(Descendants { descendants: [2] })
     Root: Metadata { dimensions: 2, items: RoaringBitmap<[0, 1, 2, 4, 5]>, roots: [4], distance: "euclidean" }
+    updated_item_ids: RoaringBitmap<[]>
+    "###);
+
+    // delete the last item in a descendants node
+    let mut wtxn = handle.env.write_txn().unwrap();
+    let writer = Writer::new(handle.database, 0, 2).unwrap();
+
+    writer.del_item(&mut wtxn, 1).unwrap();
+
+    writer.build(&mut wtxn, &mut rng, Some(1)).unwrap();
+    wtxn.commit().unwrap();
+
+    insta::assert_display_snapshot!(handle, @r###"
+    ==================
+    Dumping index 0
+    Item 0: Leaf(Leaf { header: NodeHeaderEuclidean { bias: 0.0 }, vector: [0.0000, 0.0000] })
+    Item 2: Leaf(Leaf { header: NodeHeaderEuclidean { bias: 0.0 }, vector: [2.0000, 0.0000] })
+    Item 4: Leaf(Leaf { header: NodeHeaderEuclidean { bias: 0.0 }, vector: [4.0000, 0.0000] })
+    Item 5: Leaf(Leaf { header: NodeHeaderEuclidean { bias: 0.0 }, vector: [5.0000, 0.0000] })
+    Tree 1: Descendants(Descendants { descendants: [1, 2, 3] })
+    Tree 2: Descendants(Descendants { descendants: [4, 5] })
+    Tree 3: SplitPlaneNormal(SplitPlaneNormal { normal: [0.0000, 0.0000], left: NodeId { mode: Tree, item: 7 }, right: NodeId { mode: Tree, item: 2 } })
+    Tree 4: SplitPlaneNormal(SplitPlaneNormal { normal: [1.0000, 0.0000], left: NodeId { mode: Tree, item: 5 }, right: NodeId { mode: Tree, item: 3 } })
+    Tree 5: Descendants(Descendants { descendants: [0] })
+    Tree 6: Descendants(Descendants { descendants: [2] })
+    Tree 7: Descendants(Descendants { descendants: [2, 3] })
+    Root: Metadata { dimensions: 2, items: RoaringBitmap<[0, 2, 4, 5]>, roots: [4], distance: "euclidean" }
     updated_item_ids: RoaringBitmap<[]>
     "###);
 }

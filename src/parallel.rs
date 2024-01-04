@@ -22,6 +22,7 @@ pub struct TmpNodes<DE> {
     file: BufWriter<File>,
     ids: Vec<ItemId>,
     bounds: Vec<usize>,
+    deleted: RoaringBitmap,
     _marker: marker::PhantomData<DE>,
 }
 
@@ -32,6 +33,7 @@ impl<'a, DE: BytesEncode<'a>> TmpNodes<DE> {
             file: tempfile::tempfile().map(BufWriter::new)?,
             ids: Vec::new(),
             bounds: vec![0],
+            deleted: RoaringBitmap::new(),
             _marker: marker::PhantomData,
         })
     }
@@ -42,6 +44,7 @@ impl<'a, DE: BytesEncode<'a>> TmpNodes<DE> {
             file: tempfile::tempfile_in(path).map(BufWriter::new)?,
             ids: Vec::new(),
             bounds: vec![0],
+            deleted: RoaringBitmap::new(),
             _marker: marker::PhantomData,
         })
     }
@@ -54,11 +57,27 @@ impl<'a, DE: BytesEncode<'a>> TmpNodes<DE> {
         item: ItemId,
         data: &'a DE::EItem,
     ) -> heed::Result<()> {
+        assert!(item != ItemId::MAX);
         let bytes = DE::bytes_encode(data).map_err(heed::Error::Encoding)?;
         self.file.write_all(&bytes)?;
         let last_bound = self.bounds.last().unwrap();
         self.bounds.push(last_bound + bytes.len());
         self.ids.push(item);
+
+        // if the element was deleted and is then re-inserted we should not delete it at the end it'll be overwritten
+        self.deleted.remove(item);
+
+        Ok(())
+    }
+
+    /// Remove a tree node from the list of element but keep it on disk.
+    /// It'll be hidden when using converting this writer to a reader.
+    pub fn remove(&mut self, item: ItemId) -> heed::Result<()> {
+        // TODO: this could be slow, we may need to use an additionnal roaring bitmap?
+        self.deleted.insert(item);
+        if let Some(el) = self.ids.iter_mut().find(|i| **i == item) {
+            *el = u32::MAX;
+        }
         Ok(())
     }
 
@@ -68,7 +87,7 @@ impl<'a, DE: BytesEncode<'a>> TmpNodes<DE> {
         let mmap = unsafe { Mmap::map(&file)? };
         #[cfg(unix)]
         mmap.advise(memmap2::Advice::Sequential)?;
-        Ok(TmpNodesReader { mmap, ids: self.ids, bounds: self.bounds })
+        Ok(TmpNodesReader { mmap, ids: self.ids, bounds: self.bounds, deleted: self.deleted })
     }
 }
 
@@ -77,6 +96,7 @@ pub struct TmpNodesReader {
     mmap: Mmap,
     ids: Vec<ItemId>,
     bounds: Vec<usize>,
+    deleted: RoaringBitmap,
 }
 
 impl TmpNodesReader {
@@ -85,12 +105,20 @@ impl TmpNodesReader {
         self.ids.len()
     }
 
+    pub fn to_delete(&self) -> impl Iterator<Item = ItemId> + '_ {
+        self.deleted.iter()
+    }
+
     /// Returns an forward iterator over the nodes.
-    pub fn iter(&self) -> impl Iterator<Item = (ItemId, &[u8])> {
-        self.ids.iter().zip(self.bounds.windows(2)).map(|(id, bounds)| {
-            let [start, end] = [bounds[0], bounds[1]];
-            (*id, &self.mmap[start..end])
-        })
+    pub fn to_insert(&self) -> impl Iterator<Item = (ItemId, &[u8])> {
+        self.ids
+            .iter()
+            .zip(self.bounds.windows(2))
+            .map(|(id, bounds)| {
+                let [start, end] = [bounds[0], bounds[1]];
+                (*id, &self.mmap[start..end])
+            })
+            .filter(|(id, _)| *id != ItemId::MAX)
     }
 }
 

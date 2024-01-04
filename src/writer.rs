@@ -320,10 +320,19 @@ impl<D: Distance> Writer<D> {
             self.build_trees(rng, n_trees_to_build, &item_indices, &frozzen_reader)?;
         nodes_to_write.append(&mut tmp_nodes);
 
-        log::debug!("started writing the tree nodes of {} trees...", tmp_nodes.len());
-        for (i, tmp_node) in nodes_to_write.into_iter().enumerate() {
+        log::debug!("started deleting the tree nodes of {} trees...", tmp_nodes.len());
+        for (i, tmp_node) in nodes_to_write.iter().enumerate() {
             log::debug!("started writing the {} tree nodes of the {i}nth trees...", tmp_node.len());
-            for (item_id, item_bytes) in tmp_node.iter() {
+            for item_id in tmp_node.to_delete() {
+                let key = Key::tree(self.index, item_id);
+                self.database.remap_data_type::<Bytes>().delete(wtxn, &key)?;
+            }
+        }
+
+        log::debug!("started writing the tree nodes of {} trees...", tmp_nodes.len());
+        for (i, tmp_node) in nodes_to_write.iter().enumerate() {
+            log::debug!("started writing the {} tree nodes of the {i}nth trees...", tmp_node.len());
+            for (item_id, item_bytes) in tmp_node.to_insert() {
                 let key = Key::tree(self.index, item_id);
                 self.database.remap_data_type::<Bytes>().put(wtxn, &key, item_bytes)?;
             }
@@ -406,7 +415,9 @@ impl<D: Distance> Writer<D> {
     }
 
     /// Update the nodes that changed and delete the deleted nodes all at once.
-    /// Run in O(n) on the total number of nodes.
+    /// Run in O(n) on the total number of nodes. Return a tuple containing the
+    /// node ID you should use instead of the current_node and the number of
+    /// element in the subtree.
     fn update_nodes_in_file<R: Rng>(
         &self,
         frozen_reader: &FrozzenReader<D>,
@@ -415,47 +426,73 @@ impl<D: Distance> Writer<D> {
         updated_items: &RoaringBitmap,
         deleted_items: &RoaringBitmap,
         tmp_nodes: &mut TmpNodes<NodeCodec<D>>,
-    ) -> Result<Option<NodeId>> {
-        if updated_items.is_empty() && deleted_items.is_empty() {
-            return Ok(None);
-        }
+    ) -> Result<(Option<NodeId>, u64)> {
         match current_node.mode {
             NodeMode::Item => {
+                println!("called on the item {}", current_node.item);
                 // We were called on a specific item, we should create a descendants node
-                let mut descendants = updated_items.clone();
-                descendants.insert(current_node.item);
+                let mut new_items = updated_items.clone();
+                new_items.insert(current_node.item);
+                new_items -= deleted_items;
+
+                let nb_items = new_items.len();
+
                 let node_id = frozen_reader.concurrent_node_ids.next();
                 // TODO: is this valid? Why are we using an u64 for the concurrent node ids
                 let node_id = NodeId::tree(node_id as u32);
+                println!("returned {:?}", new_items);
                 tmp_nodes.put(
                     node_id.item,
-                    &Node::Descendants(Descendants { descendants: Cow::Owned(descendants) }),
+                    &Node::Descendants(Descendants { descendants: Cow::Owned(new_items) }),
                 )?;
-                return Ok(Some(node_id));
+                return Ok((Some(node_id), nb_items));
             }
             NodeMode::Tree => {
                 match frozen_reader.trees.get(current_node.item)?.unwrap() {
                     Node::Leaf(_) => unreachable!(),
                     Node::Descendants(Descendants { descendants }) => {
-                        let mut descendants = descendants.into_owned();
+                        println!("called on the descendant {}", current_node.item);
+                        let mut new_descendants = descendants.clone().into_owned();
                         // remove all the deleted IDs before inserting the new elements.
-                        descendants -= deleted_items;
+                        new_descendants -= deleted_items;
 
                         // insert all of our IDs in the descendants
-                        descendants |= updated_items;
+                        new_descendants |= updated_items;
 
-                        /// TODO it the number of items in this descendant node is too high
-                        //      (number of dims). Replace this node by a split node and multiple
-                        //      other nodes.
-                        tmp_nodes.put(
-                            current_node.item,
-                            &Node::Descendants(Descendants {
-                                descendants: Cow::Owned(descendants),
-                            }),
-                        )?;
-                        return Ok(None);
+                        if descendants.as_ref() == &new_descendants {
+                            // if nothing changed, do nothing
+                            Ok((None, descendants.len()))
+                        } else if descendants.len() > frozen_reader.dimensions as u64 {
+                            println!(
+                                "too many descendants in {}: {:?}",
+                                current_node.item, new_descendants
+                            );
+                            tmp_nodes.remove(current_node.item)?;
+                            let nb_items = new_descendants.len();
+                            let new_id = make_tree_in_file(
+                                frozen_reader,
+                                rng,
+                                &new_descendants,
+                                false,
+                                tmp_nodes,
+                            )?;
+
+                            return Ok((Some(new_id), nb_items));
+                        } else {
+                            println!("nice number of descendants");
+                            // otherwise we can just update our descendants
+                            let nb_items = new_descendants.len();
+                            tmp_nodes.put(
+                                current_node.item,
+                                &Node::Descendants(Descendants {
+                                    descendants: Cow::Owned(new_descendants),
+                                }),
+                            )?;
+                            return Ok((None, nb_items));
+                        }
                     }
                     Node::SplitPlaneNormal(SplitPlaneNormal { normal, left, right }) => {
+                        println!("called on a splitnode {}", current_node.item);
                         // Split the item_indices into two bitmaps on the left and right of this normal
                         let mut left_ids = RoaringBitmap::new();
                         let mut right_ids = RoaringBitmap::new();
@@ -468,7 +505,8 @@ impl<D: Distance> Writer<D> {
                             };
                         }
 
-                        let new_left = self.update_nodes_in_file(
+                        println!("calling update on {:?}", current_node);
+                        let (new_left, left_items) = self.update_nodes_in_file(
                             frozen_reader,
                             rng,
                             left,
@@ -476,7 +514,7 @@ impl<D: Distance> Writer<D> {
                             deleted_items,
                             tmp_nodes,
                         )?;
-                        let new_right = self.update_nodes_in_file(
+                        let (new_right, right_items) = self.update_nodes_in_file(
                             frozen_reader,
                             rng,
                             right,
@@ -485,28 +523,92 @@ impl<D: Distance> Writer<D> {
                             tmp_nodes,
                         )?;
 
-                        // if either the left or the right changed we must update ourselves
                         let new_left = new_left.unwrap_or(left);
                         let new_right = new_right.unwrap_or(right);
 
-                        if new_left != left || new_right != right {
+                        let total_items = left_items + right_items;
+                        let max_descendants = self.dimensions as u64;
+
+                        if total_items <= max_descendants {
+                            println!("split node here before deleting both side");
+                            let left_descendants =
+                                self.delete_tree_in_file(frozen_reader, new_left, tmp_nodes)?;
+                            println!("deleted left");
+                            let right_descendants =
+                                self.delete_tree_in_file(frozen_reader, new_right, tmp_nodes)?;
+                            let descendants = &left_descendants | &right_descendants;
+                            println!(
+                                "merging {:?}: {:?}\n\tand {:?}: {:?}\n\tin {:?}: {:?}",
+                                left,
+                                left_descendants,
+                                right,
+                                right_descendants,
+                                current_node,
+                                descendants
+                            );
                             tmp_nodes.put(
                                 current_node.item,
-                                &Node::SplitPlaneNormal(SplitPlaneNormal {
-                                    normal,
-                                    left: new_left,
-                                    right: new_right,
+                                &Node::Descendants(Descendants {
+                                    descendants: Cow::Owned(descendants),
                                 }),
                             )?;
+
+                            // we should merge both branch and update ourselves to be a single descendant node
+                            Ok((None, total_items))
+                        } else {
+                            // if either the left or the right changed we must update ourselves inplace
+                            if new_left != left || new_right != right {
+                                println!("updating ourselves");
+                                tmp_nodes.put(
+                                    current_node.item,
+                                    &Node::SplitPlaneNormal(SplitPlaneNormal {
+                                        normal,
+                                        left: new_left,
+                                        right: new_right,
+                                    }),
+                                )?;
+                            } else {
+                                println!("nothing changed");
+                            }
+
+                            // TODO: Should we update the normals if something changed?
+
+                            Ok((None, total_items))
                         }
-
-                        // TODO: Should we update the normals if something changed?
-
-                        Ok(None)
                     }
                 }
             }
             NodeMode::Metadata => panic!("Should never happens"),
+        }
+    }
+
+    fn delete_tree_in_file(
+        &self,
+        frozen_reader: &FrozzenReader<D>,
+        current_node: NodeId,
+        tmp_nodes: &mut TmpNodes<NodeCodec<D>>,
+    ) -> Result<RoaringBitmap> {
+        match current_node.mode {
+            NodeMode::Item => Ok(RoaringBitmap::from_sorted_iter([current_node.item]).unwrap()),
+            NodeMode::Tree => match frozen_reader.trees.get(current_node.item)?.unwrap() {
+                Node::Leaf(_) => unreachable!(),
+                Node::Descendants(Descendants { descendants }) => {
+                    println!("deleting an empty descendant node");
+                    let descendants = descendants.into_owned();
+                    tmp_nodes.remove(current_node.item)?;
+
+                    Ok(descendants)
+                }
+                Node::SplitPlaneNormal(SplitPlaneNormal { normal: _, left, right }) => {
+                    println!("deleting a split node");
+                    let mut elements = self.delete_tree_in_file(frozen_reader, left, tmp_nodes)?;
+                    elements |= self.delete_tree_in_file(frozen_reader, right, tmp_nodes)?;
+                    tmp_nodes.remove(current_node.item);
+
+                    Ok(elements)
+                }
+            },
+            NodeMode::Metadata => unreachable!(),
         }
     }
 
