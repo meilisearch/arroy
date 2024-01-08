@@ -531,12 +531,17 @@ impl<D: Distance> Writer<D> {
 
                         if total_items <= max_descendants {
                             println!("split node here before deleting both side");
+
+                            // TODO: HERE we may have created new nodes that goes through the tmp_nodes and that we can't access.
                             let left_descendants =
                                 self.delete_tree_in_file(frozen_reader, new_left, tmp_nodes)?;
                             println!("deleted left");
                             let right_descendants =
                                 self.delete_tree_in_file(frozen_reader, new_right, tmp_nodes)?;
-                            let descendants = &left_descendants | &right_descendants;
+                            let mut descendants = &left_descendants | &right_descendants;
+                            descendants -= deleted_items;
+                            descendants |= updated_items;
+
                             println!(
                                 "merging {:?}: {:?}\n\tand {:?}: {:?}\n\tin {:?}: {:?}",
                                 left,

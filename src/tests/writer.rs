@@ -423,7 +423,6 @@ fn delete_one_leaf_in_a_split() {
 
     writer.del_item(&mut wtxn, 0).unwrap();
 
-    println!("HERE");
     writer.build(&mut wtxn, &mut rng, Some(1)).unwrap();
     wtxn.commit().unwrap();
 
@@ -433,9 +432,7 @@ fn delete_one_leaf_in_a_split() {
     Dumping index 0
     Item 1: Leaf(Leaf { header: NodeHeaderEuclidean { bias: 0.0 }, vector: [1.0000, 0.0000] })
     Item 2: Leaf(Leaf { header: NodeHeaderEuclidean { bias: 0.0 }, vector: [2.0000, 0.0000] })
-    Tree 0: Descendants(Descendants { descendants: [1, 2] })
-    ree 1: SplitPlaneNormal(SplitPlaneNormal { normal: [1.0000, 0.0000], left: NodeId { mode: Tree, item: 2 }, right: NodeId { mode: Tree, item: 0 } })
-    Tree 2: Descendants(Descendants { descendants: [0] })
+    Tree 1: Descendants(Descendants { descendants: [1, 2] })
     Root: Metadata { dimensions: 2, items: RoaringBitmap<[1, 2]>, roots: [1], distance: "euclidean" }
     updated_item_ids: RoaringBitmap<[]>
     "###);
