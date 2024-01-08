@@ -81,16 +81,6 @@ impl<'a, DE: BytesEncode<'a>> TmpNodes<DE> {
         Ok(())
     }
 
-    /// Get a tree node from the list of element.
-    pub fn get(&self, item: ItemId) -> heed::Result<Option<&DE::EItem>> {
-        // TODO: this could be slow, we may need to use an additionnal roaring bitmap?
-        if self.deleted.contains(item) {
-            return Ok(None);
-        }
-        let pos = self.ids.iter().position(|i| *i == item).unwrap();
-        self
-    }
-
     /// Converts it into a readers to be able to read the nodes.
     pub fn into_bytes_reader(self) -> Result<TmpNodesReader> {
         let file = self.file.into_inner().map_err(|iie| iie.into_error())?;
@@ -279,7 +269,6 @@ impl<'t, D: Distance> ImmutableTrees<'t, D> {
     /// and keeping the transaction making the pointers valid.
     pub fn new(rtxn: &'t RoTxn, database: Database<D>, index: u16) -> heed::Result<Self> {
         let mut tree_ids = RoaringBitmap::new();
-        // let mut constant_length = None;
         let mut offsets = Vec::new();
         let mut lengths = Vec::new();
 

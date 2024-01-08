@@ -314,13 +314,12 @@ fn overwrite_one_document_incremental() {
 }
 
 #[test]
-fn delete_one_element_in_a_one_document_db() {
+fn delete_one_item_in_a_one_item_db() {
     let handle = create_database::<Euclidean>();
     let mut rng = rng();
     let mut wtxn = handle.env.write_txn().unwrap();
     let writer = Writer::new(handle.database, 0, 2).unwrap();
 
-    // first, insert a bunch of elements
     writer.add_item(&mut wtxn, 0, &[0., 0.]).unwrap();
     writer.build(&mut wtxn, &mut rng, Some(1)).unwrap();
     wtxn.commit().unwrap();
@@ -352,13 +351,13 @@ fn delete_one_element_in_a_one_document_db() {
 }
 
 #[test]
-fn delete_one_element_in_a_descendant() {
+fn delete_one_item_in_a_descendant() {
     let handle = create_database::<Euclidean>();
     let mut rng = rng();
     let mut wtxn = handle.env.write_txn().unwrap();
     let writer = Writer::new(handle.database, 0, 2).unwrap();
 
-    // first, insert a bunch of elements
+    // first, insert a bunch of items
     writer.add_item(&mut wtxn, 0, &[0., 0.]).unwrap();
     writer.add_item(&mut wtxn, 1, &[1., 0.]).unwrap();
     writer.build(&mut wtxn, &mut rng, Some(1)).unwrap();
@@ -439,7 +438,7 @@ fn delete_one_leaf_in_a_split() {
 }
 
 #[test]
-fn delete_one_element() {
+fn delete_one_item() {
     let handle = create_database::<Euclidean>();
     let mut rng = rng();
     let mut wtxn = handle.env.write_txn().unwrap();
