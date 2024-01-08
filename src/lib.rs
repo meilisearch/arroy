@@ -29,7 +29,7 @@
 //! // Now we can give it to our arroy writer
 //! let index = 0;
 //! let dimensions = 5;
-//! let writer = Writer::<Euclidean>::prepare(&mut wtxn, db, index, dimensions)?;
+//! let writer = Writer::<Euclidean>::new(db, index, dimensions)?;
 //!
 //! // let's write some vectors
 //! writer.add_item(&mut wtxn, 0,    &[0.8,  0.49, 0.27, 0.76, 0.94])?;
@@ -76,10 +76,12 @@ mod distance;
 mod error;
 mod item_iter;
 mod key;
+mod metadata;
 mod node;
 mod node_id;
 mod parallel;
 mod reader;
+mod roaring;
 mod spaces;
 mod stats;
 mod writer;
@@ -87,16 +89,11 @@ mod writer;
 #[cfg(test)]
 mod tests;
 
-use std::borrow::Cow;
-use std::ffi::CStr;
-use std::mem::size_of;
-
-use byteorder::{BigEndian, ByteOrder};
 pub use distance::Distance;
 pub use error::Error;
-use heed::BoxedError;
 use key::{Key, Prefix, PrefixCodec};
-use node::{ItemIds, Node, NodeCodec};
+use metadata::{Metadata, MetadataCodec};
+use node::{Node, NodeCodec};
 use node_id::{NodeId, NodeMode};
 pub use reader::Reader;
 pub use stats::{Stats, TreeStats};
@@ -146,48 +143,3 @@ pub type Database<D> = heed::Database<internals::KeyCodec, NodeCodec<D>>;
 
 /// An identifier for the items stored in the database.
 pub type ItemId = u32;
-
-#[derive(Debug)]
-struct Metadata<'a> {
-    dimensions: u32,
-    n_items: u32,
-    roots: ItemIds<'a>,
-    distance: &'a str,
-}
-
-enum MetadataCodec {}
-
-impl<'a> heed::BytesEncode<'a> for MetadataCodec {
-    type EItem = Metadata<'a>;
-
-    fn bytes_encode(item: &'a Self::EItem) -> Result<Cow<'a, [u8]>, BoxedError> {
-        let Metadata { dimensions, n_items, roots, distance } = item;
-        debug_assert!(!distance.as_bytes().iter().any(|&b| b == 0));
-
-        let mut output = Vec::with_capacity(
-            size_of::<u32>() + roots.len() * size_of::<u32>() + distance.len() + 1,
-        );
-        output.extend_from_slice(distance.as_bytes());
-        output.push(0);
-        output.extend_from_slice(&dimensions.to_be_bytes());
-        output.extend_from_slice(&n_items.to_be_bytes());
-        output.extend_from_slice(roots.raw_bytes());
-
-        Ok(Cow::Owned(output))
-    }
-}
-
-impl<'a> heed::BytesDecode<'a> for MetadataCodec {
-    type DItem = Metadata<'a>;
-
-    fn bytes_decode(bytes: &'a [u8]) -> Result<Self::DItem, BoxedError> {
-        let distance = CStr::from_bytes_until_nul(bytes)?.to_str()?;
-        let bytes = &bytes[distance.len() + 1..];
-        let dimensions = BigEndian::read_u32(bytes);
-        let bytes = &bytes[size_of::<u32>()..];
-        let n_items = BigEndian::read_u32(bytes);
-        let bytes = &bytes[size_of::<u32>()..];
-
-        Ok(Metadata { dimensions, n_items, roots: ItemIds::from_bytes(bytes), distance })
-    }
-}

@@ -1,5 +1,6 @@
 use std::any::TypeId;
 use std::borrow::Cow;
+use std::mem;
 use std::path::PathBuf;
 
 use heed::types::{Bytes, DecodeIgnore};
@@ -13,8 +14,13 @@ use crate::distance::Distance;
 use crate::internals::{KeyCodec, Side};
 use crate::item_iter::ItemIter;
 use crate::node::{Descendants, ItemIds, Leaf, SplitPlaneNormal, UnalignedF32Slice};
-use crate::parallel::{ConcurrentNodeIds, ImmutableLeafs, ImmutableSubsetLeafs, TmpNodes};
+use crate::node_id::NodeMode;
+use crate::parallel::{
+    ConcurrentNodeIds, ImmutableLeafs, ImmutableSubsetLeafs, ImmutableTrees, TmpNodes,
+    TmpNodesReader,
+};
 use crate::reader::item_leaf;
+use crate::roaring::RoaringBitmapCodec;
 use crate::{
     Database, Error, ItemId, Key, Metadata, MetadataCodec, Node, NodeCodec, NodeId, Prefix,
     PrefixCodec, Result,
@@ -30,24 +36,13 @@ pub struct Writer<D: Distance> {
     dimensions: usize,
     /// The folder in which tempfile will write its temporary files.
     tmpdir: Option<PathBuf>,
-    // non-initiliazed until build is called.
-    n_items: u64,
-    // We know the root nodes points to tree-nodes.
-    roots: Vec<ItemId>,
 }
 
 impl<D: Distance> Writer<D> {
-    /// Returns a writer after having deleted the tree nodes to be able to modify items
-    /// safely.
-    pub fn prepare(
-        wtxn: &mut RwTxn,
-        database: Database<D>,
-        index: u16,
-        dimensions: usize,
-    ) -> Result<Writer<D>> {
+    /// Creates a new writer from a database, index and dimensions.
+    pub fn new(database: Database<D>, index: u16, dimensions: usize) -> Result<Writer<D>> {
         let database: Database<D> = database.remap_data_type();
-        clear_tree_nodes(wtxn, database, index)?;
-        Ok(Writer { database, index, dimensions, tmpdir: None, n_items: 0, roots: Vec::new() })
+        Ok(Writer { database, index, dimensions, tmpdir: None })
     }
 
     /// Returns a writer after having deleted the tree nodes and rewrote all the items
@@ -78,15 +73,8 @@ impl<D: Distance> Writer<D> {
             }
         }
 
-        let Writer { database, index, dimensions, tmpdir, n_items, roots } = self;
-        Ok(Writer {
-            database: database.remap_data_type(),
-            index,
-            dimensions,
-            tmpdir,
-            n_items,
-            roots,
-        })
+        let Writer { database, index, dimensions, tmpdir } = self;
+        Ok(Writer { database: database.remap_data_type(), index, dimensions, tmpdir })
     }
 
     /// Specifies the folder in which arroy will write temporary files when building the tree.
@@ -138,7 +126,20 @@ impl<D: Distance> Writer<D> {
 
         let vector = UnalignedF32Slice::from_slice(vector);
         let leaf = Leaf { header: D::new_header(vector), vector: Cow::Borrowed(vector) };
-        Ok(self.database.put(wtxn, &Key::item(self.index, item), &Node::Leaf(leaf))?)
+        self.database.put(wtxn, &Key::item(self.index, item), &Node::Leaf(leaf))?;
+        let mut updated = self
+            .database
+            .remap_data_type::<RoaringBitmapCodec>()
+            .get(wtxn, &Key::updated(self.index))?
+            .unwrap_or_default();
+        updated.insert(item);
+        self.database.remap_data_type::<RoaringBitmapCodec>().put(
+            wtxn,
+            &Key::updated(self.index),
+            &updated,
+        )?;
+
+        Ok(())
     }
 
     /// Attempt to append an item into the database. It is generaly faster to append an item than insert it.
@@ -158,15 +159,44 @@ impl<D: Distance> Writer<D> {
         let leaf = Leaf { header: D::new_header(vector), vector: Cow::Borrowed(vector) };
         let key = Key::item(self.index, item);
         match self.database.put_with_flags(wtxn, PutFlags::APPEND, &key, &Node::Leaf(leaf)) {
-            Ok(()) => Ok(()),
-            Err(heed::Error::Mdb(MdbError::KeyExist)) => Err(Error::InvalidItemAppend),
-            Err(e) => Err(e.into()),
+            Ok(()) => (),
+            Err(heed::Error::Mdb(MdbError::KeyExist)) => return Err(Error::InvalidItemAppend),
+            Err(e) => return Err(e.into()),
         }
+        let mut updated = self
+            .database
+            .remap_data_type::<RoaringBitmapCodec>()
+            .get(wtxn, &Key::updated(self.index))?
+            .unwrap_or_default();
+        updated.insert(item);
+        self.database.remap_data_type::<RoaringBitmapCodec>().put(
+            wtxn,
+            &Key::updated(self.index),
+            &updated,
+        )?;
+
+        Ok(())
     }
 
     /// Deletes an item stored in this database and returns `true` if it existed.
     pub fn del_item(&self, wtxn: &mut RwTxn, item: ItemId) -> Result<bool> {
-        Ok(self.database.delete(wtxn, &Key::item(self.index, item))?)
+        if self.database.delete(wtxn, &Key::item(self.index, item))? {
+            let mut updated = self
+                .database
+                .remap_data_type::<RoaringBitmapCodec>()
+                .get(wtxn, &Key::updated(self.index))?
+                .unwrap_or_default();
+            updated.insert(item);
+            self.database.remap_data_type::<RoaringBitmapCodec>().put(
+                wtxn,
+                &Key::updated(self.index),
+                &updated,
+            )?;
+
+            Ok(true)
+        } else {
+            Ok(false)
+        }
     }
 
     /// Removes everything in the database, user items and internal tree nodes.
@@ -185,6 +215,18 @@ impl<D: Distance> Writer<D> {
         Ok(())
     }
 
+    fn next_tree_node(&self, rtxn: &RoTxn) -> Result<ItemId> {
+        Ok(self
+            .database
+            .remap_key_type::<PrefixCodec>()
+            .rev_prefix_iter(rtxn, &Prefix::tree(self.index))?
+            .remap_types::<KeyCodec, DecodeIgnore>()
+            .next()
+            .transpose()?
+            .map(|(key, _)| key.node.item + 1)
+            .unwrap_or_default())
+    }
+
     /// Generates a forest of `n_trees` trees.
     ///
     /// More trees give higher precision when querying at the cost of more disk usage.
@@ -194,7 +236,7 @@ impl<D: Distance> Writer<D> {
     /// by using the [`rayon::ThreadPoolBuilder`] and the
     /// [`rayon::ThreadPool::install`] to use it.
     pub fn build<R: Rng + SeedableRng>(
-        mut self,
+        self,
         wtxn: &mut RwTxn,
         rng: &mut R,
         n_trees: Option<usize>,
@@ -210,87 +252,463 @@ impl<D: Distance> Writer<D> {
         })?;
 
         let item_indices = self.item_indices(wtxn)?;
-        self.n_items = item_indices.len();
+        let n_items = item_indices.len();
+        let updated_items = self
+            .database
+            .remap_data_type::<RoaringBitmapCodec>()
+            .get(wtxn, &Key::updated(self.index))?
+            .unwrap_or_default();
+        println!("updated_items: {:?}, item_indices: {:?}", updated_items, item_indices);
+        // while iterating on the nodes we want to delete all the modified element even if they are being inserted right after.
+        // TODO: if we could now which elements are inserted for the first time `to_delete` could be smaller
+        let to_delete = &updated_items;
+        let to_insert = &item_indices & &updated_items;
+        println!("to_delete: {:?}, to_insert: {:?}", to_delete, to_insert);
 
-        log::debug!("started building trees for {} items...", self.n_items);
+        let metadata = self
+            .database
+            .remap_data_type::<MetadataCodec>()
+            .get(wtxn, &Key::metadata(self.index))?;
+        let mut roots =
+            metadata.as_ref().map_or_else(Vec::new, |metadata| metadata.roots.iter().collect());
 
-        let concurrent_node_ids = ConcurrentNodeIds::new(0);
+        log::debug!("Getting a reference to your {} items...", n_items);
+
+        let concurrent_node_ids = ConcurrentNodeIds::new(self.next_tree_node(wtxn)?);
         let frozzen_reader = FrozzenReader {
             leafs: &ImmutableLeafs::new(wtxn, self.database, self.index)?,
+            trees: &ImmutableTrees::new(wtxn, self.database, self.index)?,
             dimensions: self.dimensions,
-            n_items: self.n_items,
+            n_items,
             // The globally incrementing node ids that are shared between threads.
             concurrent_node_ids: &concurrent_node_ids,
         };
 
+        let mut nodes_to_write = Vec::new();
+
+        // TODO: Insert the updated elements into the already existing trees
+        // If there is metadata it means that we already have trees and we must update them
+        if let Some(ref metadata) = metadata {
+            log::debug!(
+                "started inserting new items {} in {} trees...",
+                n_items,
+                metadata.roots.len()
+            );
+            // NOTE: We should probably keep a list of the updated tree nodes alongside a list
+            //       of all existing tree node IDs. This way we can keep track of the tree nodes
+            //       in which we need to delete the deleted items.
+            let mut tmp_nodes_reader =
+                self.update_trees(rng, metadata, &to_insert, &to_delete, &frozzen_reader)?;
+            nodes_to_write.append(&mut tmp_nodes_reader);
+
+            // todo!("{:?}", updated_items);
+        }
+
+        log::debug!("started building trees for {} items...", n_items);
         log::debug!(
             "running {} parallel tree building...",
             n_trees.map_or_else(|| "an unknown number of".to_string(), |n| n.to_string())
         );
 
-        let results: Result<(Vec<_>, Vec<_>)> =
-            repeatn(rng.next_u64(), n_trees.unwrap_or(usize::MAX))
-                .enumerate()
-                // Stop generating trees once the number of tree nodes are generated
-                // but continue to generate trees if the number of trees is specified
-                .take_any_while(|_| match n_trees {
-                    Some(_) => true,
-                    None => concurrent_node_ids.current() < self.n_items,
-                })
-                .map(|(i, seed)| {
-                    log::debug!("started generating tree {i:X}...");
-                    let mut rng = R::seed_from_u64(seed.wrapping_add(i as u64));
-                    let mut tmp_nodes = match self.tmpdir.as_ref() {
-                        Some(path) => TmpNodes::new_in(path)?,
-                        None => TmpNodes::new()?,
-                    };
-                    let root_id = make_tree_in_file(
-                        &frozzen_reader,
-                        &mut rng,
-                        &item_indices,
-                        true,
-                        &mut tmp_nodes,
-                    )?;
-                    log::debug!("finished generating tree {i:X}");
-                    // make_tree will NEVER return a leaf when called as root
-                    Ok((root_id.unwrap_tree(), tmp_nodes.into_bytes_reader()?))
-                })
-                .collect();
+        // Once we updated the current trees we also need to create the new missing trees
+        // So we can run the normal path of building trees from scratch.
+        let n_trees_to_build = n_trees
+            .zip(metadata)
+            .map(|(n_trees, metadata)| n_trees.saturating_sub(metadata.roots.len()))
+            .or(n_trees);
+        let (mut thread_roots, mut tmp_nodes) =
+            self.build_trees(rng, n_trees_to_build, &item_indices, &frozzen_reader)?;
+        nodes_to_write.append(&mut tmp_nodes);
 
-        let (mut thread_roots, tmp_nodes) = results?;
-        log::debug!("started writing the tree nodes of {} trees...", tmp_nodes.len());
-        for (i, tmp_node) in tmp_nodes.into_iter().enumerate() {
+        log::debug!("started deleting the tree nodes of {} trees...", tmp_nodes.len());
+        for (i, tmp_node) in nodes_to_write.iter().enumerate() {
             log::debug!("started writing the {} tree nodes of the {i}nth trees...", tmp_node.len());
-            for (item_id, item_bytes) in tmp_node.iter() {
+            for item_id in tmp_node.to_delete() {
+                println!("Deleting tree node {item_id}");
+                let key = Key::tree(self.index, item_id);
+                self.database.remap_data_type::<Bytes>().delete(wtxn, &key)?;
+            }
+        }
+
+        log::debug!("started writing the tree nodes of {} trees...", tmp_nodes.len());
+        for (i, tmp_node) in nodes_to_write.iter().enumerate() {
+            log::debug!("started writing the {} tree nodes of the {i}nth trees...", tmp_node.len());
+            for (item_id, item_bytes) in tmp_node.to_insert() {
                 let key = Key::tree(self.index, item_id);
                 self.database.remap_data_type::<Bytes>().put(wtxn, &key, item_bytes)?;
             }
         }
 
-        self.roots.append(&mut thread_roots);
+        if thread_roots.is_empty() {
+            // we may have too many nodes
+            log::debug!("Deleting the extraneous trees...");
+            self.delete_extra_trees(
+                wtxn,
+                &mut roots,
+                n_trees,
+                concurrent_node_ids.current(),
+                n_items,
+            )?;
+        } else {
+            roots.append(&mut thread_roots);
+        }
 
-        log::debug!("started writing the metadata...");
+        log::debug!("reset the updated items...");
+        self.database.remap_data_type::<RoaringBitmapCodec>().put(
+            wtxn,
+            &Key::updated(self.index),
+            &RoaringBitmap::new(),
+        )?;
 
-        // Also, copy the roots into the highest key of the database (u32::MAX).
-        // This way we can load them faster without reading the whole database.
+        log::debug!("write the metadata...");
+
         let metadata = Metadata {
             dimensions: self.dimensions.try_into().unwrap(),
-            n_items: self.n_items.try_into().unwrap(),
-            roots: ItemIds::from_slice(&self.roots),
+            items: item_indices,
+            roots: ItemIds::from_slice(&roots),
             distance: D::name(),
         };
-        match self.database.remap_data_type::<MetadataCodec>().put_with_flags(
+        match self.database.remap_data_type::<MetadataCodec>().put(
             wtxn,
-            PutFlags::NO_OVERWRITE,
             &Key::metadata(self.index),
             &metadata,
         ) {
-            Ok(_) => (),
-            Err(heed::Error::Mdb(MdbError::KeyExist)) => return Err(Error::DatabaseFull),
-            Err(e) => return Err(e.into()),
+            Ok(_) => Ok(()),
+            Err(e) => Err(e.into()),
+        }
+    }
+
+    fn update_trees<R: Rng + SeedableRng>(
+        &self,
+        rng: &mut R,
+        metadata: &Metadata,
+        to_insert: &RoaringBitmap,
+        to_delete: &RoaringBitmap,
+        frozen_reader: &FrozzenReader<D>,
+    ) -> Result<Vec<TmpNodesReader>> {
+        let roots: Vec<_> = metadata.roots.iter().collect();
+        println!("must insert: {to_insert:?}");
+        println!("must delete: {to_delete:?}");
+
+        repeatn(rng.next_u64(), metadata.roots.len())
+            .zip(roots)
+            .map(|(seed, root)| {
+                log::debug!("started updating tree {root:X}...");
+                let mut rng = R::seed_from_u64(seed.wrapping_add(root as u64));
+                let mut tmp_nodes: TmpNodes<NodeCodec<D>> = match self.tmpdir.as_ref() {
+                    Some(path) => TmpNodes::new_in(path)?,
+                    None => TmpNodes::new()?,
+                };
+                /// TODO: if the returned value contains a node id we must update our root node for this tree
+                self.update_nodes_in_file(
+                    frozen_reader,
+                    &mut rng,
+                    NodeId::tree(root),
+                    to_insert,
+                    to_delete,
+                    &mut tmp_nodes,
+                )?;
+                log::debug!("finished generating tree {root:X}");
+                // make_tree will NEVER return a leaf when called as root
+                tmp_nodes.into_bytes_reader()
+            })
+            .collect()
+    }
+
+    /// Update the nodes that changed and delete the deleted nodes all at once.
+    /// Run in O(n) on the total number of nodes. Return a tuple containing the
+    /// node ID you should use instead of the current_node and the number of
+    /// items in the subtree.
+    fn update_nodes_in_file<R: Rng>(
+        &self,
+        frozen_reader: &FrozzenReader<D>,
+        rng: &mut R,
+        current_node: NodeId,
+        to_insert: &RoaringBitmap,
+        to_delete: &RoaringBitmap,
+        tmp_nodes: &mut TmpNodes<NodeCodec<D>>,
+    ) -> Result<(Option<NodeId>, RoaringBitmap)> {
+        match current_node.mode {
+            NodeMode::Item => {
+                println!("called on the item {}", current_node.item);
+                // We were called on a specific item, we should create a descendants node
+                let mut new_items = RoaringBitmap::from_iter([current_node.item]);
+                new_items -= to_delete;
+                new_items |= to_insert;
+
+                // TODO: if we just replaced this element by another one we don't need to create a new descendant node
+                // TODO: is this valid? Why are we using an u64 for the concurrent node ids
+                println!("returned {:?}", new_items);
+
+                if new_items.len() == 1 {
+                    let item_id = new_items.iter().next().unwrap();
+                    if item_id == current_node.item {
+                        Ok((None, new_items))
+                    } else {
+                        Ok((Some(NodeId::item(item_id)), new_items))
+                    }
+                } else if new_items.len() < frozen_reader.dimensions as u64 {
+                    let node_id = frozen_reader.concurrent_node_ids.next();
+                    let node_id = NodeId::tree(node_id as u32);
+                    tmp_nodes.put(
+                        node_id.item,
+                        &Node::Descendants(Descendants {
+                            descendants: Cow::Owned(new_items.clone()),
+                        }),
+                    )?;
+                    Ok((Some(node_id), new_items))
+                } else {
+                    let new_id =
+                        make_tree_in_file(frozen_reader, rng, &new_items, false, tmp_nodes)?;
+
+                    return Ok((Some(new_id), new_items));
+                }
+            }
+            NodeMode::Tree => {
+                match frozen_reader.trees.get(current_node.item)?.unwrap() {
+                    Node::Leaf(_) => unreachable!(),
+                    Node::Descendants(Descendants { descendants }) => {
+                        println!("called on the descendant {}", current_node.item);
+                        let mut new_descendants = descendants.clone().into_owned();
+                        // remove all the deleted IDs before inserting the new elements.
+                        new_descendants -= to_delete;
+
+                        // insert all of our IDs in the descendants
+                        new_descendants |= to_insert;
+
+                        if descendants.as_ref() == &new_descendants {
+                            println!("Nothing changed");
+                            // if nothing changed, do nothing
+                            Ok((None, descendants.into_owned()))
+                        } else if new_descendants.len() > frozen_reader.dimensions as u64 {
+                            println!(
+                                "too many descendants in {}: {:?}",
+                                current_node.item, new_descendants
+                            );
+                            tmp_nodes.remove(current_node.item)?;
+                            let new_id = make_tree_in_file(
+                                frozen_reader,
+                                rng,
+                                &new_descendants,
+                                false,
+                                tmp_nodes,
+                            )?;
+
+                            Ok((Some(new_id), new_descendants))
+                        } else if new_descendants.len() == 1 {
+                            println!(
+                                "split node {}: deleting ourselves in favor of a single item",
+                                current_node.item
+                            );
+                            tmp_nodes.remove(current_node.item)?;
+                            let item = new_descendants.iter().next().unwrap();
+                            Ok((Some(NodeId::item(item)), new_descendants))
+                        } else {
+                            println!(
+                                "split node {}: nice number of descendants {}",
+                                current_node.item,
+                                new_descendants.len()
+                            );
+                            // otherwise we can just update our descendants
+                            tmp_nodes.put(
+                                current_node.item,
+                                &Node::Descendants(Descendants {
+                                    descendants: Cow::Owned(new_descendants.clone()),
+                                }),
+                            )?;
+                            Ok((None, new_descendants))
+                        }
+                    }
+                    Node::SplitPlaneNormal(SplitPlaneNormal { normal, left, right }) => {
+                        println!("called on a splitnode {}", current_node.item);
+                        // Split the to_insert into two bitmaps on the left and right of this normal
+                        let mut left_ids = RoaringBitmap::new();
+                        let mut right_ids = RoaringBitmap::new();
+
+                        for leaf in to_insert {
+                            let query = frozen_reader.leafs.get(leaf)?.unwrap();
+                            match D::side(&normal, &query, rng) {
+                                Side::Left => left_ids.insert(leaf),
+                                Side::Right => right_ids.insert(leaf),
+                            };
+                        }
+
+                        println!("calling update on {:?}", current_node);
+                        let (new_left, left_items) = self.update_nodes_in_file(
+                            frozen_reader,
+                            rng,
+                            left,
+                            &left_ids,
+                            to_delete,
+                            tmp_nodes,
+                        )?;
+                        let (new_right, right_items) = self.update_nodes_in_file(
+                            frozen_reader,
+                            rng,
+                            right,
+                            &right_ids,
+                            to_delete,
+                            tmp_nodes,
+                        )?;
+
+                        let new_left = new_left.unwrap_or(left);
+                        let new_right = new_right.unwrap_or(right);
+
+                        let total_items = left_items | right_items;
+                        let max_descendants = self.dimensions as u64;
+
+                        dbg!(&total_items);
+                        dbg!(max_descendants);
+                        if total_items.len() <= max_descendants {
+                            // TODO assert that new_left and new_right are both descendants
+
+                            println!(
+                                "split node {}: here before deleting both side",
+                                current_node.item
+                            );
+
+                            // TODO: HERE we may have created new nodes in tmp_nodes and that we can't access.
+
+                            // deleting and getting the elements available in our children
+                            if new_left.mode == NodeMode::Tree {
+                                tmp_nodes.remove(new_left.item)?;
+                            }
+                            if new_right.mode == NodeMode::Tree {
+                                tmp_nodes.remove(new_right.item)?;
+                            }
+
+                            // TODO: we should delete deleting the potential new node we crafted
+                            // self.delete_tree_in_file(frozen_reader, new_left, tmp_nodes)?;
+                            // self.delete_tree_in_file(frozen_reader, new_right, tmp_nodes)?;
+
+                            // println!(
+                            //     "merging {:?}: }\n\tand {:?}: {:?}\n\tin {:?}: {:?}",
+                            //     left, left_items, right, right_items, current_node, total_items
+                            // );
+                            tmp_nodes.put(
+                                current_node.item,
+                                &Node::Descendants(Descendants {
+                                    descendants: Cow::Owned(total_items.clone()),
+                                }),
+                            )?;
+
+                            // we should merge both branch and update ourselves to be a single descendant node
+                            Ok((None, total_items))
+                        } else {
+                            // if either the left or the right changed we must update ourselves inplace
+                            if new_left != left || new_right != right {
+                                println!(
+                                    "split node {}: updating our left & right",
+                                    current_node.item
+                                );
+                                tmp_nodes.put(
+                                    current_node.item,
+                                    &Node::SplitPlaneNormal(SplitPlaneNormal {
+                                        normal,
+                                        left: new_left,
+                                        right: new_right,
+                                    }),
+                                )?;
+                            } else {
+                                println!("split node {}: nothing changed", current_node.item);
+                            }
+
+                            // TODO: Should we update the normals if something changed?
+
+                            Ok((None, total_items))
+                        }
+                    }
+                }
+            }
+            NodeMode::Metadata => panic!("Should never happens"),
+        }
+    }
+
+    fn build_trees<R: Rng + SeedableRng>(
+        &self,
+        rng: &mut R,
+        n_trees: Option<usize>,
+        item_indices: &RoaringBitmap,
+        frozen_reader: &FrozzenReader<D>,
+    ) -> Result<(Vec<ItemId>, Vec<TmpNodesReader>)> {
+        let n_items = item_indices.len();
+        let concurrent_node_ids = frozen_reader.concurrent_node_ids;
+
+        repeatn(rng.next_u64(), n_trees.unwrap_or(usize::MAX))
+            .enumerate()
+            // Stop generating trees once the number of tree nodes are generated
+            // but continue to generate trees if the number of trees is specified
+            .take_any_while(|_| match n_trees {
+                Some(_) => true,
+                None => concurrent_node_ids.current() < n_items,
+            })
+            .map(|(i, seed)| {
+                log::debug!("started generating tree {i:X}...");
+                let mut rng = R::seed_from_u64(seed.wrapping_add(i as u64));
+                let mut tmp_nodes = match self.tmpdir.as_ref() {
+                    Some(path) => TmpNodes::new_in(path)?,
+                    None => TmpNodes::new()?,
+                };
+                let root_id =
+                    make_tree_in_file(frozen_reader, &mut rng, item_indices, true, &mut tmp_nodes)?;
+                log::debug!("finished generating tree {i:X}");
+                // make_tree will NEVER return a leaf when called as root
+                Ok((root_id.unwrap_tree(), tmp_nodes.into_bytes_reader()?))
+            })
+            .collect()
+    }
+
+    /// Delete any extraneous trees.
+    fn delete_extra_trees(
+        &self,
+        wtxn: &mut RwTxn,
+        roots: &mut Vec<ItemId>,
+        nb_trees: Option<usize>,
+        nb_tree_nodes: u64,
+        nb_items: u64,
+    ) -> Result<()> {
+        let nb_trees = match nb_trees {
+            Some(nb_trees) => nb_trees,
+            None => {
+                // 1. Estimate the number of nodes per tree
+                let nodes_per_tree = nb_tree_nodes / roots.len() as u64;
+                // 2. Estimate the number of tree we need to have AT LEAST as much tree-nodes than items
+                (nb_items / nodes_per_tree) as usize
+            }
+        };
+
+        if roots.len() > nb_trees {
+            // we have too many trees and must delete some of them
+            let to_delete = roots.len() - nb_trees;
+
+            // we want to delete the oldest tree first since they're probably
+            // the less precise one
+            let new_roots = roots.split_off(to_delete);
+            let to_delete = mem::replace(roots, new_roots);
+            log::debug!("Deleting {} trees", to_delete.len());
+
+            for tree in to_delete {
+                self.delete_tree(wtxn, NodeId::tree(tree))?;
+            }
         }
 
         Ok(())
+    }
+
+    fn delete_tree(&self, wtxn: &mut RwTxn, node: NodeId) -> Result<()> {
+        let key = Key::new(self.index, node);
+        match self.database.get(wtxn, &key)?.ok_or(Error::MissingNode)? {
+            // the leafs are shared between the trees, we MUST NOT delete them.
+            Node::Leaf(_) => Ok(()),
+            Node::Descendants(_) => {
+                self.database.delete(wtxn, &key).map(|_| ()).map_err(Error::from)
+            }
+            Node::SplitPlaneNormal(SplitPlaneNormal { normal: _, left, right }) => {
+                self.delete_tree(wtxn, left)?;
+                self.delete_tree(wtxn, right)?;
+                self.database.delete(wtxn, &key).map(|_| ()).map_err(Error::from)
+            }
+        }
     }
 
     // Fetches the item's ids, not the tree nodes ones.
@@ -315,6 +733,7 @@ impl<D: Distance> Writer<D> {
 #[derive(Clone)]
 struct FrozzenReader<'a, D: Distance> {
     leafs: &'a ImmutableLeafs<'a, D>,
+    trees: &'a ImmutableTrees<'a, D>,
     dimensions: usize,
     n_items: u64,
     concurrent_node_ids: &'a ConcurrentNodeIds,

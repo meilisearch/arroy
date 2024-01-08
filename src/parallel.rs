@@ -14,13 +14,15 @@ use roaring::RoaringBitmap;
 
 use crate::internals::{KeyCodec, Leaf, NodeCodec};
 use crate::key::{Prefix, PrefixCodec};
+use crate::node::Node;
 use crate::{Database, Distance, ItemId, Result};
 
 /// A structure to store the tree nodes out of the heed database.
 pub struct TmpNodes<DE> {
     file: BufWriter<File>,
-    ids: RoaringBitmap,
+    ids: Vec<ItemId>,
     bounds: Vec<usize>,
+    deleted: RoaringBitmap,
     _marker: marker::PhantomData<DE>,
 }
 
@@ -29,8 +31,9 @@ impl<'a, DE: BytesEncode<'a>> TmpNodes<DE> {
     pub fn new() -> heed::Result<TmpNodes<DE>> {
         Ok(TmpNodes {
             file: tempfile::tempfile().map(BufWriter::new)?,
-            ids: RoaringBitmap::new(),
+            ids: Vec::new(),
             bounds: vec![0],
+            deleted: RoaringBitmap::new(),
             _marker: marker::PhantomData,
         })
     }
@@ -39,24 +42,42 @@ impl<'a, DE: BytesEncode<'a>> TmpNodes<DE> {
     pub fn new_in(path: &Path) -> heed::Result<TmpNodes<DE>> {
         Ok(TmpNodes {
             file: tempfile::tempfile_in(path).map(BufWriter::new)?,
-            ids: RoaringBitmap::new(),
+            ids: Vec::new(),
             bounds: vec![0],
+            deleted: RoaringBitmap::new(),
             _marker: marker::PhantomData,
         })
     }
 
-    /// Append a new node in the file.
+    /// Add a new node in the file.
+    /// Items do not need to be ordered.
     pub fn put(
         // TODO move that in the type
         &mut self,
-        item: u32,
+        item: ItemId,
         data: &'a DE::EItem,
     ) -> heed::Result<()> {
+        assert!(item != ItemId::MAX);
         let bytes = DE::bytes_encode(data).map_err(heed::Error::Encoding)?;
         self.file.write_all(&bytes)?;
         let last_bound = self.bounds.last().unwrap();
         self.bounds.push(last_bound + bytes.len());
         self.ids.push(item);
+
+        // if the element was deleted and is then re-inserted we should not delete it at the end it'll be overwritten
+        self.deleted.remove(item);
+
+        Ok(())
+    }
+
+    /// Remove a tree node from the list of element but keep it on disk.
+    /// It'll be hidden when using converting this writer to a reader.
+    pub fn remove(&mut self, item: ItemId) -> heed::Result<()> {
+        // TODO: this could be slow, we may need to use an additionnal roaring bitmap?
+        self.deleted.insert(item);
+        if let Some(el) = self.ids.iter_mut().find(|i| **i == item) {
+            *el = u32::MAX;
+        }
         Ok(())
     }
 
@@ -66,29 +87,38 @@ impl<'a, DE: BytesEncode<'a>> TmpNodes<DE> {
         let mmap = unsafe { Mmap::map(&file)? };
         #[cfg(unix)]
         mmap.advise(memmap2::Advice::Sequential)?;
-        Ok(TmpNodesReader { mmap, ids: self.ids, bounds: self.bounds })
+        Ok(TmpNodesReader { mmap, ids: self.ids, bounds: self.bounds, deleted: self.deleted })
     }
 }
 
 /// A reader of nodes stored in a file.
 pub struct TmpNodesReader {
     mmap: Mmap,
-    ids: RoaringBitmap,
+    ids: Vec<ItemId>,
     bounds: Vec<usize>,
+    deleted: RoaringBitmap,
 }
 
 impl TmpNodesReader {
     /// The number of nodes stored in this file.
-    pub fn len(&self) -> u64 {
+    pub fn len(&self) -> usize {
         self.ids.len()
     }
 
+    pub fn to_delete(&self) -> impl Iterator<Item = ItemId> + '_ {
+        self.deleted.iter()
+    }
+
     /// Returns an forward iterator over the nodes.
-    pub fn iter(&self) -> impl Iterator<Item = (u32, &[u8])> {
-        self.ids.iter().zip(self.bounds.windows(2)).map(|(id, bounds)| {
-            let [start, end] = [bounds[0], bounds[1]];
-            (id, &self.mmap[start..end])
-        })
+    pub fn to_insert(&self) -> impl Iterator<Item = (ItemId, &[u8])> {
+        self.ids
+            .iter()
+            .zip(self.bounds.windows(2))
+            .map(|(id, bounds)| {
+                let [start, end] = [bounds[0], bounds[1]];
+                (*id, &self.mmap[start..end])
+            })
+            .filter(|(id, _)| *id != ItemId::MAX)
     }
 }
 
@@ -221,3 +251,55 @@ impl<'t, D: Distance> ImmutableSubsetLeafs<'t, D> {
         }
     }
 }
+
+/// A struture used to keep a list of all the tree nodes in the tree.
+///
+/// It is safe to share between threads as the pointer are pointing
+/// in the mmapped file and the transaction is kept here and therefore
+/// no longer touches the database.
+pub struct ImmutableTrees<'t, D> {
+    tree_ids: RoaringBitmap,
+    offsets: Vec<*const u8>,
+    lengths: Vec<usize>,
+    _marker: marker::PhantomData<(&'t (), D)>,
+}
+
+impl<'t, D: Distance> ImmutableTrees<'t, D> {
+    /// Creates the structure by fetching all the root pointers
+    /// and keeping the transaction making the pointers valid.
+    pub fn new(rtxn: &'t RoTxn, database: Database<D>, index: u16) -> heed::Result<Self> {
+        let mut tree_ids = RoaringBitmap::new();
+        let mut offsets = Vec::new();
+        let mut lengths = Vec::new();
+
+        let iter = database
+            .remap_types::<PrefixCodec, Bytes>()
+            .prefix_iter(rtxn, &Prefix::tree(index))?
+            .remap_key_type::<KeyCodec>();
+
+        for result in iter {
+            let (key, bytes) = result?;
+            let tree_id = key.node.unwrap_tree();
+            assert!(tree_ids.push(tree_id));
+            offsets.push(bytes.as_ptr());
+            lengths.push(bytes.len());
+        }
+
+        Ok(ImmutableTrees { tree_ids, lengths, offsets, _marker: marker::PhantomData })
+    }
+
+    /// Returns the tree node identified by the given ID.
+    pub fn get(&self, item_id: ItemId) -> heed::Result<Option<Node<'t, D>>> {
+        let (ptr, len) = match self.tree_ids.rank(item_id).checked_sub(1).and_then(|offset| {
+            self.offsets.get(offset as usize).zip(self.lengths.get(offset as usize))
+        }) {
+            Some((ptr, len)) => (*ptr, *len),
+            None => return Ok(None),
+        };
+
+        let bytes = unsafe { slice::from_raw_parts(ptr, len) };
+        NodeCodec::bytes_decode(bytes).map_err(heed::Error::Decoding).map(Some)
+    }
+}
+
+unsafe impl<D> Sync for ImmutableTrees<'_, D> {}

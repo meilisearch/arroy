@@ -32,6 +32,10 @@ impl Key {
         Self::new(index, NodeId::metadata())
     }
 
+    pub const fn updated(index: u16) -> Self {
+        Self::new(index, NodeId::updated())
+    }
+
     pub const fn item(index: u16, item: u32) -> Self {
         Self::new(index, NodeId::item(item))
     }

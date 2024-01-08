@@ -41,6 +41,10 @@ impl NodeId {
         Self { mode: NodeMode::Metadata, item: 0 }
     }
 
+    pub const fn updated() -> Self {
+        Self { mode: NodeMode::Metadata, item: 1 }
+    }
+
     pub const fn tree(item: u32) -> Self {
         Self { mode: NodeMode::Tree, item }
     }
@@ -51,6 +55,7 @@ impl NodeId {
 
     /// Return the underlying `ItemId` if it is an item.
     /// Panic otherwise.
+    #[track_caller]
     pub fn unwrap_item(&self) -> ItemId {
         assert_eq!(self.mode, NodeMode::Item);
         self.item
@@ -58,6 +63,7 @@ impl NodeId {
 
     /// Return the underlying `ItemId` if it is a tree node.
     /// Panic otherwise.
+    #[track_caller]
     pub fn unwrap_tree(&self) -> ItemId {
         assert_eq!(self.mode, NodeMode::Tree);
         self.item
