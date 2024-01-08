@@ -437,6 +437,7 @@ impl<D: Distance> Writer<D> {
 
                 let nb_items = new_items.len();
 
+                // TODO: if we just replaced this element by another one we don't need to create a new descendant node
                 let node_id = frozen_reader.concurrent_node_ids.next();
                 // TODO: is this valid? Why are we using an u64 for the concurrent node ids
                 let node_id = NodeId::tree(node_id as u32);
@@ -529,15 +530,26 @@ impl<D: Distance> Writer<D> {
                         let total_items = left_items + right_items;
                         let max_descendants = self.dimensions as u64;
 
+                        dbg!(total_items);
+                        dbg!(max_descendants);
                         if total_items <= max_descendants {
-                            println!("split node here before deleting both side");
+                            println!(
+                                "split node {} here before deleting both side",
+                                current_node.item
+                            );
 
-                            // TODO: HERE we may have created new nodes that goes through the tmp_nodes and that we can't access.
+                            // TODO: HERE we may have created new nodes in tmp_nodes and that we can't access.
+
+                            // deleting and getting the elements available in our children
                             let left_descendants =
                                 self.delete_tree_in_file(frozen_reader, new_left, tmp_nodes)?;
-                            println!("deleted left");
                             let right_descendants =
                                 self.delete_tree_in_file(frozen_reader, new_right, tmp_nodes)?;
+
+                            // TODO: we should delete deleting the potential new node we crafted
+                            // self.delete_tree_in_file(frozen_reader, new_left, tmp_nodes)?;
+                            // self.delete_tree_in_file(frozen_reader, new_right, tmp_nodes)?;
+
                             let mut descendants = &left_descendants | &right_descendants;
                             descendants -= deleted_items;
                             descendants |= updated_items;
@@ -551,6 +563,7 @@ impl<D: Distance> Writer<D> {
                                 current_node,
                                 descendants
                             );
+                            let total_items = descendants.len();
                             tmp_nodes.put(
                                 current_node.item,
                                 &Node::Descendants(Descendants {
@@ -595,7 +608,13 @@ impl<D: Distance> Writer<D> {
     ) -> Result<RoaringBitmap> {
         match current_node.mode {
             NodeMode::Item => Ok(RoaringBitmap::from_sorted_iter([current_node.item]).unwrap()),
-            NodeMode::Tree => match frozen_reader.trees.get(current_node.item)?.unwrap() {
+            NodeMode::Tree => {
+                // TODO KERO: here I need to get an element from the tmp nodes
+                // We first try to get our element in the available tmp nodes O(n) and THEN in the frozen reader
+                // let node = tmp_nodes.get
+                let node = todo!();
+
+                match node {
                 Node::Leaf(_) => unreachable!(),
                 Node::Descendants(Descendants { descendants }) => {
                     println!("deleting an empty descendant node");
@@ -613,6 +632,7 @@ impl<D: Distance> Writer<D> {
                     Ok(elements)
                 }
             },
+            }
             NodeMode::Metadata => unreachable!(),
         }
     }

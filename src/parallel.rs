@@ -81,6 +81,16 @@ impl<'a, DE: BytesEncode<'a>> TmpNodes<DE> {
         Ok(())
     }
 
+    /// Get a tree node from the list of element.
+    pub fn get(&self, item: ItemId) -> heed::Result<Option<&DE::EItem>> {
+        // TODO: this could be slow, we may need to use an additionnal roaring bitmap?
+        if self.deleted.contains(item) {
+            return Ok(None);
+        }
+        let pos = self.ids.iter().position(|i| *i == item).unwrap();
+        self
+    }
+
     /// Converts it into a readers to be able to read the nodes.
     pub fn into_bytes_reader(self) -> Result<TmpNodesReader> {
         let file = self.file.into_inner().map_err(|iie| iie.into_error())?;
