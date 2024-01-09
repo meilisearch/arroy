@@ -203,5 +203,5 @@ Tree 95: SplitPlaneNormal(SplitPlaneNormal { normal: [-0.0200, -0.2200, 0.1948, 
 Tree 96: SplitPlaneNormal(SplitPlaneNormal { normal: [0.0684, -0.2434, -0.1543, 0.0337, 0.1784, 0.1295, 0.3061, -0.0175, -0.0679, -0.1419, -0.0180, 0.2335, 0.3782, -0.1127, 0.2746, -0.2657, -0.0579, 0.1808, 0.2623, -0.3329, 0.1801, -0.2106, 0.1692, -0.1191, 0.0152, 0.1214, 0.0252, -0.0236, -0.1220, -0.1448], left: NodeId { mode: Tree, item: 88 }, right: NodeId { mode: Tree, item: 95 } })
 Tree 97: SplitPlaneNormal(SplitPlaneNormal { normal: [-0.0316, -0.1036, 0.3252, -0.0985, -0.1286, -0.4867, -0.0286, 0.1159, -0.0177, 0.2205, 0.0177, 0.3192, 0.1521, -0.1484, 0.1918, -0.2794, -0.1141, 0.2598, 0.1453, 0.1133, -0.1149, -0.0455, 0.0697, -0.2537, 0.1797, -0.0423, -0.0470, 0.0886, 0.0868, 0.2083], left: NodeId { mode: Tree, item: 87 }, right: NodeId { mode: Tree, item: 96 } })
 Root: Metadata { dimensions: 30, items: RoaringBitmap<100 values between 0 and 99>, roots: [8, 17, 24, 35, 44, 55, 64, 75, 86, 97], distance: "euclidean" }
-item_ids: RoaringBitmap<100 values between 0 and 99>
+updated_item_ids: RoaringBitmap<[]>
 

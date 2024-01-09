@@ -290,7 +290,6 @@ impl<D: Distance> Writer<D> {
                 roots: ItemIds::from_slice(&roots),
                 distance: D::name(),
             };
-
             self.database.remap_data_type::<MetadataCodec>().put(
                 wtxn,
                 &Key::metadata(self.index),
@@ -305,12 +304,10 @@ impl<D: Distance> Writer<D> {
             .remap_data_type::<RoaringBitmapCodec>()
             .get(wtxn, &Key::updated(self.index))?
             .unwrap_or_default();
-        println!("updated_items: {:?}, item_indices: {:?}", updated_items, item_indices);
         // while iterating on the nodes we want to delete all the modified element even if they are being inserted right after.
         // TODO: if we could now which elements are inserted for the first time `to_delete` could be smaller
         let to_delete = &updated_items;
         let to_insert = &item_indices & &updated_items;
-        println!("to_delete: {:?}, to_insert: {:?}", to_delete, to_insert);
 
         let metadata = self
             .database
@@ -372,7 +369,6 @@ impl<D: Distance> Writer<D> {
         for (i, tmp_node) in nodes_to_write.iter().enumerate() {
             log::debug!("started writing the {} tree nodes of the {i}nth trees...", tmp_node.len());
             for item_id in tmp_node.to_delete() {
-                println!("Deleting tree node {item_id}");
                 let key = Key::tree(self.index, item_id);
                 self.database.remap_data_type::<Bytes>().delete(wtxn, &key)?;
             }
@@ -434,8 +430,6 @@ impl<D: Distance> Writer<D> {
         frozen_reader: &FrozzenReader<D>,
     ) -> Result<(Vec<ItemId>, Vec<TmpNodesReader>)> {
         let roots: Vec<_> = metadata.roots.iter().collect();
-        println!("must insert: {to_insert:?}");
-        println!("must delete: {to_delete:?}");
 
         repeatn(rng.next_u64(), metadata.roots.len())
             .zip(roots)
@@ -479,7 +473,6 @@ impl<D: Distance> Writer<D> {
     ) -> Result<(Option<NodeId>, RoaringBitmap)> {
         match current_node.mode {
             NodeMode::Item => {
-                println!("called on the item {}", current_node.item);
                 // We were called on a specific item, we should create a descendants node
                 let mut new_items = RoaringBitmap::from_iter([current_node.item]);
                 new_items -= to_delete;
@@ -487,7 +480,6 @@ impl<D: Distance> Writer<D> {
 
                 // TODO: if we just replaced this element by another one we don't need to create a new descendant node
                 // TODO: is this valid? Why are we using an u64 for the concurrent node ids
-                println!("returned {:?}", new_items);
 
                 if new_items.len() == 1 {
                     let item_id = new_items.iter().next().unwrap();
@@ -517,7 +509,6 @@ impl<D: Distance> Writer<D> {
                 match frozen_reader.trees.get(current_node.item)?.unwrap() {
                     Node::Leaf(_) => unreachable!(),
                     Node::Descendants(Descendants { descendants }) => {
-                        println!("called on the descendant {}", current_node.item);
                         let mut new_descendants = descendants.clone().into_owned();
                         // remove all the deleted IDs before inserting the new elements.
                         new_descendants -= to_delete;
@@ -526,14 +517,9 @@ impl<D: Distance> Writer<D> {
                         new_descendants |= to_insert;
 
                         if descendants.as_ref() == &new_descendants {
-                            println!("Nothing changed");
                             // if nothing changed, do nothing
                             Ok((None, descendants.into_owned()))
                         } else if new_descendants.len() > frozen_reader.dimensions as u64 {
-                            println!(
-                                "too many descendants in {}: {:?}",
-                                current_node.item, new_descendants
-                            );
                             tmp_nodes.remove(current_node.item)?;
                             let new_id = make_tree_in_file(
                                 frozen_reader,
@@ -545,19 +531,10 @@ impl<D: Distance> Writer<D> {
 
                             Ok((Some(new_id), new_descendants))
                         } else if new_descendants.len() == 1 {
-                            println!(
-                                "split node {}: deleting ourselves in favor of a single item",
-                                current_node.item
-                            );
                             tmp_nodes.remove(current_node.item)?;
                             let item = new_descendants.iter().next().unwrap();
                             Ok((Some(NodeId::item(item)), new_descendants))
                         } else {
-                            println!(
-                                "split node {}: nice number of descendants {}",
-                                current_node.item,
-                                new_descendants.len()
-                            );
                             // otherwise we can just update our descendants
                             tmp_nodes.put(
                                 current_node.item,
@@ -569,7 +546,6 @@ impl<D: Distance> Writer<D> {
                         }
                     }
                     Node::SplitPlaneNormal(SplitPlaneNormal { normal, left, right }) => {
-                        println!("called on a splitnode {}", current_node.item);
                         // Split the to_insert into two bitmaps on the left and right of this normal
                         let mut left_ids = RoaringBitmap::new();
                         let mut right_ids = RoaringBitmap::new();
@@ -582,7 +558,6 @@ impl<D: Distance> Writer<D> {
                             };
                         }
 
-                        println!("calling update on {:?}", current_node);
                         let (new_left, left_items) = self.update_nodes_in_file(
                             frozen_reader,
                             rng,
@@ -611,13 +586,6 @@ impl<D: Distance> Writer<D> {
                         if total_items.len() <= max_descendants {
                             // TODO assert that new_left and new_right are both descendants
 
-                            println!(
-                                "split node {}: here before deleting both side",
-                                current_node.item
-                            );
-
-                            // TODO: HERE we may have created new nodes in tmp_nodes and that we can't access.
-
                             // deleting and getting the elements available in our children
                             if new_left.mode == NodeMode::Tree {
                                 tmp_nodes.remove(new_left.item)?;
@@ -625,15 +593,6 @@ impl<D: Distance> Writer<D> {
                             if new_right.mode == NodeMode::Tree {
                                 tmp_nodes.remove(new_right.item)?;
                             }
-
-                            // TODO: we should delete deleting the potential new node we crafted
-                            // self.delete_tree_in_file(frozen_reader, new_left, tmp_nodes)?;
-                            // self.delete_tree_in_file(frozen_reader, new_right, tmp_nodes)?;
-
-                            // println!(
-                            //     "merging {:?}: }\n\tand {:?}: {:?}\n\tin {:?}: {:?}",
-                            //     left, left_items, right, right_items, current_node, total_items
-                            // );
                             tmp_nodes.put(
                                 current_node.item,
                                 &Node::Descendants(Descendants {
@@ -646,10 +605,6 @@ impl<D: Distance> Writer<D> {
                         } else {
                             // if either the left or the right changed we must update ourselves inplace
                             if new_left != left || new_right != right {
-                                println!(
-                                    "split node {}: updating our left & right",
-                                    current_node.item
-                                );
                                 tmp_nodes.put(
                                     current_node.item,
                                     &Node::SplitPlaneNormal(SplitPlaneNormal {
@@ -658,8 +613,6 @@ impl<D: Distance> Writer<D> {
                                         right: new_right,
                                     }),
                                 )?;
-                            } else {
-                                println!("split node {}: nothing changed", current_node.item);
                             }
 
                             // TODO: Should we update the normals if something changed?
