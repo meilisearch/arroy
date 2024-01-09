@@ -1,3 +1,4 @@
+use std::fmt;
 use std::mem::size_of;
 
 use byteorder::{BigEndian, ByteOrder};
@@ -27,13 +28,18 @@ impl TryFrom<u8> for NodeMode {
 }
 
 /// Point to a node in the tree. Can be any kind of node.
-/// /!\ This must fit on exactly 5 bytes without padding.
-#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct NodeId {
     // Indicate what the item represent.
     pub mode: NodeMode,
     /// The item we want to get.
     pub item: ItemId,
+}
+
+impl fmt::Debug for NodeId {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{:?}({})", self.mode, self.item)
+    }
 }
 
 impl NodeId {

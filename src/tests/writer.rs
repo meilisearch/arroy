@@ -153,7 +153,7 @@ fn write_vectors_until_there_is_a_split() {
     Item 2: Leaf(Leaf { header: NodeHeaderEuclidean { bias: 0.0 }, vector: [2.0000, 2.0000, 2.0000] })
     Item 3: Leaf(Leaf { header: NodeHeaderEuclidean { bias: 0.0 }, vector: [3.0000, 3.0000, 3.0000] })
     Tree 0: Descendants(Descendants { descendants: [1, 2, 3] })
-    Tree 1: SplitPlaneNormal(SplitPlaneNormal { normal: [-0.5774, -0.5774, -0.5774], left: NodeId { mode: Tree, item: 0 }, right: NodeId { mode: Item, item: 0 } })
+    Tree 1: SplitPlaneNormal(SplitPlaneNormal { left: Tree(0), right: Item(0), normal: [-0.5774, -0.5774, -0.5774] })
     Root: Metadata { dimensions: 3, items: RoaringBitmap<[0, 1, 2, 3]>, roots: [1], distance: "euclidean" }
     updated_item_ids: RoaringBitmap<[]>
     "###);
@@ -267,10 +267,10 @@ fn overwrite_one_item_incremental() {
     Item 4: Leaf(Leaf { header: NodeHeaderEuclidean { bias: 0.0 }, vector: [4.0000, 0.0000] })
     Item 5: Leaf(Leaf { header: NodeHeaderEuclidean { bias: 0.0 }, vector: [5.0000, 0.0000] })
     Tree 0: Descendants(Descendants { descendants: [1, 3] })
-    Tree 1: SplitPlaneNormal(SplitPlaneNormal { normal: [0.0000, 0.0000], left: NodeId { mode: Tree, item: 0 }, right: NodeId { mode: Item, item: 2 } })
+    Tree 1: SplitPlaneNormal(SplitPlaneNormal { left: Tree(0), right: Item(2), normal: [0.0000, 0.0000] })
     Tree 2: Descendants(Descendants { descendants: [4, 5] })
-    Tree 3: SplitPlaneNormal(SplitPlaneNormal { normal: [0.0000, 0.0000], left: NodeId { mode: Tree, item: 1 }, right: NodeId { mode: Tree, item: 2 } })
-    Tree 4: SplitPlaneNormal(SplitPlaneNormal { normal: [1.0000, 0.0000], left: NodeId { mode: Item, item: 0 }, right: NodeId { mode: Tree, item: 3 } })
+    Tree 3: SplitPlaneNormal(SplitPlaneNormal { left: Tree(1), right: Tree(2), normal: [0.0000, 0.0000] })
+    Tree 4: SplitPlaneNormal(SplitPlaneNormal { left: Item(0), right: Tree(3), normal: [1.0000, 0.0000] })
     Root: Metadata { dimensions: 2, items: RoaringBitmap<[0, 1, 2, 3, 4, 5]>, roots: [4], distance: "euclidean" }
     updated_item_ids: RoaringBitmap<[]>
     "###);
@@ -293,10 +293,10 @@ fn overwrite_one_item_incremental() {
     Item 3: Leaf(Leaf { header: NodeHeaderEuclidean { bias: 0.0 }, vector: [6.0000, 0.0000] })
     Item 4: Leaf(Leaf { header: NodeHeaderEuclidean { bias: 0.0 }, vector: [4.0000, 0.0000] })
     Item 5: Leaf(Leaf { header: NodeHeaderEuclidean { bias: 0.0 }, vector: [5.0000, 0.0000] })
-    Tree 1: SplitPlaneNormal(SplitPlaneNormal { normal: [0.0000, 0.0000], left: NodeId { mode: Item, item: 1 }, right: NodeId { mode: Tree, item: 5 } })
+    Tree 1: SplitPlaneNormal(SplitPlaneNormal { left: Item(1), right: Tree(5), normal: [0.0000, 0.0000] })
     Tree 2: Descendants(Descendants { descendants: [4, 5] })
-    Tree 3: SplitPlaneNormal(SplitPlaneNormal { normal: [0.0000, 0.0000], left: NodeId { mode: Tree, item: 1 }, right: NodeId { mode: Tree, item: 2 } })
-    Tree 4: SplitPlaneNormal(SplitPlaneNormal { normal: [1.0000, 0.0000], left: NodeId { mode: Item, item: 0 }, right: NodeId { mode: Tree, item: 3 } })
+    Tree 3: SplitPlaneNormal(SplitPlaneNormal { left: Tree(1), right: Tree(2), normal: [0.0000, 0.0000] })
+    Tree 4: SplitPlaneNormal(SplitPlaneNormal { left: Item(0), right: Tree(3), normal: [1.0000, 0.0000] })
     Tree 5: Descendants(Descendants { descendants: [2, 3] })
     Root: Metadata { dimensions: 2, items: RoaringBitmap<[0, 1, 2, 3, 4, 5]>, roots: [4], distance: "euclidean" }
     updated_item_ids: RoaringBitmap<[]>
@@ -401,7 +401,7 @@ fn delete_one_leaf_in_a_split() {
     Item 1: Leaf(Leaf { header: NodeHeaderEuclidean { bias: 0.0 }, vector: [1.0000, 0.0000] })
     Item 2: Leaf(Leaf { header: NodeHeaderEuclidean { bias: 0.0 }, vector: [2.0000, 0.0000] })
     Tree 0: Descendants(Descendants { descendants: [1, 2] })
-    Tree 1: SplitPlaneNormal(SplitPlaneNormal { normal: [1.0000, 0.0000], left: NodeId { mode: Item, item: 0 }, right: NodeId { mode: Tree, item: 0 } })
+    Tree 1: SplitPlaneNormal(SplitPlaneNormal { left: Item(0), right: Tree(0), normal: [1.0000, 0.0000] })
     Root: Metadata { dimensions: 2, items: RoaringBitmap<[0, 1, 2]>, roots: [1], distance: "euclidean" }
     updated_item_ids: RoaringBitmap<[]>
     "###);
@@ -450,10 +450,10 @@ fn delete_one_item() {
     Item 4: Leaf(Leaf { header: NodeHeaderEuclidean { bias: 0.0 }, vector: [4.0000, 0.0000] })
     Item 5: Leaf(Leaf { header: NodeHeaderEuclidean { bias: 0.0 }, vector: [5.0000, 0.0000] })
     Tree 0: Descendants(Descendants { descendants: [1, 3] })
-    Tree 1: SplitPlaneNormal(SplitPlaneNormal { normal: [0.0000, 0.0000], left: NodeId { mode: Tree, item: 0 }, right: NodeId { mode: Item, item: 2 } })
+    Tree 1: SplitPlaneNormal(SplitPlaneNormal { left: Tree(0), right: Item(2), normal: [0.0000, 0.0000] })
     Tree 2: Descendants(Descendants { descendants: [4, 5] })
-    Tree 3: SplitPlaneNormal(SplitPlaneNormal { normal: [0.0000, 0.0000], left: NodeId { mode: Tree, item: 1 }, right: NodeId { mode: Tree, item: 2 } })
-    Tree 4: SplitPlaneNormal(SplitPlaneNormal { normal: [1.0000, 0.0000], left: NodeId { mode: Item, item: 0 }, right: NodeId { mode: Tree, item: 3 } })
+    Tree 3: SplitPlaneNormal(SplitPlaneNormal { left: Tree(1), right: Tree(2), normal: [0.0000, 0.0000] })
+    Tree 4: SplitPlaneNormal(SplitPlaneNormal { left: Item(0), right: Tree(3), normal: [1.0000, 0.0000] })
     Root: Metadata { dimensions: 2, items: RoaringBitmap<[0, 1, 2, 3, 4, 5]>, roots: [4], distance: "euclidean" }
     updated_item_ids: RoaringBitmap<[]>
     "###);
@@ -476,8 +476,8 @@ fn delete_one_item() {
     Item 5: Leaf(Leaf { header: NodeHeaderEuclidean { bias: 0.0 }, vector: [5.0000, 0.0000] })
     Tree 1: Descendants(Descendants { descendants: [1, 2] })
     Tree 2: Descendants(Descendants { descendants: [4, 5] })
-    Tree 3: SplitPlaneNormal(SplitPlaneNormal { normal: [0.0000, 0.0000], left: NodeId { mode: Tree, item: 1 }, right: NodeId { mode: Tree, item: 2 } })
-    Tree 4: SplitPlaneNormal(SplitPlaneNormal { normal: [1.0000, 0.0000], left: NodeId { mode: Item, item: 0 }, right: NodeId { mode: Tree, item: 3 } })
+    Tree 3: SplitPlaneNormal(SplitPlaneNormal { left: Tree(1), right: Tree(2), normal: [0.0000, 0.0000] })
+    Tree 4: SplitPlaneNormal(SplitPlaneNormal { left: Item(0), right: Tree(3), normal: [1.0000, 0.0000] })
     Root: Metadata { dimensions: 2, items: RoaringBitmap<[0, 1, 2, 4, 5]>, roots: [4], distance: "euclidean" }
     updated_item_ids: RoaringBitmap<[]>
     "###);
@@ -499,8 +499,8 @@ fn delete_one_item() {
     Item 4: Leaf(Leaf { header: NodeHeaderEuclidean { bias: 0.0 }, vector: [4.0000, 0.0000] })
     Item 5: Leaf(Leaf { header: NodeHeaderEuclidean { bias: 0.0 }, vector: [5.0000, 0.0000] })
     Tree 2: Descendants(Descendants { descendants: [4, 5] })
-    Tree 3: SplitPlaneNormal(SplitPlaneNormal { normal: [0.0000, 0.0000], left: NodeId { mode: Item, item: 2 }, right: NodeId { mode: Tree, item: 2 } })
-    Tree 4: SplitPlaneNormal(SplitPlaneNormal { normal: [1.0000, 0.0000], left: NodeId { mode: Item, item: 0 }, right: NodeId { mode: Tree, item: 3 } })
+    Tree 3: SplitPlaneNormal(SplitPlaneNormal { left: Item(2), right: Tree(2), normal: [0.0000, 0.0000] })
+    Tree 4: SplitPlaneNormal(SplitPlaneNormal { left: Item(0), right: Tree(3), normal: [1.0000, 0.0000] })
     Root: Metadata { dimensions: 2, items: RoaringBitmap<[0, 2, 4, 5]>, roots: [4], distance: "euclidean" }
     updated_item_ids: RoaringBitmap<[]>
     "###);
@@ -608,7 +608,7 @@ fn add_one_item_incrementally_to_create_a_split_node() {
     Item 1: Leaf(Leaf { header: NodeHeaderEuclidean { bias: 0.0 }, vector: [1.0000, 0.0000] })
     Item 2: Leaf(Leaf { header: NodeHeaderEuclidean { bias: 0.0 }, vector: [2.0000, 0.0000] })
     Tree 1: Descendants(Descendants { descendants: [1, 2] })
-    Tree 2: SplitPlaneNormal(SplitPlaneNormal { normal: [1.0000, 0.0000], left: NodeId { mode: Item, item: 0 }, right: NodeId { mode: Tree, item: 1 } })
+    Tree 2: SplitPlaneNormal(SplitPlaneNormal { left: Item(0), right: Tree(1), normal: [1.0000, 0.0000] })
     Root: Metadata { dimensions: 2, items: RoaringBitmap<[0, 1, 2]>, roots: [2], distance: "euclidean" }
     updated_item_ids: RoaringBitmap<[]>
     "###);
@@ -637,10 +637,10 @@ fn add_one_item_incrementally() {
     Item 4: Leaf(Leaf { header: NodeHeaderEuclidean { bias: 0.0 }, vector: [4.0000, 0.0000] })
     Item 5: Leaf(Leaf { header: NodeHeaderEuclidean { bias: 0.0 }, vector: [5.0000, 0.0000] })
     Tree 0: Descendants(Descendants { descendants: [1, 3] })
-    Tree 1: SplitPlaneNormal(SplitPlaneNormal { normal: [0.0000, 0.0000], left: NodeId { mode: Tree, item: 0 }, right: NodeId { mode: Item, item: 2 } })
+    Tree 1: SplitPlaneNormal(SplitPlaneNormal { left: Tree(0), right: Item(2), normal: [0.0000, 0.0000] })
     Tree 2: Descendants(Descendants { descendants: [4, 5] })
-    Tree 3: SplitPlaneNormal(SplitPlaneNormal { normal: [0.0000, 0.0000], left: NodeId { mode: Tree, item: 1 }, right: NodeId { mode: Tree, item: 2 } })
-    Tree 4: SplitPlaneNormal(SplitPlaneNormal { normal: [1.0000, 0.0000], left: NodeId { mode: Item, item: 0 }, right: NodeId { mode: Tree, item: 3 } })
+    Tree 3: SplitPlaneNormal(SplitPlaneNormal { left: Tree(1), right: Tree(2), normal: [0.0000, 0.0000] })
+    Tree 4: SplitPlaneNormal(SplitPlaneNormal { left: Item(0), right: Tree(3), normal: [1.0000, 0.0000] })
     Root: Metadata { dimensions: 2, items: RoaringBitmap<[0, 1, 2, 3, 4, 5]>, roots: [4], distance: "euclidean" }
     updated_item_ids: RoaringBitmap<[]>
     "###);
@@ -664,10 +664,10 @@ fn add_one_item_incrementally() {
     Item 5: Leaf(Leaf { header: NodeHeaderEuclidean { bias: 0.0 }, vector: [5.0000, 0.0000] })
     Item 25: Leaf(Leaf { header: NodeHeaderEuclidean { bias: 0.0 }, vector: [25.0000, 0.0000] })
     Tree 0: Descendants(Descendants { descendants: [1, 3] })
-    Tree 1: SplitPlaneNormal(SplitPlaneNormal { normal: [0.0000, 0.0000], left: NodeId { mode: Tree, item: 0 }, right: NodeId { mode: Tree, item: 5 } })
+    Tree 1: SplitPlaneNormal(SplitPlaneNormal { left: Tree(0), right: Tree(5), normal: [0.0000, 0.0000] })
     Tree 2: Descendants(Descendants { descendants: [4, 5] })
-    Tree 3: SplitPlaneNormal(SplitPlaneNormal { normal: [0.0000, 0.0000], left: NodeId { mode: Tree, item: 1 }, right: NodeId { mode: Tree, item: 2 } })
-    Tree 4: SplitPlaneNormal(SplitPlaneNormal { normal: [1.0000, 0.0000], left: NodeId { mode: Item, item: 0 }, right: NodeId { mode: Tree, item: 3 } })
+    Tree 3: SplitPlaneNormal(SplitPlaneNormal { left: Tree(1), right: Tree(2), normal: [0.0000, 0.0000] })
+    Tree 4: SplitPlaneNormal(SplitPlaneNormal { left: Item(0), right: Tree(3), normal: [1.0000, 0.0000] })
     Tree 5: Descendants(Descendants { descendants: [2, 25] })
     Root: Metadata { dimensions: 2, items: RoaringBitmap<[0, 1, 2, 3, 4, 5, 25]>, roots: [4], distance: "euclidean" }
     updated_item_ids: RoaringBitmap<[]>
@@ -693,12 +693,12 @@ fn add_one_item_incrementally() {
     Item 8: Leaf(Leaf { header: NodeHeaderEuclidean { bias: 0.0 }, vector: [8.0000, 0.0000] })
     Item 25: Leaf(Leaf { header: NodeHeaderEuclidean { bias: 0.0 }, vector: [25.0000, 0.0000] })
     Tree 0: Descendants(Descendants { descendants: [1, 3] })
-    Tree 1: SplitPlaneNormal(SplitPlaneNormal { normal: [0.0000, 0.0000], left: NodeId { mode: Tree, item: 0 }, right: NodeId { mode: Tree, item: 7 } })
+    Tree 1: SplitPlaneNormal(SplitPlaneNormal { left: Tree(0), right: Tree(7), normal: [0.0000, 0.0000] })
     Tree 2: Descendants(Descendants { descendants: [4, 5] })
-    Tree 3: SplitPlaneNormal(SplitPlaneNormal { normal: [0.0000, 0.0000], left: NodeId { mode: Tree, item: 1 }, right: NodeId { mode: Tree, item: 2 } })
-    Tree 4: SplitPlaneNormal(SplitPlaneNormal { normal: [1.0000, 0.0000], left: NodeId { mode: Item, item: 0 }, right: NodeId { mode: Tree, item: 3 } })
+    Tree 3: SplitPlaneNormal(SplitPlaneNormal { left: Tree(1), right: Tree(2), normal: [0.0000, 0.0000] })
+    Tree 4: SplitPlaneNormal(SplitPlaneNormal { left: Item(0), right: Tree(3), normal: [1.0000, 0.0000] })
     Tree 6: Descendants(Descendants { descendants: [8, 25] })
-    Tree 7: SplitPlaneNormal(SplitPlaneNormal { normal: [0.0000, 0.0000], left: NodeId { mode: Tree, item: 6 }, right: NodeId { mode: Item, item: 2 } })
+    Tree 7: SplitPlaneNormal(SplitPlaneNormal { left: Tree(6), right: Item(2), normal: [0.0000, 0.0000] })
     Root: Metadata { dimensions: 2, items: RoaringBitmap<[0, 1, 2, 3, 4, 5, 8, 25]>, roots: [4], distance: "euclidean" }
     updated_item_ids: RoaringBitmap<[]>
     "###);
