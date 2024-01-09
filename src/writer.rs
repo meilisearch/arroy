@@ -227,6 +227,12 @@ impl<D: Distance> Writer<D> {
             .unwrap_or_default())
     }
 
+    // we simplify the max descendants (_K) thing by considering
+    // that we can fit as much descendants as the number of dimensions
+    fn fit_in_descendant(&self, n: u64) -> bool {
+        n <= self.dimensions as u64
+    }
+
     /// Generates a forest of `n_trees` trees.
     ///
     /// More trees give higher precision when querying at the cost of more disk usage.
@@ -254,7 +260,7 @@ impl<D: Distance> Writer<D> {
         let item_indices = self.item_indices(wtxn)?;
         let n_items = item_indices.len();
 
-        if item_indices.len() < self.dimensions as u64 {
+        if self.fit_in_descendant(item_indices.len()) {
             log::debug!("We can fit every elements in a single descendant node, we can skip all the build process");
             // No item left in the index, we can clear every tree
 
@@ -295,9 +301,9 @@ impl<D: Distance> Writer<D> {
                 &Key::metadata(self.index),
                 &metadata,
             )?;
+
             return Ok(());
         }
-        // In the very special case where we know in advance that we only need to create ONE descendant node or less we can skip everything and stop right there.
 
         let updated_items = self
             .database
@@ -321,8 +327,6 @@ impl<D: Distance> Writer<D> {
         let frozzen_reader = FrozzenReader {
             leafs: &ImmutableLeafs::new(wtxn, self.database, self.index)?,
             trees: &ImmutableTrees::new(wtxn, self.database, self.index)?,
-            dimensions: self.dimensions,
-            n_items,
             // The globally incrementing node ids that are shared between threads.
             concurrent_node_ids: &concurrent_node_ids,
         };
@@ -358,18 +362,20 @@ impl<D: Distance> Writer<D> {
             self.build_trees(rng, n_trees_to_build, &item_indices, &frozzen_reader)?;
         nodes_to_write.append(&mut tmp_nodes);
 
-        log::debug!("started deleting the tree nodes of {} trees...", tmp_nodes.len());
+        log::debug!("started updating the tree nodes of {} trees...", tmp_nodes.len());
         for (i, tmp_node) in nodes_to_write.iter().enumerate() {
-            log::debug!("started writing the {} tree nodes of the {i}nth trees...", tmp_node.len());
+            log::debug!(
+                "started deleting the {} tree nodes of the {i}nth trees...",
+                tmp_node.len()
+            );
             for item_id in tmp_node.to_delete() {
                 let key = Key::tree(self.index, item_id);
                 self.database.remap_data_type::<Bytes>().delete(wtxn, &key)?;
             }
-        }
-
-        log::debug!("started writing the tree nodes of {} trees...", tmp_nodes.len());
-        for (i, tmp_node) in nodes_to_write.iter().enumerate() {
-            log::debug!("started writing the {} tree nodes of the {i}nth trees...", tmp_node.len());
+            log::debug!(
+                "started inserting the {} tree nodes of the {i}nth trees...",
+                tmp_node.len()
+            );
             for (item_id, item_bytes) in tmp_node.to_insert() {
                 let key = Key::tree(self.index, item_id);
                 self.database.remap_data_type::<Bytes>().put(wtxn, &key, item_bytes)?;
@@ -378,7 +384,7 @@ impl<D: Distance> Writer<D> {
 
         if thread_roots.is_empty() {
             // we may have too many nodes
-            log::debug!("Deleting the extraneous trees...");
+            log::debug!("Deleting the extraneous trees if there is some...");
             self.delete_extra_trees(
                 wtxn,
                 &mut roots,
@@ -477,7 +483,7 @@ impl<D: Distance> Writer<D> {
                     } else {
                         Ok((NodeId::item(item_id), new_items))
                     }
-                } else if new_items.len() < frozen_reader.dimensions as u64 {
+                } else if self.fit_in_descendant(new_items.len()) {
                     let node_id = frozen_reader.concurrent_node_ids.next();
                     let node_id = NodeId::tree(node_id as u32);
                     tmp_nodes.put(
@@ -489,7 +495,7 @@ impl<D: Distance> Writer<D> {
                     Ok((node_id, new_items))
                 } else {
                     let new_id =
-                        make_tree_in_file(frozen_reader, rng, &new_items, false, tmp_nodes)?;
+                        self.make_tree_in_file(frozen_reader, rng, &new_items, tmp_nodes)?;
 
                     return Ok((new_id, new_items));
                 }
@@ -508,13 +514,13 @@ impl<D: Distance> Writer<D> {
                         if descendants.as_ref() == &new_descendants {
                             // if nothing changed, do nothing
                             Ok((current_node, descendants.into_owned()))
-                        } else if new_descendants.len() > frozen_reader.dimensions as u64 {
+                        } else if !self.fit_in_descendant(new_descendants.len()) {
+                            // if it doesn't fit in one descendent we need to craft a new whole subtree
                             tmp_nodes.remove_from_db(current_node.item);
-                            let new_id = make_tree_in_file(
+                            let new_id = self.make_tree_in_file(
                                 frozen_reader,
                                 rng,
                                 &new_descendants,
-                                false,
                                 tmp_nodes,
                             )?;
 
@@ -565,9 +571,8 @@ impl<D: Distance> Writer<D> {
                         )?;
 
                         let total_items = left_items | right_items;
-                        let max_descendants = self.dimensions as u64;
 
-                        if total_items.len() <= max_descendants {
+                        if self.fit_in_descendant(total_items.len()) {
                             // Since we're shrinking we KNOW that new_left and new_right are descendants
                             // thus we can delete them directly knowing there is no sub-tree to look at.
 
@@ -645,12 +650,83 @@ impl<D: Distance> Writer<D> {
                     None => TmpNodes::new()?,
                 };
                 let root_id =
-                    make_tree_in_file(frozen_reader, &mut rng, item_indices, true, &mut tmp_nodes)?;
+                    self.make_tree_in_file(frozen_reader, &mut rng, item_indices, &mut tmp_nodes)?;
+                assert!(
+                    root_id.mode != NodeMode::Item,
+                    "make_tree_in_file returned an item even though there was more than a single element"
+                );
                 log::debug!("finished generating tree {i:X}");
                 // make_tree will NEVER return a leaf when called as root
                 Ok((root_id.unwrap_tree(), tmp_nodes.into_bytes_reader()?))
             })
             .collect()
+    }
+
+    /// Creates a tree of nodes from the frozzen items that lives
+    /// in the database and generates descendants, split normal
+    /// and root nodes in files that will be stored in the database later.
+    fn make_tree_in_file<R: Rng>(
+        &self,
+        reader: &FrozzenReader<D>,
+        rng: &mut R,
+        item_indices: &RoaringBitmap,
+        tmp_nodes: &mut TmpNodes<NodeCodec<D>>,
+    ) -> Result<NodeId> {
+        if item_indices.len() == 1 {
+            return Ok(NodeId::item(item_indices.min().unwrap()));
+        }
+
+        if self.fit_in_descendant(item_indices.len()) {
+            let item_id = reader.concurrent_node_ids.next().try_into().unwrap();
+            let item = Node::Descendants(Descendants { descendants: Cow::Borrowed(item_indices) });
+            tmp_nodes.put(item_id, &item)?;
+            return Ok(NodeId::tree(item_id));
+        }
+
+        let children = ImmutableSubsetLeafs::from_item_ids(reader.leafs, item_indices);
+        let mut children_left = RoaringBitmap::new();
+        let mut children_right = RoaringBitmap::new();
+        let mut remaining_attempts = 3;
+
+        let mut normal = loop {
+            children_left.clear();
+            children_right.clear();
+
+            let normal = D::create_split(&children, rng)?;
+            for item_id in item_indices.iter() {
+                let node = children.get(item_id)?.unwrap();
+                match D::side(UnalignedF32Slice::from_slice(&normal), &node, rng) {
+                    Side::Left => children_left.push(item_id),
+                    Side::Right => children_right.push(item_id),
+                };
+            }
+
+            if split_imbalance(children_left.len(), children_right.len()) < 0.95
+                || remaining_attempts == 0
+            {
+                break normal;
+            }
+
+            remaining_attempts -= 1;
+        };
+
+        // If we didn't find a hyperplane, just randomize sides as a last option
+        // and set the split plane to zero as a dummy plane.
+        if split_imbalance(children_left.len(), children_right.len()) > 0.99 {
+            randomly_split_children(rng, item_indices, &mut children_left, &mut children_right);
+            normal.fill(0.0);
+        }
+
+        let normal = SplitPlaneNormal {
+            normal: Cow::Owned(normal),
+            left: self.make_tree_in_file(reader, rng, &children_left, tmp_nodes)?,
+            right: self.make_tree_in_file(reader, rng, &children_right, tmp_nodes)?,
+        };
+
+        let new_node_id = reader.concurrent_node_ids.next().try_into().unwrap();
+        tmp_nodes.put(new_node_id, &Node::SplitPlaneNormal(normal))?;
+
+        Ok(NodeId::tree(new_node_id))
     }
 
     /// Delete any extraneous trees.
@@ -729,82 +805,7 @@ impl<D: Distance> Writer<D> {
 struct FrozzenReader<'a, D: Distance> {
     leafs: &'a ImmutableLeafs<'a, D>,
     trees: &'a ImmutableTrees<'a, D>,
-    dimensions: usize,
-    n_items: u64,
     concurrent_node_ids: &'a ConcurrentNodeIds,
-}
-
-/// Creates a tree of nodes from the frozzen items that lives
-/// in the database and generates descendants, split normal
-/// and root nodes in files that will be stored in the database later.
-fn make_tree_in_file<D: Distance, R: Rng>(
-    reader: &FrozzenReader<D>,
-    rng: &mut R,
-    item_indices: &RoaringBitmap,
-    is_root: bool,
-    tmp_nodes: &mut TmpNodes<NodeCodec<D>>,
-) -> Result<NodeId> {
-    // we simplify the max descendants (_K) thing by considering
-    // that we can fit as much descendants as the number of dimensions
-    let max_descendants = reader.dimensions as u64;
-
-    if item_indices.len() == 1 && !is_root {
-        return Ok(NodeId::item(item_indices.min().unwrap()));
-    }
-
-    if item_indices.len() <= max_descendants
-        && (!is_root || reader.n_items <= max_descendants || item_indices.len() == 1)
-    {
-        let item_id = reader.concurrent_node_ids.next().try_into().unwrap();
-        let item = Node::Descendants(Descendants { descendants: Cow::Borrowed(item_indices) });
-        tmp_nodes.put(item_id, &item)?;
-        return Ok(NodeId::tree(item_id));
-    }
-
-    let children = ImmutableSubsetLeafs::from_item_ids(reader.leafs, item_indices);
-    let mut children_left = RoaringBitmap::new();
-    let mut children_right = RoaringBitmap::new();
-    let mut remaining_attempts = 3;
-
-    let mut normal = loop {
-        children_left.clear();
-        children_right.clear();
-
-        let normal = D::create_split(&children, rng)?;
-        for item_id in item_indices.iter() {
-            let node = children.get(item_id)?.unwrap();
-            match D::side(UnalignedF32Slice::from_slice(&normal), &node, rng) {
-                Side::Left => children_left.push(item_id),
-                Side::Right => children_right.push(item_id),
-            };
-        }
-
-        if split_imbalance(children_left.len(), children_right.len()) < 0.95
-            || remaining_attempts == 0
-        {
-            break normal;
-        }
-
-        remaining_attempts -= 1;
-    };
-
-    // If we didn't find a hyperplane, just randomize sides as a last option
-    // and set the split plane to zero as a dummy plane.
-    if split_imbalance(children_left.len(), children_right.len()) > 0.99 {
-        randomly_split_children(rng, item_indices, &mut children_left, &mut children_right);
-        normal.fill(0.0);
-    }
-
-    let normal = SplitPlaneNormal {
-        normal: Cow::Owned(normal),
-        left: make_tree_in_file(reader, rng, &children_left, false, tmp_nodes)?,
-        right: make_tree_in_file(reader, rng, &children_right, false, tmp_nodes)?,
-    };
-
-    let new_node_id = reader.concurrent_node_ids.next().try_into().unwrap();
-    tmp_nodes.put(new_node_id, &Node::SplitPlaneNormal(normal))?;
-
-    Ok(NodeId::tree(new_node_id))
 }
 
 /// Randomly and efficiently splits the items into the left and right children vectors.

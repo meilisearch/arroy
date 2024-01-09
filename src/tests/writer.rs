@@ -430,8 +430,8 @@ fn delete_one_leaf_in_a_split() {
     Dumping index 0
     Item 1: Leaf(Leaf { header: NodeHeaderEuclidean { bias: 0.0 }, vector: [1.0000, 0.0000] })
     Item 2: Leaf(Leaf { header: NodeHeaderEuclidean { bias: 0.0 }, vector: [2.0000, 0.0000] })
-    Tree 1: Descendants(Descendants { descendants: [1, 2] })
-    Root: Metadata { dimensions: 2, items: RoaringBitmap<[1, 2]>, roots: [1], distance: "euclidean" }
+    Tree 0: Descendants(Descendants { descendants: [1, 2] })
+    Root: Metadata { dimensions: 2, items: RoaringBitmap<[1, 2]>, roots: [0], distance: "euclidean" }
     updated_item_ids: RoaringBitmap<[]>
     "###);
 }
@@ -721,10 +721,10 @@ fn delete_extraneous_tree() {
 
     let mut wtxn = handle.env.write_txn().unwrap();
     let writer = Writer::new(handle.database, 0, 4).unwrap();
-    for i in 0..4 {
+    for i in 0..5 {
         writer.add_item(&mut wtxn, i, &[i as f32, 0., 0., 0.]).unwrap();
     }
-    // 4 nodes of 4 dimensions should create 3 trees by default.
+    // 5 nodes of 4 dimensions should create 3 trees by default.
     writer.build(&mut wtxn, &mut rng, None).unwrap();
     wtxn.commit().unwrap();
 
@@ -735,11 +735,14 @@ fn delete_extraneous_tree() {
     Item 1: Leaf(Leaf { header: NodeHeaderEuclidean { bias: 0.0 }, vector: [1.0000, 0.0000, 0.0000, 0.0000] })
     Item 2: Leaf(Leaf { header: NodeHeaderEuclidean { bias: 0.0 }, vector: [2.0000, 0.0000, 0.0000, 0.0000] })
     Item 3: Leaf(Leaf { header: NodeHeaderEuclidean { bias: 0.0 }, vector: [3.0000, 0.0000, 0.0000, 0.0000] })
-    Tree 0: Descendants(Descendants { descendants: [0, 1, 2, 3] })
-    Tree 1: Descendants(Descendants { descendants: [0, 1, 2, 3] })
-    Tree 2: Descendants(Descendants { descendants: [0, 1, 2, 3] })
-    Tree 3: Descendants(Descendants { descendants: [0, 1, 2, 3] })
-    Root: Metadata { dimensions: 4, items: RoaringBitmap<[0, 1, 2, 3]>, roots: [0, 1, 2, 3], distance: "euclidean" }
+    Item 4: Leaf(Leaf { header: NodeHeaderEuclidean { bias: 0.0 }, vector: [4.0000, 0.0000, 0.0000, 0.0000] })
+    Tree 0: Descendants(Descendants { descendants: [1, 2, 3, 4] })
+    Tree 1: SplitPlaneNormal(SplitPlaneNormal { left: Item(0), right: Tree(0), normal: [1.0000, 0.0000, 0.0000, 0.0000] })
+    Tree 2: Descendants(Descendants { descendants: [1, 2, 3, 4] })
+    Tree 3: SplitPlaneNormal(SplitPlaneNormal { left: Tree(2), right: Item(0), normal: [-1.0000, 0.0000, 0.0000, 0.0000] })
+    Tree 4: Descendants(Descendants { descendants: [1, 2, 3, 4] })
+    Tree 5: SplitPlaneNormal(SplitPlaneNormal { left: Tree(4), right: Item(0), normal: [-1.0000, 0.0000, 0.0000, 0.0000] })
+    Root: Metadata { dimensions: 4, items: RoaringBitmap<[0, 1, 2, 3, 4]>, roots: [1, 3, 5], distance: "euclidean" }
     updated_item_ids: RoaringBitmap<[]>
     "###);
 
@@ -755,9 +758,12 @@ fn delete_extraneous_tree() {
     Item 1: Leaf(Leaf { header: NodeHeaderEuclidean { bias: 0.0 }, vector: [1.0000, 0.0000, 0.0000, 0.0000] })
     Item 2: Leaf(Leaf { header: NodeHeaderEuclidean { bias: 0.0 }, vector: [2.0000, 0.0000, 0.0000, 0.0000] })
     Item 3: Leaf(Leaf { header: NodeHeaderEuclidean { bias: 0.0 }, vector: [3.0000, 0.0000, 0.0000, 0.0000] })
-    Tree 2: Descendants(Descendants { descendants: [0, 1, 2, 3] })
-    Tree 3: Descendants(Descendants { descendants: [0, 1, 2, 3] })
-    Root: Metadata { dimensions: 2, items: RoaringBitmap<[0, 1, 2, 3]>, roots: [2, 3], distance: "euclidean" }
+    Item 4: Leaf(Leaf { header: NodeHeaderEuclidean { bias: 0.0 }, vector: [4.0000, 0.0000, 0.0000, 0.0000] })
+    Tree 2: Descendants(Descendants { descendants: [1, 2, 3, 4] })
+    Tree 3: SplitPlaneNormal(SplitPlaneNormal { left: Tree(2), right: Item(0), normal: [-1.0000, 0.0000, 0.0000, 0.0000] })
+    Tree 4: Descendants(Descendants { descendants: [1, 2, 3, 4] })
+    Tree 5: SplitPlaneNormal(SplitPlaneNormal { left: Tree(4), right: Item(0), normal: [-1.0000, 0.0000, 0.0000, 0.0000] })
+    Root: Metadata { dimensions: 2, items: RoaringBitmap<[0, 1, 2, 3, 4]>, roots: [3, 5], distance: "euclidean" }
     updated_item_ids: RoaringBitmap<[]>
     "###);
 
@@ -773,8 +779,10 @@ fn delete_extraneous_tree() {
     Item 1: Leaf(Leaf { header: NodeHeaderEuclidean { bias: 0.0 }, vector: [1.0000, 0.0000, 0.0000, 0.0000] })
     Item 2: Leaf(Leaf { header: NodeHeaderEuclidean { bias: 0.0 }, vector: [2.0000, 0.0000, 0.0000, 0.0000] })
     Item 3: Leaf(Leaf { header: NodeHeaderEuclidean { bias: 0.0 }, vector: [3.0000, 0.0000, 0.0000, 0.0000] })
-    Tree 3: Descendants(Descendants { descendants: [0, 1, 2, 3] })
-    Root: Metadata { dimensions: 2, items: RoaringBitmap<[0, 1, 2, 3]>, roots: [3], distance: "euclidean" }
+    Item 4: Leaf(Leaf { header: NodeHeaderEuclidean { bias: 0.0 }, vector: [4.0000, 0.0000, 0.0000, 0.0000] })
+    Tree 4: Descendants(Descendants { descendants: [1, 2, 3, 4] })
+    Tree 5: SplitPlaneNormal(SplitPlaneNormal { left: Tree(4), right: Item(0), normal: [-1.0000, 0.0000, 0.0000, 0.0000] })
+    Root: Metadata { dimensions: 2, items: RoaringBitmap<[0, 1, 2, 3, 4]>, roots: [5], distance: "euclidean" }
     updated_item_ids: RoaringBitmap<[]>
     "###);
 }
