@@ -571,8 +571,6 @@ impl<D: Distance> Writer<D> {
                         let total_items = left_items | right_items;
                         let max_descendants = self.dimensions as u64;
 
-                        dbg!(&total_items);
-                        dbg!(max_descendants);
                         if total_items.len() <= max_descendants {
                             // TODO assert that new_left and new_right are both descendants
 
