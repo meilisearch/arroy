@@ -253,6 +253,53 @@ impl<D: Distance> Writer<D> {
 
         let item_indices = self.item_indices(wtxn)?;
         let n_items = item_indices.len();
+
+        if item_indices.len() < self.dimensions as u64 {
+            log::debug!("We can fit every elements in a single descendant node, we can skip all the build process");
+            // No item left in the index, we can clear every tree
+
+            self.database.remap_data_type::<Bytes>().delete_range(
+                wtxn,
+                &(Key::tree(self.index, 0)..=Key::tree(self.index, ItemId::MAX)),
+            )?;
+
+            let mut roots = Vec::new();
+
+            if item_indices.len() > 0 {
+                // if we have more than 0 elements we need to create a descendant node
+
+                self.database.put(
+                    wtxn,
+                    &Key::tree(self.index, 0),
+                    &Node::Descendants(Descendants { descendants: Cow::Borrowed(&item_indices) }),
+                )?;
+                roots.push(0);
+            }
+
+            log::debug!("reset the updated items...");
+            self.database.remap_data_type::<RoaringBitmapCodec>().put(
+                wtxn,
+                &Key::updated(self.index),
+                &RoaringBitmap::new(),
+            )?;
+
+            log::debug!("write the metadata...");
+            let metadata = Metadata {
+                dimensions: self.dimensions.try_into().unwrap(),
+                items: item_indices,
+                roots: ItemIds::from_slice(&roots),
+                distance: D::name(),
+            };
+
+            self.database.remap_data_type::<MetadataCodec>().put(
+                wtxn,
+                &Key::metadata(self.index),
+                &metadata,
+            )?;
+            return Ok(());
+        }
+        // In the very special case where we know in advance that we only need to create ONE descendant node or less we can skip everything and stop right there.
+
         let updated_items = self
             .database
             .remap_data_type::<RoaringBitmapCodec>()
@@ -297,9 +344,10 @@ impl<D: Distance> Writer<D> {
             // NOTE: We should probably keep a list of the updated tree nodes alongside a list
             //       of all existing tree node IDs. This way we can keep track of the tree nodes
             //       in which we need to delete the deleted items.
-            let mut tmp_nodes_reader =
+            let (new_roots, mut tmp_nodes_reader) =
                 self.update_trees(rng, metadata, &to_insert, &to_delete, &frozzen_reader)?;
             nodes_to_write.append(&mut tmp_nodes_reader);
+            roots = new_roots;
 
             // todo!("{:?}", updated_items);
         }
@@ -361,7 +409,6 @@ impl<D: Distance> Writer<D> {
         )?;
 
         log::debug!("write the metadata...");
-
         let metadata = Metadata {
             dimensions: self.dimensions.try_into().unwrap(),
             items: item_indices,
@@ -385,7 +432,7 @@ impl<D: Distance> Writer<D> {
         to_insert: &RoaringBitmap,
         to_delete: &RoaringBitmap,
         frozen_reader: &FrozzenReader<D>,
-    ) -> Result<Vec<TmpNodesReader>> {
+    ) -> Result<(Vec<ItemId>, Vec<TmpNodesReader>)> {
         let roots: Vec<_> = metadata.roots.iter().collect();
         println!("must insert: {to_insert:?}");
         println!("must delete: {to_delete:?}");
@@ -399,18 +446,20 @@ impl<D: Distance> Writer<D> {
                     Some(path) => TmpNodes::new_in(path)?,
                     None => TmpNodes::new()?,
                 };
-                /// TODO: if the returned value contains a node id we must update our root node for this tree
-                self.update_nodes_in_file(
+                let root_node = NodeId::tree(root);
+                let (node_id, _items) = self.update_nodes_in_file(
                     frozen_reader,
                     &mut rng,
-                    NodeId::tree(root),
+                    root_node,
                     to_insert,
                     to_delete,
                     &mut tmp_nodes,
                 )?;
-                log::debug!("finished generating tree {root:X}");
-                // make_tree will NEVER return a leaf when called as root
-                tmp_nodes.into_bytes_reader()
+                let node_id = node_id.unwrap_or(root_node);
+                assert!(node_id.mode != NodeMode::Item, "update_nodes_in_file returned an item even though there was more than a single element");
+
+                log::debug!("finished updating tree {root:X}");
+                Ok((node_id.unwrap_tree(), tmp_nodes.into_bytes_reader()?))
             })
             .collect()
     }

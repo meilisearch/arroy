@@ -255,7 +255,7 @@ fn write_random_vectors_to_random_indexes() {
 }
 
 #[test]
-fn overwrite_one_document_incremental() {
+fn overwrite_one_item_incremental() {
     let handle = create_database::<Euclidean>();
     let mut rng = rng();
     let mut wtxn = handle.env.write_txn().unwrap();
@@ -282,7 +282,7 @@ fn overwrite_one_document_incremental() {
     Tree 3: SplitPlaneNormal(SplitPlaneNormal { normal: [0.0000, 0.0000], left: NodeId { mode: Tree, item: 1 }, right: NodeId { mode: Tree, item: 2 } })
     Tree 4: SplitPlaneNormal(SplitPlaneNormal { normal: [1.0000, 0.0000], left: NodeId { mode: Item, item: 0 }, right: NodeId { mode: Tree, item: 3 } })
     Root: Metadata { dimensions: 2, items: RoaringBitmap<[0, 1, 2, 3, 4, 5]>, roots: [4], distance: "euclidean" }
-    item_ids: RoaringBitmap<[0, 1, 2, 3, 4, 5]>
+    updated_item_ids: RoaringBitmap<[]>
     "###);
 
     let mut wtxn = handle.env.write_txn().unwrap();
@@ -303,13 +303,13 @@ fn overwrite_one_document_incremental() {
     Item 3: Leaf(Leaf { header: NodeHeaderEuclidean { bias: 0.0 }, vector: [6.0000, 0.0000] })
     Item 4: Leaf(Leaf { header: NodeHeaderEuclidean { bias: 0.0 }, vector: [4.0000, 0.0000] })
     Item 5: Leaf(Leaf { header: NodeHeaderEuclidean { bias: 0.0 }, vector: [5.0000, 0.0000] })
-    Tree 0: Descendants(Descendants { descendants: [1, 3] })
-    Tree 1: SplitPlaneNormal(SplitPlaneNormal { normal: [0.0000, 0.0000], left: NodeId { mode: Tree, item: 0 }, right: NodeId { mode: Item, item: 2 } })
+    Tree 1: SplitPlaneNormal(SplitPlaneNormal { normal: [0.0000, 0.0000], left: NodeId { mode: Item, item: 1 }, right: NodeId { mode: Tree, item: 5 } })
     Tree 2: Descendants(Descendants { descendants: [4, 5] })
     Tree 3: SplitPlaneNormal(SplitPlaneNormal { normal: [0.0000, 0.0000], left: NodeId { mode: Tree, item: 1 }, right: NodeId { mode: Tree, item: 2 } })
     Tree 4: SplitPlaneNormal(SplitPlaneNormal { normal: [1.0000, 0.0000], left: NodeId { mode: Item, item: 0 }, right: NodeId { mode: Tree, item: 3 } })
+    Tree 5: Descendants(Descendants { descendants: [2, 3] })
     Root: Metadata { dimensions: 2, items: RoaringBitmap<[0, 1, 2, 3, 4, 5]>, roots: [4], distance: "euclidean" }
-    item_ids: RoaringBitmap<[0, 1, 2, 3, 4, 5]>
+    updated_item_ids: RoaringBitmap<[]>
     "###);
 }
 
@@ -344,8 +344,7 @@ fn delete_one_item_in_a_one_item_db() {
     insta::assert_display_snapshot!(handle, @r###"
     ==================
     Dumping index 0
-    Tree 0: Descendants(Descendants { descendants: [] })
-    Root: Metadata { dimensions: 2, items: RoaringBitmap<[]>, roots: [0], distance: "euclidean" }
+    Root: Metadata { dimensions: 2, items: RoaringBitmap<[]>, roots: [], distance: "euclidean" }
     updated_item_ids: RoaringBitmap<[]>
     "###);
 }
