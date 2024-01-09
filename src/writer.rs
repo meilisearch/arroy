@@ -442,7 +442,6 @@ impl<D: Distance> Writer<D> {
                     to_delete,
                     &mut tmp_nodes,
                 )?;
-                let node_id = node_id.unwrap_or(root_node);
                 assert!(node_id.mode != NodeMode::Item, "update_nodes_in_file returned an item even though there was more than a single element");
 
                 log::debug!("finished updating tree {root:X}");
@@ -463,7 +462,7 @@ impl<D: Distance> Writer<D> {
         to_insert: &RoaringBitmap,
         to_delete: &RoaringBitmap,
         tmp_nodes: &mut TmpNodes<NodeCodec<D>>,
-    ) -> Result<(Option<NodeId>, RoaringBitmap)> {
+    ) -> Result<(NodeId, RoaringBitmap)> {
         match current_node.mode {
             NodeMode::Item => {
                 // We were called on a specific item, we should create a descendants node
@@ -474,9 +473,9 @@ impl<D: Distance> Writer<D> {
                 if new_items.len() == 1 {
                     let item_id = new_items.iter().next().unwrap();
                     if item_id == current_node.item {
-                        Ok((None, new_items))
+                        Ok((current_node, new_items))
                     } else {
-                        Ok((Some(NodeId::item(item_id)), new_items))
+                        Ok((NodeId::item(item_id), new_items))
                     }
                 } else if new_items.len() < frozen_reader.dimensions as u64 {
                     let node_id = frozen_reader.concurrent_node_ids.next();
@@ -487,12 +486,12 @@ impl<D: Distance> Writer<D> {
                             descendants: Cow::Owned(new_items.clone()),
                         }),
                     )?;
-                    Ok((Some(node_id), new_items))
+                    Ok((node_id, new_items))
                 } else {
                     let new_id =
                         make_tree_in_file(frozen_reader, rng, &new_items, false, tmp_nodes)?;
 
-                    return Ok((Some(new_id), new_items));
+                    return Ok((new_id, new_items));
                 }
             }
             NodeMode::Tree => {
@@ -508,9 +507,9 @@ impl<D: Distance> Writer<D> {
 
                         if descendants.as_ref() == &new_descendants {
                             // if nothing changed, do nothing
-                            Ok((None, descendants.into_owned()))
+                            Ok((current_node, descendants.into_owned()))
                         } else if new_descendants.len() > frozen_reader.dimensions as u64 {
-                            tmp_nodes.remove(current_node.item)?;
+                            tmp_nodes.remove_from_db(current_node.item);
                             let new_id = make_tree_in_file(
                                 frozen_reader,
                                 rng,
@@ -519,11 +518,11 @@ impl<D: Distance> Writer<D> {
                                 tmp_nodes,
                             )?;
 
-                            Ok((Some(new_id), new_descendants))
+                            Ok((new_id, new_descendants))
                         } else if new_descendants.len() == 1 {
-                            tmp_nodes.remove(current_node.item)?;
+                            tmp_nodes.remove_from_db(current_node.item);
                             let item = new_descendants.iter().next().unwrap();
-                            Ok((Some(NodeId::item(item)), new_descendants))
+                            Ok((NodeId::item(item), new_descendants))
                         } else {
                             // otherwise we can just update our descendants
                             tmp_nodes.put(
@@ -532,7 +531,7 @@ impl<D: Distance> Writer<D> {
                                     descendants: Cow::Owned(new_descendants.clone()),
                                 }),
                             )?;
-                            Ok((None, new_descendants))
+                            Ok((current_node, new_descendants))
                         }
                     }
                     Node::SplitPlaneNormal(SplitPlaneNormal { normal, left, right }) => {
@@ -565,21 +564,27 @@ impl<D: Distance> Writer<D> {
                             tmp_nodes,
                         )?;
 
-                        let new_left = new_left.unwrap_or(left);
-                        let new_right = new_right.unwrap_or(right);
-
                         let total_items = left_items | right_items;
                         let max_descendants = self.dimensions as u64;
 
                         if total_items.len() <= max_descendants {
-                            // TODO assert that new_left and new_right are both descendants
+                            // Since we're shrinking we KNOW that new_left and new_right are descendants
+                            // thus we can delete them directly knowing there is no sub-tree to look at.
 
                             // deleting and getting the elements available in our children
                             if new_left.mode == NodeMode::Tree {
-                                tmp_nodes.remove(new_left.item)?;
+                                if new_left != left {
+                                    tmp_nodes.remove(new_left.item)?;
+                                } else {
+                                    tmp_nodes.remove_from_db(new_left.item);
+                                }
                             }
                             if new_right.mode == NodeMode::Tree {
-                                tmp_nodes.remove(new_right.item)?;
+                                if new_right != right {
+                                    tmp_nodes.remove(new_right.item)?;
+                                } else {
+                                    tmp_nodes.remove_from_db(new_right.item);
+                                }
                             }
                             tmp_nodes.put(
                                 current_node.item,
@@ -589,7 +594,7 @@ impl<D: Distance> Writer<D> {
                             )?;
 
                             // we should merge both branch and update ourselves to be a single descendant node
-                            Ok((None, total_items))
+                            Ok((current_node, total_items))
                         } else {
                             // if either the left or the right changed we must update ourselves inplace
                             if new_left != left || new_right != right {
@@ -605,7 +610,7 @@ impl<D: Distance> Writer<D> {
 
                             // TODO: Should we update the normals if something changed?
 
-                            Ok((None, total_items))
+                            Ok((current_node, total_items))
                         }
                     }
                 }

@@ -64,19 +64,26 @@ impl<'a, DE: BytesEncode<'a>> TmpNodes<DE> {
         self.bounds.push(last_bound + bytes.len());
         self.ids.push(item);
 
-        // if the element was deleted and is then re-inserted we should not delete it at the end it'll be overwritten
-        self.deleted.remove(item);
+        // in the current algorithm, we should never insert a node that was deleted before
+        debug_assert!(!self.deleted.contains(item));
 
         Ok(())
     }
 
-    /// Remove a tree node from the list of element but keep it on disk.
-    /// It'll be hidden when using converting this writer to a reader.
-    pub fn remove(&mut self, item: ItemId) -> heed::Result<()> {
-        // TODO: this could be slow, we may need to use an additionnal roaring bitmap?
+    /// Mark a node to delete from the DB.
+    pub fn remove_from_db(&mut self, item: ItemId) {
         self.deleted.insert(item);
-        if let Some(el) = self.ids.iter_mut().find(|i| **i == item) {
+    }
+
+    /// Mark a node to delete from the DB and delete it from the tmp nodes as well.
+    /// Panic if the node wasn't inserted in the tmp_nodes before calling this method.
+    pub fn remove(&mut self, item: ItemId) -> heed::Result<()> {
+        self.remove_from_db(item);
+        // In the current algorithm, we're supposed to find the node in the two last positions.
+        if let Some(el) = self.ids.iter_mut().rev().take(2).find(|i| **i == item) {
             *el = u32::MAX;
+        } else {
+            panic!("Didn't find the node to delete in the tmp_nodes");
         }
         Ok(())
     }

@@ -160,7 +160,7 @@ fn write_vectors_until_there_is_a_split() {
 }
 
 #[test]
-fn write_a_lot_of_random_points() {
+fn write_and_update_lot_of_random_points() {
     let handle = create_database::<Euclidean>();
     let mut wtxn = handle.env.write_txn().unwrap();
     let writer = Writer::new(handle.database, 0, 30).unwrap();
@@ -170,6 +170,16 @@ fn write_a_lot_of_random_points() {
         writer.add_item(&mut wtxn, id, &vector).unwrap();
     }
 
+    writer.build(&mut wtxn, &mut rng, Some(10)).unwrap();
+    wtxn.commit().unwrap();
+    insta::assert_display_snapshot!(handle);
+
+    let mut wtxn = handle.env.write_txn().unwrap();
+    let writer = Writer::new(handle.database, 0, 30).unwrap();
+    for id in (0..100).step_by(2) {
+        let vector: [f32; 30] = std::array::from_fn(|_| rng.gen());
+        writer.add_item(&mut wtxn, id, &vector).unwrap();
+    }
     writer.build(&mut wtxn, &mut rng, Some(10)).unwrap();
     wtxn.commit().unwrap();
 
