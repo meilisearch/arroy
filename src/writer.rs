@@ -305,7 +305,6 @@ impl<D: Distance> Writer<D> {
             .get(wtxn, &Key::updated(self.index))?
             .unwrap_or_default();
         // while iterating on the nodes we want to delete all the modified element even if they are being inserted right after.
-        // TODO: if we could now which elements are inserted for the first time `to_delete` could be smaller
         let to_delete = &updated_items;
         let to_insert = &item_indices & &updated_items;
 
@@ -330,7 +329,6 @@ impl<D: Distance> Writer<D> {
 
         let mut nodes_to_write = Vec::new();
 
-        // TODO: Insert the updated elements into the already existing trees
         // If there is metadata it means that we already have trees and we must update them
         if let Some(ref metadata) = metadata {
             log::debug!(
@@ -338,15 +336,10 @@ impl<D: Distance> Writer<D> {
                 n_items,
                 metadata.roots.len()
             );
-            // NOTE: We should probably keep a list of the updated tree nodes alongside a list
-            //       of all existing tree node IDs. This way we can keep track of the tree nodes
-            //       in which we need to delete the deleted items.
             let (new_roots, mut tmp_nodes_reader) =
                 self.update_trees(rng, metadata, &to_insert, &to_delete, &frozzen_reader)?;
             nodes_to_write.append(&mut tmp_nodes_reader);
             roots = new_roots;
-
-            // todo!("{:?}", updated_items);
         }
 
         log::debug!("started building trees for {} items...", n_items);
@@ -477,9 +470,6 @@ impl<D: Distance> Writer<D> {
                 let mut new_items = RoaringBitmap::from_iter([current_node.item]);
                 new_items -= to_delete;
                 new_items |= to_insert;
-
-                // TODO: if we just replaced this element by another one we don't need to create a new descendant node
-                // TODO: is this valid? Why are we using an u64 for the concurrent node ids
 
                 if new_items.len() == 1 {
                     let item_id = new_items.iter().next().unwrap();
