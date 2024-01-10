@@ -215,15 +215,16 @@ impl<D: Distance> Writer<D> {
         Ok(())
     }
 
-    fn next_tree_node(&self, rtxn: &RoTxn) -> Result<ItemId> {
+    fn used_tree_node(&self, rtxn: &RoTxn) -> Result<RoaringBitmap> {
         Ok(self
             .database
             .remap_key_type::<PrefixCodec>()
-            .rev_prefix_iter(rtxn, &Prefix::tree(self.index))?
+            .prefix_iter(rtxn, &Prefix::tree(self.index))?
             .remap_types::<KeyCodec, DecodeIgnore>()
-            .next()
-            .transpose()?
-            .map(|(key, _)| key.node.item + 1)
+            .try_fold(RoaringBitmap::new(), |mut bitmap, used| -> Result<RoaringBitmap> {
+                bitmap.insert(used?.0.node.item);
+                Ok(bitmap)
+            })
             .unwrap_or_default())
     }
 
@@ -323,7 +324,9 @@ impl<D: Distance> Writer<D> {
 
         log::debug!("Getting a reference to your {} items...", n_items);
 
-        let concurrent_node_ids = ConcurrentNodeIds::new(self.next_tree_node(wtxn)?);
+        let used_node_ids = self.used_tree_node(wtxn)?;
+
+        let concurrent_node_ids = ConcurrentNodeIds::new(used_node_ids);
         let frozzen_reader = FrozzenReader {
             leafs: &ImmutableLeafs::new(wtxn, self.database, self.index)?,
             trees: &ImmutableTrees::new(wtxn, self.database, self.index)?,
@@ -389,7 +392,7 @@ impl<D: Distance> Writer<D> {
                 wtxn,
                 &mut roots,
                 n_trees,
-                concurrent_node_ids.current(),
+                concurrent_node_ids.used(),
                 n_items,
             )?;
         } else {
@@ -640,7 +643,7 @@ impl<D: Distance> Writer<D> {
             // but continue to generate trees if the number of trees is specified
             .take_any_while(|_| match n_trees {
                 Some(_) => true,
-                None => concurrent_node_ids.current() < n_items,
+                None => concurrent_node_ids.used() < n_items,
             })
             .map(|(i, seed)| {
                 log::debug!("started generating tree {i:X}...");

@@ -3,7 +3,8 @@ use std::fs::File;
 use std::io::{BufWriter, Write};
 use std::marker;
 use std::path::Path;
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicU32, AtomicU64, Ordering};
+use std::sync::Mutex;
 
 use heed::types::Bytes;
 use heed::{BytesDecode, BytesEncode, RoTxn};
@@ -131,23 +132,36 @@ impl TmpNodesReader {
 
 /// A concurrent ID generate that will never return the same ID twice.
 #[derive(Debug)]
-#[repr(transparent)]
-pub struct ConcurrentNodeIds(AtomicU64);
+pub struct ConcurrentNodeIds {
+    current: AtomicU32,
+    used: AtomicU64,
+    // available: Mutex<RoaringBitmap>,
+}
 
 impl ConcurrentNodeIds {
     /// Creates the ID generator starting at the given number.
-    pub fn new(v: u32) -> ConcurrentNodeIds {
-        ConcurrentNodeIds(AtomicU64::new(v.into()))
+    pub fn new(used: RoaringBitmap) -> ConcurrentNodeIds {
+        let last_id = used.iter().last().map(|id| id + 1).unwrap_or(0);
+        // let available = RoaringBitmap::from_sorted_iter(0..last_id).unwrap() - used;
+        let used = used.len();
+
+        ConcurrentNodeIds {
+            current: AtomicU32::new(last_id),
+            used: AtomicU64::new(used),
+            // available: Mutex::new(available),
+        }
     }
 
     /// Returns and increment the ID you can use as a NodeId.
-    pub fn next(&self) -> u64 {
-        self.0.fetch_add(1, Ordering::Relaxed)
+    pub fn next(&self) -> u32 {
+        // TODO: here maybe we should return an error if we used all the available ids?
+        self.used.fetch_add(1, Ordering::Relaxed);
+        self.current.fetch_add(1, Ordering::Relaxed)
     }
 
-    /// Returns the current id.
-    pub fn current(&self) -> u64 {
-        self.0.load(Ordering::Relaxed)
+    /// Returns the number of used ids in total.
+    pub fn used(&self) -> u64 {
+        self.used.load(Ordering::Relaxed)
     }
 }
 
