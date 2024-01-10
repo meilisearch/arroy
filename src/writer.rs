@@ -623,7 +623,7 @@ impl<D: Distance> Writer<D> {
                     }
                 }
             }
-            NodeMode::Metadata => panic!("Should never happens"),
+            NodeMode::Metadata => unreachable!(),
         }
     }
 

@@ -84,7 +84,7 @@ impl<'a, DE: BytesEncode<'a>> TmpNodes<DE> {
         if let Some(el) = self.ids.iter_mut().rev().take(2).find(|i| **i == item) {
             *el = u32::MAX;
         } else {
-            panic!("Didn't find the node to delete in the tmp_nodes");
+            unreachable!();
         }
         Ok(())
     }
@@ -133,23 +133,19 @@ impl TmpNodesReader {
 /// A concurrent ID generate that will never return the same ID twice.
 #[derive(Debug)]
 pub struct ConcurrentNodeIds {
+    /// The current tree node ID we should use.
     current: AtomicU32,
+    /// The total number of tree node IDs used.
     used: AtomicU64,
-    // available: Mutex<RoaringBitmap>,
 }
 
 impl ConcurrentNodeIds {
     /// Creates the ID generator starting at the given number.
     pub fn new(used: RoaringBitmap) -> ConcurrentNodeIds {
         let last_id = used.iter().last().map(|id| id + 1).unwrap_or(0);
-        // let available = RoaringBitmap::from_sorted_iter(0..last_id).unwrap() - used;
         let used = used.len();
 
-        ConcurrentNodeIds {
-            current: AtomicU32::new(last_id),
-            used: AtomicU64::new(used),
-            // available: Mutex::new(available),
-        }
+        ConcurrentNodeIds { current: AtomicU32::new(last_id), used: AtomicU64::new(used) }
     }
 
     /// Returns and increment the ID you can use as a NodeId.
