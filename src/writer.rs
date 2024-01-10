@@ -487,7 +487,7 @@ impl<D: Distance> Writer<D> {
                         Ok((NodeId::item(item_id), new_items))
                     }
                 } else if self.fit_in_descendant(new_items.len()) {
-                    let node_id = frozen_reader.concurrent_node_ids.next();
+                    let node_id = frozen_reader.concurrent_node_ids.next()?;
                     let node_id = NodeId::tree(node_id as u32);
                     tmp_nodes.put(
                         node_id.item,
@@ -680,7 +680,7 @@ impl<D: Distance> Writer<D> {
         }
 
         if self.fit_in_descendant(item_indices.len()) {
-            let item_id = reader.concurrent_node_ids.next().try_into().unwrap();
+            let item_id = reader.concurrent_node_ids.next()?;
             let item = Node::Descendants(Descendants { descendants: Cow::Borrowed(item_indices) });
             tmp_nodes.put(item_id, &item)?;
             return Ok(NodeId::tree(item_id));
@@ -726,7 +726,7 @@ impl<D: Distance> Writer<D> {
             right: self.make_tree_in_file(reader, rng, &children_right, tmp_nodes)?,
         };
 
-        let new_node_id = reader.concurrent_node_ids.next().try_into().unwrap();
+        let new_node_id = reader.concurrent_node_ids.next()?;
         tmp_nodes.put(new_node_id, &Node::SplitPlaneNormal(normal))?;
 
         Ok(NodeId::tree(new_node_id))

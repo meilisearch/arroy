@@ -21,7 +21,7 @@ pub enum Error {
     },
 
     /// An internal error returned when arroy cannot generate internal IDs.
-    #[error("Database full. Try to use lower vector IDs.")]
+    #[error("Database full. Arroy cannot generate enough internal IDs for your items.")]
     DatabaseFull,
 
     /// The user tried to append an item in the database but the last inserted item

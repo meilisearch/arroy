@@ -4,7 +4,6 @@ use std::io::{BufWriter, Write};
 use std::marker;
 use std::path::Path;
 use std::sync::atomic::{AtomicU32, AtomicU64, Ordering};
-use std::sync::Mutex;
 
 use heed::types::Bytes;
 use heed::{BytesDecode, BytesEncode, RoTxn};
@@ -16,7 +15,7 @@ use roaring::RoaringBitmap;
 use crate::internals::{KeyCodec, Leaf, NodeCodec};
 use crate::key::{Prefix, PrefixCodec};
 use crate::node::Node;
-use crate::{Database, Distance, ItemId, Result};
+use crate::{Database, Distance, Error, ItemId, Result};
 
 /// A structure to store the tree nodes out of the heed database.
 pub struct TmpNodes<DE> {
@@ -149,10 +148,12 @@ impl ConcurrentNodeIds {
     }
 
     /// Returns and increment the ID you can use as a NodeId.
-    pub fn next(&self) -> u32 {
-        // TODO: here maybe we should return an error if we used all the available ids?
-        self.used.fetch_add(1, Ordering::Relaxed);
-        self.current.fetch_add(1, Ordering::Relaxed)
+    pub fn next(&self) -> Result<u32> {
+        if self.used.fetch_add(1, Ordering::Relaxed) > u32::MAX as u64 {
+            Err(Error::DatabaseFull)
+        } else {
+            Ok(self.current.fetch_add(1, Ordering::Relaxed))
+        }
     }
 
     /// Returns the number of used ids in total.
