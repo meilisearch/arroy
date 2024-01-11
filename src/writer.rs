@@ -272,7 +272,7 @@ impl<D: Distance> Writer<D> {
 
             let mut roots = Vec::new();
 
-            if item_indices.len() > 0 {
+            if !item_indices.is_empty() {
                 // if we have more than 0 elements we need to create a descendant node
 
                 self.database.put(
@@ -345,7 +345,7 @@ impl<D: Distance> Writer<D> {
                 rng,
                 metadata,
                 &to_insert,
-                &to_delete,
+                to_delete,
                 &frozzen_reader,
                 concurrent_node_ids,
             )?;
@@ -470,7 +470,7 @@ impl<D: Distance> Writer<D> {
                 log::debug!("finished updating tree {root:X}");
                 Ok(((node_id.unwrap_tree(), tmp_nodes.into_bytes_reader()?), concurrent_node_ids))
             })
-            .collect::<Result<((Vec<ItemId>, Vec<TmpNodesReader>), Vec<ConcurrentNodeIds>)>>()?;
+            .collect::<Result<_>>()?;
 
         // Safe to unwrap here because if there was no tree node the update function would not have been called at all
         let concurrent_node_ids = ConcurrentNodeIds::merge(concurrents_node_ids).unwrap();
@@ -481,6 +481,7 @@ impl<D: Distance> Writer<D> {
     /// Run in O(n) on the total number of nodes. Return a tuple containing the
     /// node ID you should use instead of the current_node and the number of
     /// items in the subtree.
+    #[allow(clippy::too_many_arguments)]
     fn update_nodes_in_file<R: Rng>(
         &self,
         frozen_reader: &FrozzenReader<D>,
@@ -507,7 +508,7 @@ impl<D: Distance> Writer<D> {
                     }
                 } else if self.fit_in_descendant(new_items.len()) {
                     let node_id = concurrent_node_ids.next()?;
-                    let node_id = NodeId::tree(node_id as u32);
+                    let node_id = NodeId::tree(node_id);
                     tmp_nodes.put(
                         node_id.item,
                         &Node::Descendants(Descendants {
@@ -696,7 +697,7 @@ impl<D: Distance> Writer<D> {
                 // make_tree will NEVER return a leaf when called as root
                 Ok(((root_id.unwrap_tree(), tmp_nodes.into_bytes_reader()?), concurrent_node_ids))
             })
-            .collect::<Result<((Vec<ItemId>, Vec<TmpNodesReader>), Vec<ConcurrentNodeIds>)>>()?;
+            .collect::<Result<_>>()?;
 
         let concurrent_node_ids =
             ConcurrentNodeIds::merge(concurrents_node_ids).unwrap_or(concurrent_node_ids);

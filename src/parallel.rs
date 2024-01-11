@@ -133,7 +133,7 @@ impl TmpNodesReader {
 /// A concurrent ID generate that will never return the same ID twice.
 #[derive(Debug)]
 pub struct ConcurrentNodeIds {
-    /// The current tree node ID we should use.
+    /// The current tree node ID we should use if there is no other IDs available.
     current: Arc<AtomicU32>,
     /// The total number of tree node IDs used.
     used: Arc<AtomicU64>,
@@ -143,7 +143,7 @@ pub struct ConcurrentNodeIds {
 }
 
 impl ConcurrentNodeIds {
-    /// Creates the ID generator starting at the given number.
+    /// Creates an ID generator returning unique IDs, avoiding the specified used IDs.
     pub fn new(used: RoaringBitmap) -> ConcurrentNodeIds {
         let last_id = used.iter().last().map(|id| id + 1).unwrap_or(0);
         let used_ids = used.len();
@@ -156,7 +156,7 @@ impl ConcurrentNodeIds {
         }
     }
 
-    /// Returns and increment the ID you can use as a NodeId.
+    /// Returns a new unique ID and increase the count of IDs used.
     pub fn next(&mut self) -> Result<u32> {
         if self.used.fetch_add(1, Ordering::Relaxed) > u32::MAX as u64 {
             Err(Error::DatabaseFull)
