@@ -3,7 +3,7 @@ use std::fs::File;
 use std::io::{BufWriter, Write};
 use std::marker;
 use std::path::Path;
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicU32, AtomicU64, Ordering};
 
 use heed::types::Bytes;
 use heed::{BytesDecode, BytesEncode, RoTxn};
@@ -14,13 +14,15 @@ use roaring::RoaringBitmap;
 
 use crate::internals::{KeyCodec, Leaf, NodeCodec};
 use crate::key::{Prefix, PrefixCodec};
-use crate::{Database, Distance, ItemId, Result};
+use crate::node::Node;
+use crate::{Database, Distance, Error, ItemId, Result};
 
 /// A structure to store the tree nodes out of the heed database.
 pub struct TmpNodes<DE> {
     file: BufWriter<File>,
-    ids: RoaringBitmap,
+    ids: Vec<ItemId>,
     bounds: Vec<usize>,
+    deleted: RoaringBitmap,
     _marker: marker::PhantomData<DE>,
 }
 
@@ -29,8 +31,9 @@ impl<'a, DE: BytesEncode<'a>> TmpNodes<DE> {
     pub fn new() -> heed::Result<TmpNodes<DE>> {
         Ok(TmpNodes {
             file: tempfile::tempfile().map(BufWriter::new)?,
-            ids: RoaringBitmap::new(),
+            ids: Vec::new(),
             bounds: vec![0],
+            deleted: RoaringBitmap::new(),
             _marker: marker::PhantomData,
         })
     }
@@ -39,24 +42,49 @@ impl<'a, DE: BytesEncode<'a>> TmpNodes<DE> {
     pub fn new_in(path: &Path) -> heed::Result<TmpNodes<DE>> {
         Ok(TmpNodes {
             file: tempfile::tempfile_in(path).map(BufWriter::new)?,
-            ids: RoaringBitmap::new(),
+            ids: Vec::new(),
             bounds: vec![0],
+            deleted: RoaringBitmap::new(),
             _marker: marker::PhantomData,
         })
     }
 
-    /// Append a new node in the file.
+    /// Add a new node in the file.
+    /// Items do not need to be ordered.
     pub fn put(
         // TODO move that in the type
         &mut self,
-        item: u32,
+        item: ItemId,
         data: &'a DE::EItem,
     ) -> heed::Result<()> {
+        assert!(item != ItemId::MAX);
         let bytes = DE::bytes_encode(data).map_err(heed::Error::Encoding)?;
         self.file.write_all(&bytes)?;
         let last_bound = self.bounds.last().unwrap();
         self.bounds.push(last_bound + bytes.len());
         self.ids.push(item);
+
+        // in the current algorithm, we should never insert a node that was deleted before
+        debug_assert!(!self.deleted.contains(item));
+
+        Ok(())
+    }
+
+    /// Mark a node to delete from the DB.
+    pub fn remove_from_db(&mut self, item: ItemId) {
+        self.deleted.insert(item);
+    }
+
+    /// Mark a node to delete from the DB and delete it from the tmp nodes as well.
+    /// Panic if the node wasn't inserted in the tmp_nodes before calling this method.
+    pub fn remove(&mut self, item: ItemId) -> heed::Result<()> {
+        self.remove_from_db(item);
+        // In the current algorithm, we're supposed to find the node in the two last positions.
+        if let Some(el) = self.ids.iter_mut().rev().take(2).find(|i| **i == item) {
+            *el = u32::MAX;
+        } else {
+            unreachable!();
+        }
         Ok(())
     }
 
@@ -66,51 +94,71 @@ impl<'a, DE: BytesEncode<'a>> TmpNodes<DE> {
         let mmap = unsafe { Mmap::map(&file)? };
         #[cfg(unix)]
         mmap.advise(memmap2::Advice::Sequential)?;
-        Ok(TmpNodesReader { mmap, ids: self.ids, bounds: self.bounds })
+        Ok(TmpNodesReader { mmap, ids: self.ids, bounds: self.bounds, deleted: self.deleted })
     }
 }
 
 /// A reader of nodes stored in a file.
 pub struct TmpNodesReader {
     mmap: Mmap,
-    ids: RoaringBitmap,
+    ids: Vec<ItemId>,
     bounds: Vec<usize>,
+    deleted: RoaringBitmap,
 }
 
 impl TmpNodesReader {
     /// The number of nodes stored in this file.
-    pub fn len(&self) -> u64 {
+    pub fn len(&self) -> usize {
         self.ids.len()
     }
 
+    pub fn to_delete(&self) -> impl Iterator<Item = ItemId> + '_ {
+        self.deleted.iter()
+    }
+
     /// Returns an forward iterator over the nodes.
-    pub fn iter(&self) -> impl Iterator<Item = (u32, &[u8])> {
-        self.ids.iter().zip(self.bounds.windows(2)).map(|(id, bounds)| {
-            let [start, end] = [bounds[0], bounds[1]];
-            (id, &self.mmap[start..end])
-        })
+    pub fn to_insert(&self) -> impl Iterator<Item = (ItemId, &[u8])> {
+        self.ids
+            .iter()
+            .zip(self.bounds.windows(2))
+            .map(|(id, bounds)| {
+                let [start, end] = [bounds[0], bounds[1]];
+                (*id, &self.mmap[start..end])
+            })
+            .filter(|(id, _)| *id != ItemId::MAX)
     }
 }
 
 /// A concurrent ID generate that will never return the same ID twice.
 #[derive(Debug)]
-#[repr(transparent)]
-pub struct ConcurrentNodeIds(AtomicU64);
+pub struct ConcurrentNodeIds {
+    /// The current tree node ID we should use.
+    current: AtomicU32,
+    /// The total number of tree node IDs used.
+    used: AtomicU64,
+}
 
 impl ConcurrentNodeIds {
     /// Creates the ID generator starting at the given number.
-    pub fn new(v: u32) -> ConcurrentNodeIds {
-        ConcurrentNodeIds(AtomicU64::new(v.into()))
+    pub fn new(used: RoaringBitmap) -> ConcurrentNodeIds {
+        let last_id = used.iter().last().map(|id| id + 1).unwrap_or(0);
+        let used = used.len();
+
+        ConcurrentNodeIds { current: AtomicU32::new(last_id), used: AtomicU64::new(used) }
     }
 
     /// Returns and increment the ID you can use as a NodeId.
-    pub fn next(&self) -> u64 {
-        self.0.fetch_add(1, Ordering::Relaxed)
+    pub fn next(&self) -> Result<u32> {
+        if self.used.fetch_add(1, Ordering::Relaxed) > u32::MAX as u64 {
+            Err(Error::DatabaseFull)
+        } else {
+            Ok(self.current.fetch_add(1, Ordering::Relaxed))
+        }
     }
 
-    /// Returns the current id.
-    pub fn current(&self) -> u64 {
-        self.0.load(Ordering::Relaxed)
+    /// Returns the number of used ids in total.
+    pub fn used(&self) -> u64 {
+        self.used.load(Ordering::Relaxed)
     }
 }
 
@@ -221,3 +269,55 @@ impl<'t, D: Distance> ImmutableSubsetLeafs<'t, D> {
         }
     }
 }
+
+/// A struture used to keep a list of all the tree nodes in the tree.
+///
+/// It is safe to share between threads as the pointer are pointing
+/// in the mmapped file and the transaction is kept here and therefore
+/// no longer touches the database.
+pub struct ImmutableTrees<'t, D> {
+    tree_ids: RoaringBitmap,
+    offsets: Vec<*const u8>,
+    lengths: Vec<usize>,
+    _marker: marker::PhantomData<(&'t (), D)>,
+}
+
+impl<'t, D: Distance> ImmutableTrees<'t, D> {
+    /// Creates the structure by fetching all the root pointers
+    /// and keeping the transaction making the pointers valid.
+    pub fn new(rtxn: &'t RoTxn, database: Database<D>, index: u16) -> heed::Result<Self> {
+        let mut tree_ids = RoaringBitmap::new();
+        let mut offsets = Vec::new();
+        let mut lengths = Vec::new();
+
+        let iter = database
+            .remap_types::<PrefixCodec, Bytes>()
+            .prefix_iter(rtxn, &Prefix::tree(index))?
+            .remap_key_type::<KeyCodec>();
+
+        for result in iter {
+            let (key, bytes) = result?;
+            let tree_id = key.node.unwrap_tree();
+            assert!(tree_ids.push(tree_id));
+            offsets.push(bytes.as_ptr());
+            lengths.push(bytes.len());
+        }
+
+        Ok(ImmutableTrees { tree_ids, lengths, offsets, _marker: marker::PhantomData })
+    }
+
+    /// Returns the tree node identified by the given ID.
+    pub fn get(&self, item_id: ItemId) -> heed::Result<Option<Node<'t, D>>> {
+        let (ptr, len) = match self.tree_ids.rank(item_id).checked_sub(1).and_then(|offset| {
+            self.offsets.get(offset as usize).zip(self.lengths.get(offset as usize))
+        }) {
+            Some((ptr, len)) => (*ptr, *len),
+            None => return Ok(None),
+        };
+
+        let bytes = unsafe { slice::from_raw_parts(ptr, len) };
+        NodeCodec::bytes_decode(bytes).map_err(heed::Error::Decoding).map(Some)
+    }
+}
+
+unsafe impl<D> Sync for ImmutableTrees<'_, D> {}

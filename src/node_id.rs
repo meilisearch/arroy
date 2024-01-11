@@ -1,3 +1,4 @@
+use std::fmt;
 use std::mem::size_of;
 
 use byteorder::{BigEndian, ByteOrder};
@@ -27,8 +28,7 @@ impl TryFrom<u8> for NodeMode {
 }
 
 /// Point to a node in the tree. Can be any kind of node.
-/// /!\ This must fit on exactly 5 bytes without padding.
-#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct NodeId {
     // Indicate what the item represent.
     pub mode: NodeMode,
@@ -36,9 +36,19 @@ pub struct NodeId {
     pub item: ItemId,
 }
 
+impl fmt::Debug for NodeId {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{:?}({})", self.mode, self.item)
+    }
+}
+
 impl NodeId {
     pub const fn metadata() -> Self {
         Self { mode: NodeMode::Metadata, item: 0 }
+    }
+
+    pub const fn updated() -> Self {
+        Self { mode: NodeMode::Metadata, item: 1 }
     }
 
     pub const fn tree(item: u32) -> Self {
@@ -51,6 +61,7 @@ impl NodeId {
 
     /// Return the underlying `ItemId` if it is an item.
     /// Panic otherwise.
+    #[track_caller]
     pub fn unwrap_item(&self) -> ItemId {
         assert_eq!(self.mode, NodeMode::Item);
         self.item
@@ -58,6 +69,7 @@ impl NodeId {
 
     /// Return the underlying `ItemId` if it is a tree node.
     /// Panic otherwise.
+    #[track_caller]
     pub fn unwrap_tree(&self) -> ItemId {
         assert_eq!(self.mode, NodeMode::Tree);
         self.item

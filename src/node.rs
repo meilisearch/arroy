@@ -185,9 +185,9 @@ impl fmt::Debug for ItemIds<'_> {
 
 #[derive(Debug, Clone)]
 pub struct SplitPlaneNormal<'a> {
-    pub normal: Cow<'a, UnalignedF32Slice>,
     pub left: NodeId,
     pub right: NodeId,
+    pub normal: Cow<'a, UnalignedF32Slice>,
 }
 
 /// The codec used internally to encode and decode nodes.

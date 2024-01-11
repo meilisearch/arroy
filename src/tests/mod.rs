@@ -6,7 +6,7 @@ use rand::rngs::StdRng;
 use rand::SeedableRng;
 use tempfile::TempDir;
 
-use crate::distances::Angular;
+use crate::roaring::RoaringBitmapCodec;
 use crate::{Database, Distance, MetadataCodec, NodeCodec, NodeMode};
 
 mod reader;
@@ -28,7 +28,7 @@ impl<D: Distance> fmt::Display for DatabaseHandle<D> {
         let mut last_mode = NodeMode::Item;
 
         for result in
-            self.database.remap_data_type::<LazyDecode<NodeCodec<Angular>>>().iter(&rtxn).unwrap()
+            self.database.remap_data_type::<LazyDecode<NodeCodec<D>>>().iter(&rtxn).unwrap()
         {
             let (key, lazy_node) = result.unwrap();
 
@@ -54,7 +54,7 @@ impl<D: Distance> fmt::Display for DatabaseHandle<D> {
                     let node = lazy_node.decode().unwrap();
                     writeln!(f, "Tree {}: {node:?}", key.node.item)?;
                 }
-                NodeMode::Metadata => {
+                NodeMode::Metadata if key.node.item == 0 => {
                     let metadata = self
                         .database
                         .remap_data_type::<MetadataCodec>()
@@ -62,6 +62,18 @@ impl<D: Distance> fmt::Display for DatabaseHandle<D> {
                         .unwrap()
                         .unwrap();
                     writeln!(f, "Root: {metadata:?}")?;
+                }
+                NodeMode::Metadata if key.node.item == 1 => {
+                    let updated_item_ids = self
+                        .database
+                        .remap_data_type::<RoaringBitmapCodec>()
+                        .get(&rtxn, &key)
+                        .unwrap()
+                        .unwrap();
+                    writeln!(f, "updated_item_ids: {updated_item_ids:?}")?;
+                }
+                NodeMode::Metadata => {
+                    panic!()
                 }
             }
         }

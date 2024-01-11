@@ -26,7 +26,7 @@ pub struct Reader<'t, D: Distance> {
     index: u16,
     roots: ItemIds<'t>,
     dimensions: usize,
-    n_items: u64,
+    items: RoaringBitmap,
     _marker: marker::PhantomData<D>,
 }
 
@@ -51,7 +51,7 @@ impl<'t, D: Distance> Reader<'t, D> {
             index,
             roots: metadata.roots,
             dimensions: metadata.dimensions.try_into().unwrap(),
-            n_items: metadata.n_items.into(),
+            items: metadata.items,
             _marker: marker::PhantomData,
         })
     }
@@ -68,7 +68,7 @@ impl<'t, D: Distance> Reader<'t, D> {
 
     /// Returns the number of vectors stored in the index.
     pub fn n_items(&self) -> u64 {
-        self.n_items
+        self.items.len()
     }
 
     /// Returns the index of this reader in the database.
@@ -113,7 +113,7 @@ impl<'t, D: Distance> Reader<'t, D> {
             .map(|root| recursive_depth::<D>(rtxn, self.database, self.index, root))
             .collect();
 
-        Ok(Stats { tree_stats: tree_stats?, leaf: self.n_items })
+        Ok(Stats { tree_stats: tree_stats?, leaf: self.items.len() })
     }
 
     /// Returns the number of nodes in the index. Useful to run an exhaustive search.
@@ -205,7 +205,8 @@ impl<'t, D: Distance> Reader<'t, D> {
     ) -> Result<Vec<(ItemId, f32)>> {
         // Since the datastructure describes a kind of btree, the capacity is something in the order of:
         // The number of root nodes + log2 of the total number of vectors.
-        let mut queue = BinaryHeap::with_capacity(self.roots.len() + self.n_items.ilog2() as usize);
+        let mut queue =
+            BinaryHeap::with_capacity(self.roots.len() + self.items.len().ilog2() as usize);
         let search_k = search_k.map_or(count * self.roots.len(), NonZeroUsize::get);
 
         // Insert all the root nodes and associate them to the highest distance.

@@ -59,7 +59,7 @@ fn main() -> Result<(), heed::BoxedError> {
 
     let mut wtxn = env.write_txn().unwrap();
     let database: Database<DotProduct> = env.create_database(&mut wtxn, None)?;
-    let writer = Writer::<DotProduct>::prepare(&mut wtxn, database, 0, dimensions)?;
+    let writer = Writer::<DotProduct>::new(database, 0, dimensions)?;
 
     let now = Instant::now();
     println!("Building the arroy internal trees...");

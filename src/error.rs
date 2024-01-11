@@ -21,7 +21,7 @@ pub enum Error {
     },
 
     /// An internal error returned when arroy cannot generate internal IDs.
-    #[error("Database full. Try to use lower vector IDs.")]
+    #[error("Database full. Arroy cannot generate enough internal IDs for your items.")]
     DatabaseFull,
 
     /// The user tried to append an item in the database but the last inserted item
@@ -42,4 +42,8 @@ pub enum Error {
     /// It is probably because the user forget to build the database.
     #[error("Metadata are missing, did you build your database before trying to read it.")]
     MissingMetadata,
+
+    /// Internal error
+    #[error("Internal error: Node is missing")]
+    MissingNode,
 }

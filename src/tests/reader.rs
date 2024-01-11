@@ -4,6 +4,7 @@ use std::num::NonZeroUsize;
 use roaring::RoaringBitmap;
 
 use super::*;
+use crate::distance::Angular;
 use crate::distances::{Euclidean, Manhattan};
 use crate::{ItemId, Reader, Writer};
 
@@ -27,7 +28,7 @@ impl Display for NnsRes {
 fn open_unfinished_db() {
     let handle = create_database();
     let mut wtxn = handle.env.write_txn().unwrap();
-    let writer = Writer::prepare(&mut wtxn, handle.database, 0, 2).unwrap();
+    let writer = Writer::new(handle.database, 0, 2).unwrap();
     writer.add_item(&mut wtxn, 0, &[0.0, 0.0]).unwrap();
     wtxn.commit().unwrap();
 
@@ -40,7 +41,7 @@ fn open_unfinished_db() {
 fn open_db_with_wrong_dimension() {
     let handle = create_database();
     let mut wtxn = handle.env.write_txn().unwrap();
-    let writer = Writer::prepare(&mut wtxn, handle.database, 0, 2).unwrap();
+    let writer = Writer::new(handle.database, 0, 2).unwrap();
     writer.add_item(&mut wtxn, 0, &[0.0, 0.0]).unwrap();
 
     writer.build(&mut wtxn, &mut rng(), Some(1)).unwrap();
@@ -56,7 +57,7 @@ fn open_db_with_wrong_dimension() {
 fn open_db_with_wrong_distance() {
     let handle = create_database::<Euclidean>();
     let mut wtxn = handle.env.write_txn().unwrap();
-    let writer = Writer::prepare(&mut wtxn, handle.database, 0, 2).unwrap();
+    let writer = Writer::new(handle.database, 0, 2).unwrap();
     writer.add_item(&mut wtxn, 0, &[0.0, 0.0]).unwrap();
 
     writer.build(&mut wtxn, &mut rng(), Some(1)).unwrap();
@@ -78,7 +79,7 @@ fn search_in_db_with_a_single_vector() {
     // https://github.com/meilisearch/meilisearch/pull/4296
     let handle = create_database::<Angular>();
     let mut wtxn = handle.env.write_txn().unwrap();
-    let writer = Writer::prepare(&mut wtxn, handle.database, 0, 3).unwrap();
+    let writer = Writer::new(handle.database, 0, 3).unwrap();
     writer.add_item(&mut wtxn, 0, &[0.00397, 0.553, 0.0]).unwrap();
 
     writer.build(&mut wtxn, &mut rng(), None).unwrap();
@@ -97,7 +98,7 @@ fn search_in_db_with_a_single_vector() {
 fn two_dimension_on_a_line() {
     let handle = create_database();
     let mut wtxn = handle.env.write_txn().unwrap();
-    let writer = Writer::prepare(&mut wtxn, handle.database, 0, 2).unwrap();
+    let writer = Writer::new(handle.database, 0, 2).unwrap();
     // We'll draw a simple line over the y as seen below
     // (0,0) # # # # # # ...
     for i in 0..100 {
@@ -141,7 +142,7 @@ fn two_dimension_on_a_line() {
 fn two_dimension_on_a_column() {
     let handle = create_database();
     let mut wtxn = handle.env.write_txn().unwrap();
-    let writer = Writer::prepare(&mut wtxn, handle.database, 0, 2).unwrap();
+    let writer = Writer::new(handle.database, 0, 2).unwrap();
     // We'll draw a simple line over the y as seen below
     // (0,0) # . . . . .
     // (0,1) # . . . . .
@@ -172,7 +173,7 @@ fn two_dimension_on_a_column() {
 fn filtering() {
     let handle = create_database();
     let mut wtxn = handle.env.write_txn().unwrap();
-    let writer = Writer::prepare(&mut wtxn, handle.database, 0, 2).unwrap();
+    let writer = Writer::new(handle.database, 0, 2).unwrap();
     // We'll draw a simple line over the y as seen below
     // (0,0) # . . . . .
     // (0,1) # . . . . .
