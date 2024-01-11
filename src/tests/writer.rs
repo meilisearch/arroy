@@ -859,11 +859,11 @@ fn reuse_node_id() {
     Item 3: Leaf(Leaf { header: NodeHeaderEuclidean { bias: 0.0 }, vector: [3.0000, 0.0000] })
     Item 4: Leaf(Leaf { header: NodeHeaderEuclidean { bias: 0.0 }, vector: [4.0000, 0.0000] })
     Item 5: Leaf(Leaf { header: NodeHeaderEuclidean { bias: 0.0 }, vector: [5.0000, 0.0000] })
+    Tree 0: Descendants(Descendants { descendants: [2, 3] })
     Tree 2: Descendants(Descendants { descendants: [4, 5] })
-    Tree 3: SplitPlaneNormal(SplitPlaneNormal { left: Tree(6), right: Tree(2), normal: [0.0000, 0.0000] })
+    Tree 3: SplitPlaneNormal(SplitPlaneNormal { left: Tree(5), right: Tree(2), normal: [0.0000, 0.0000] })
     Tree 4: SplitPlaneNormal(SplitPlaneNormal { left: Item(0), right: Tree(3), normal: [1.0000, 0.0000] })
-    Tree 5: Descendants(Descendants { descendants: [2, 3] })
-    Tree 6: SplitPlaneNormal(SplitPlaneNormal { left: Tree(5), right: Item(1), normal: [0.0000, 0.0000] })
+    Tree 5: SplitPlaneNormal(SplitPlaneNormal { left: Tree(0), right: Item(1), normal: [0.0000, 0.0000] })
     Root: Metadata { dimensions: 2, items: RoaringBitmap<[0, 1, 2, 3, 4, 5]>, roots: [4], distance: "euclidean" }
     updated_item_ids: RoaringBitmap<[]>
     "###);

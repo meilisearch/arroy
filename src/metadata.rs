@@ -6,8 +6,6 @@ use ::roaring::RoaringBitmap;
 use byteorder::{BigEndian, ByteOrder};
 use heed::BoxedError;
 
-pub use crate::distance::Distance;
-pub use crate::error::Error;
 use crate::node::ItemIds;
 
 #[derive(Debug)]
