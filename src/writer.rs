@@ -548,12 +548,16 @@ impl<D: Distance> Writer<D> {
                         let mut left_ids = RoaringBitmap::new();
                         let mut right_ids = RoaringBitmap::new();
 
-                        for leaf in to_insert {
-                            let query = frozen_reader.leafs.get(leaf)?.unwrap();
-                            match D::side(&normal, &query, rng) {
-                                Side::Left => left_ids.insert(leaf),
-                                Side::Right => right_ids.insert(leaf),
-                            };
+                        if normal.iter().all(|d| d == 0.0) {
+                            randomly_split_children(rng, to_insert, &mut left_ids, &mut right_ids);
+                        } else {
+                            for leaf in to_insert {
+                                let node = frozen_reader.leafs.get(leaf)?.unwrap();
+                                match D::side(&normal, &node, rng) {
+                                    Side::Left => left_ids.insert(leaf),
+                                    Side::Right => right_ids.insert(leaf),
+                                };
+                            }
                         }
 
                         let (new_left, left_items) = self.update_nodes_in_file(
