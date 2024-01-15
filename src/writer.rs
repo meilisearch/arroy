@@ -272,7 +272,7 @@ impl<D: Distance> Writer<D> {
 
             let mut roots = Vec::new();
 
-            if item_indices.len() > 0 {
+            if !item_indices.is_empty() {
                 // if we have more than 0 elements we need to create a descendant node
 
                 self.database.put(
@@ -344,7 +344,7 @@ impl<D: Distance> Writer<D> {
                 metadata.roots.len()
             );
             let (new_roots, mut tmp_nodes_reader) =
-                self.update_trees(rng, metadata, &to_insert, &to_delete, &frozzen_reader)?;
+                self.update_trees(rng, metadata, &to_insert, to_delete, &frozzen_reader)?;
             nodes_to_write.append(&mut tmp_nodes_reader);
             roots = new_roots;
         }
@@ -488,7 +488,7 @@ impl<D: Distance> Writer<D> {
                     }
                 } else if self.fit_in_descendant(new_items.len()) {
                     let node_id = frozen_reader.concurrent_node_ids.next()?;
-                    let node_id = NodeId::tree(node_id as u32);
+                    let node_id = NodeId::tree(node_id);
                     tmp_nodes.put(
                         node_id.item,
                         &Node::Descendants(Descendants {
@@ -643,8 +643,8 @@ impl<D: Distance> Writer<D> {
 
         repeatn(rng.next_u64(), n_trees.unwrap_or(usize::MAX))
             .enumerate()
-            // Stop generating trees once the number of tree nodes are generated
-            // but continue to generate trees if the number of trees is specified
+            // Stop generating trees once the specified number of tree nodes are generated
+            // but continue to generate trees if the number of trees is unspecified
             .take_any_while(|_| match n_trees {
                 Some(_) => true,
                 None => concurrent_node_ids.used() < n_items,
