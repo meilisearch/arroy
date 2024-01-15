@@ -272,7 +272,7 @@ impl<D: Distance> Writer<D> {
 
             let mut roots = Vec::new();
 
-            if !item_indices.is_empty() {
+            if item_indices.len() > 0 {
                 // if we have more than 0 elements we need to create a descendant node
 
                 self.database.put(
@@ -326,12 +326,12 @@ impl<D: Distance> Writer<D> {
 
         let used_node_ids = self.used_tree_node(wtxn)?;
 
-        let mut concurrent_node_ids = ConcurrentNodeIds::new(used_node_ids);
-        // this variable doesn't contains the available node ids and will only be used to return the number of used node ids.
-        let cpt_concurrent_node_ids = concurrent_node_ids.clone_without_available();
+        let concurrent_node_ids = ConcurrentNodeIds::new(used_node_ids);
         let frozzen_reader = FrozzenReader {
             leafs: &ImmutableLeafs::new(wtxn, self.database, self.index)?,
             trees: &ImmutableTrees::new(wtxn, self.database, self.index)?,
+            // The globally incrementing node ids that are shared between threads.
+            concurrent_node_ids: &concurrent_node_ids,
         };
 
         let mut nodes_to_write = Vec::new();
@@ -343,15 +343,8 @@ impl<D: Distance> Writer<D> {
                 n_items,
                 metadata.roots.len()
             );
-            let (new_roots, mut tmp_nodes_reader, new_concurrent_node_ids) = self.update_trees(
-                rng,
-                metadata,
-                &to_insert,
-                to_delete,
-                &frozzen_reader,
-                concurrent_node_ids,
-            )?;
-            concurrent_node_ids = new_concurrent_node_ids;
+            let (new_roots, mut tmp_nodes_reader) =
+                self.update_trees(rng, metadata, &to_insert, &to_delete, &frozzen_reader)?;
             nodes_to_write.append(&mut tmp_nodes_reader);
             roots = new_roots;
         }
@@ -368,13 +361,8 @@ impl<D: Distance> Writer<D> {
             .zip(metadata)
             .map(|(n_trees, metadata)| n_trees.saturating_sub(metadata.roots.len()))
             .or(n_trees);
-        let (mut thread_roots, mut tmp_nodes) = self.build_trees(
-            rng,
-            n_trees_to_build,
-            &item_indices,
-            &frozzen_reader,
-            concurrent_node_ids,
-        )?;
+        let (mut thread_roots, mut tmp_nodes) =
+            self.build_trees(rng, n_trees_to_build, &item_indices, &frozzen_reader)?;
         nodes_to_write.append(&mut tmp_nodes);
 
         log::debug!("started updating the tree nodes of {} trees...", tmp_nodes.len());
@@ -404,7 +392,7 @@ impl<D: Distance> Writer<D> {
                 wtxn,
                 &mut roots,
                 n_trees,
-                cpt_concurrent_node_ids.used(),
+                concurrent_node_ids.used(),
                 n_items,
             )?;
         } else {
@@ -442,18 +430,12 @@ impl<D: Distance> Writer<D> {
         to_insert: &RoaringBitmap,
         to_delete: &RoaringBitmap,
         frozen_reader: &FrozzenReader<D>,
-        concurrent_node_ids: ConcurrentNodeIds,
-    ) -> Result<(Vec<ItemId>, Vec<TmpNodesReader>, ConcurrentNodeIds)> {
+    ) -> Result<(Vec<ItemId>, Vec<TmpNodesReader>)> {
         let roots: Vec<_> = metadata.roots.iter().collect();
-        if to_insert.is_empty() && to_delete.is_empty() {
-            return Ok((roots, Vec::new(), concurrent_node_ids));
-        }
-        let concurrents_node_ids = concurrent_node_ids.split_in(roots.len());
 
-        let ((root_nodes, tmp_nodes_readers), concurrents_node_ids) = repeatn(rng.next_u64(), metadata.roots.len())
+        repeatn(rng.next_u64(), metadata.roots.len())
             .zip(roots)
-            .zip(concurrents_node_ids)
-            .map(|((seed, root), mut concurrent_node_ids)| {
+            .map(|(seed, root)| {
                 log::debug!("started updating tree {root:X}...");
                 let mut rng = R::seed_from_u64(seed.wrapping_add(root as u64));
                 let mut tmp_nodes: TmpNodes<NodeCodec<D>> = match self.tmpdir.as_ref() {
@@ -467,26 +449,20 @@ impl<D: Distance> Writer<D> {
                     root_node,
                     to_insert,
                     to_delete,
-                    &mut concurrent_node_ids,
                     &mut tmp_nodes,
                 )?;
                 assert!(node_id.mode != NodeMode::Item, "update_nodes_in_file returned an item even though there was more than a single element");
 
                 log::debug!("finished updating tree {root:X}");
-                Ok(((node_id.unwrap_tree(), tmp_nodes.into_bytes_reader()?), concurrent_node_ids))
+                Ok((node_id.unwrap_tree(), tmp_nodes.into_bytes_reader()?))
             })
-            .collect::<Result<_>>()?;
-
-        // Safe to unwrap here because if there was no tree node the update function would not have been called at all
-        let concurrent_node_ids = ConcurrentNodeIds::merge(concurrents_node_ids).unwrap();
-        Ok((root_nodes, tmp_nodes_readers, concurrent_node_ids))
+            .collect()
     }
 
     /// Update the nodes that changed and delete the deleted nodes all at once.
     /// Run in O(n) on the total number of nodes. Return a tuple containing the
     /// node ID you should use instead of the current_node and the number of
     /// items in the subtree.
-    #[allow(clippy::too_many_arguments)]
     fn update_nodes_in_file<R: Rng>(
         &self,
         frozen_reader: &FrozzenReader<D>,
@@ -494,7 +470,6 @@ impl<D: Distance> Writer<D> {
         current_node: NodeId,
         to_insert: &RoaringBitmap,
         to_delete: &RoaringBitmap,
-        concurrent_node_ids: &mut ConcurrentNodeIds,
         tmp_nodes: &mut TmpNodes<NodeCodec<D>>,
     ) -> Result<(NodeId, RoaringBitmap)> {
         match current_node.mode {
@@ -512,8 +487,8 @@ impl<D: Distance> Writer<D> {
                         Ok((NodeId::item(item_id), new_items))
                     }
                 } else if self.fit_in_descendant(new_items.len()) {
-                    let node_id = concurrent_node_ids.next()?;
-                    let node_id = NodeId::tree(node_id);
+                    let node_id = frozen_reader.concurrent_node_ids.next()?;
+                    let node_id = NodeId::tree(node_id as u32);
                     tmp_nodes.put(
                         node_id.item,
                         &Node::Descendants(Descendants {
@@ -522,13 +497,8 @@ impl<D: Distance> Writer<D> {
                     )?;
                     Ok((node_id, new_items))
                 } else {
-                    let new_id = self.make_tree_in_file(
-                        frozen_reader,
-                        rng,
-                        &new_items,
-                        concurrent_node_ids,
-                        tmp_nodes,
-                    )?;
+                    let new_id =
+                        self.make_tree_in_file(frozen_reader, rng, &new_items, tmp_nodes)?;
 
                     return Ok((new_id, new_items));
                 }
@@ -554,7 +524,6 @@ impl<D: Distance> Writer<D> {
                                 frozen_reader,
                                 rng,
                                 &new_descendants,
-                                concurrent_node_ids,
                                 tmp_nodes,
                             )?;
 
@@ -597,7 +566,6 @@ impl<D: Distance> Writer<D> {
                             left,
                             &left_ids,
                             to_delete,
-                            concurrent_node_ids,
                             tmp_nodes,
                         )?;
                         let (new_right, right_items) = self.update_nodes_in_file(
@@ -606,7 +574,6 @@ impl<D: Distance> Writer<D> {
                             right,
                             &right_ids,
                             to_delete,
-                            concurrent_node_ids,
                             tmp_nodes,
                         )?;
 
@@ -670,26 +637,19 @@ impl<D: Distance> Writer<D> {
         n_trees: Option<usize>,
         item_indices: &RoaringBitmap,
         frozen_reader: &FrozzenReader<D>,
-        concurrent_node_ids: ConcurrentNodeIds,
     ) -> Result<(Vec<ItemId>, Vec<TmpNodesReader>)> {
         let n_items = item_indices.len();
+        let concurrent_node_ids = frozen_reader.concurrent_node_ids;
 
         repeatn(rng.next_u64(), n_trees.unwrap_or(usize::MAX))
             .enumerate()
-            // The first iteration will yield the concurrent_node_ids containing all the available
-            // docids, the next one will only use new IDs.
-            .map(|(i, seed)| if i == 0 {
-                (i, seed, concurrent_node_ids.clone_with_available())
-            } else {
-                (i, seed, concurrent_node_ids.clone_without_available())
-            })
-            // Stop generating trees once the specified number of tree nodes are generated
-            // but continue to generate trees if the number of trees is unspecified
-            .take_any_while(|(_, _, concurrent_node_ids)| match n_trees {
+            // Stop generating trees once the number of tree nodes are generated
+            // but continue to generate trees if the number of trees is specified
+            .take_any_while(|_| match n_trees {
                 Some(_) => true,
                 None => concurrent_node_ids.used() < n_items,
             })
-            .map(|(i, seed, mut concurrent_node_ids)| {
+            .map(|(i, seed)| {
                 log::debug!("started generating tree {i:X}...");
                 let mut rng = R::seed_from_u64(seed.wrapping_add(i as u64));
                 let mut tmp_nodes = match self.tmpdir.as_ref() {
@@ -697,7 +657,7 @@ impl<D: Distance> Writer<D> {
                     None => TmpNodes::new()?,
                 };
                 let root_id =
-                    self.make_tree_in_file(frozen_reader, &mut rng, item_indices, &mut concurrent_node_ids, &mut tmp_nodes)?;
+                    self.make_tree_in_file(frozen_reader, &mut rng, item_indices, &mut tmp_nodes)?;
                 assert!(
                     root_id.mode != NodeMode::Item,
                     "make_tree_in_file returned an item even though there was more than a single element"
@@ -706,7 +666,7 @@ impl<D: Distance> Writer<D> {
                 // make_tree will NEVER return a leaf when called as root
                 Ok((root_id.unwrap_tree(), tmp_nodes.into_bytes_reader()?))
             })
-            .collect::<Result<_>>()
+            .collect()
     }
 
     /// Creates a tree of nodes from the frozzen items that lives
@@ -717,7 +677,6 @@ impl<D: Distance> Writer<D> {
         reader: &FrozzenReader<D>,
         rng: &mut R,
         item_indices: &RoaringBitmap,
-        concurrent_node_ids: &mut ConcurrentNodeIds,
         tmp_nodes: &mut TmpNodes<NodeCodec<D>>,
     ) -> Result<NodeId> {
         if item_indices.len() == 1 {
@@ -725,7 +684,7 @@ impl<D: Distance> Writer<D> {
         }
 
         if self.fit_in_descendant(item_indices.len()) {
-            let item_id = concurrent_node_ids.next()?;
+            let item_id = reader.concurrent_node_ids.next()?;
             let item = Node::Descendants(Descendants { descendants: Cow::Borrowed(item_indices) });
             tmp_nodes.put(item_id, &item)?;
             return Ok(NodeId::tree(item_id));
@@ -767,23 +726,11 @@ impl<D: Distance> Writer<D> {
 
         let normal = SplitPlaneNormal {
             normal: Cow::Owned(normal),
-            left: self.make_tree_in_file(
-                reader,
-                rng,
-                &children_left,
-                concurrent_node_ids,
-                tmp_nodes,
-            )?,
-            right: self.make_tree_in_file(
-                reader,
-                rng,
-                &children_right,
-                concurrent_node_ids,
-                tmp_nodes,
-            )?,
+            left: self.make_tree_in_file(reader, rng, &children_left, tmp_nodes)?,
+            right: self.make_tree_in_file(reader, rng, &children_right, tmp_nodes)?,
         };
 
-        let new_node_id = concurrent_node_ids.next()?;
+        let new_node_id = reader.concurrent_node_ids.next()?;
         tmp_nodes.put(new_node_id, &Node::SplitPlaneNormal(normal))?;
 
         Ok(NodeId::tree(new_node_id))
@@ -865,6 +812,7 @@ impl<D: Distance> Writer<D> {
 struct FrozzenReader<'a, D: Distance> {
     leafs: &'a ImmutableLeafs<'a, D>,
     trees: &'a ImmutableTrees<'a, D>,
+    concurrent_node_ids: &'a ConcurrentNodeIds,
 }
 
 /// Randomly and efficiently splits the items into the left and right children vectors.

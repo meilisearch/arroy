@@ -3,8 +3,7 @@ use std::fs::File;
 use std::io::{BufWriter, Write};
 use std::marker;
 use std::path::Path;
-use std::sync::atomic::{AtomicU32, AtomicU64, Ordering};
-use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering};
 
 use heed::types::Bytes;
 use heed::{BytesDecode, BytesEncode, RoTxn};
@@ -134,12 +133,16 @@ impl TmpNodesReader {
 #[derive(Debug)]
 pub struct ConcurrentNodeIds {
     /// The current tree node ID we should use if there is no other IDs available.
-    current: Arc<AtomicU32>,
+    current: AtomicU32,
     /// The total number of tree node IDs used.
-    used: Arc<AtomicU64>,
+    used: AtomicU64,
+
     /// A list of IDs to exhaust first before picking IDs from `current`.
-    /// When cloning this type, the available node ids are not cloned.
     available: RoaringBitmap,
+    /// The current IDs we should return in the roaring bitmap.
+    current_in_bitmap: AtomicU32,
+    /// Tells you if you should look in the roaring bitmap or if all the IDs are already exhausted.
+    should_look_into_bitmap: AtomicBool,
 }
 
 impl ConcurrentNodeIds {
@@ -150,82 +153,35 @@ impl ConcurrentNodeIds {
         let available = RoaringBitmap::from_sorted_iter(0..last_id).unwrap() - used;
 
         ConcurrentNodeIds {
-            current: Arc::new(AtomicU32::new(last_id)),
-            used: Arc::new(AtomicU64::new(used_ids)),
+            current: AtomicU32::new(last_id),
+            used: AtomicU64::new(used_ids),
+            current_in_bitmap: AtomicU32::new(0),
+            should_look_into_bitmap: AtomicBool::new(!available.is_empty()),
             available,
         }
     }
 
     /// Returns a new unique ID and increase the count of IDs used.
-    pub fn next(&mut self) -> Result<u32> {
+    pub fn next(&self) -> Result<u32> {
         if self.used.fetch_add(1, Ordering::Relaxed) > u32::MAX as u64 {
             Err(Error::DatabaseFull)
-        } else {
-            match self.available.select(0) {
-                Some(id) => {
-                    // remove_smallest has a faster access pattern than remove
-                    self.available.remove_smallest(1);
-                    Ok(id)
+        } else if self.should_look_into_bitmap.load(Ordering::Relaxed) {
+            let current = self.current_in_bitmap.fetch_add(1, Ordering::Relaxed);
+            match self.available.select(current) {
+                Some(id) => Ok(id),
+                None => {
+                    self.should_look_into_bitmap.store(false, Ordering::Relaxed);
+                    Ok(self.current.fetch_add(1, Ordering::Relaxed))
                 }
-                None => Ok(self.current.fetch_add(1, Ordering::Relaxed)),
             }
+        } else {
+            Ok(self.current.fetch_add(1, Ordering::Relaxed))
         }
     }
 
     /// Returns the number of used ids in total.
     pub fn used(&self) -> u64 {
         self.used.load(Ordering::Relaxed)
-    }
-
-    /// Split a concurrent node ids into `n` parts..
-    pub fn split_in(self, n: usize) -> Vec<ConcurrentNodeIds> {
-        if n <= 1 {
-            return vec![self];
-        }
-
-        let Self { current, used, available } = self;
-        let chunk_size = available.len() / n as u64;
-        let mut ret = Vec::new();
-
-        let mut iter = available.into_iter();
-        for _ in 0..(n - 1) {
-            let available = iter.by_ref().take(chunk_size as usize).collect();
-            ret.push(Self { current: current.clone(), used: used.clone(), available });
-        }
-        // the last element is going to contain everything remaining
-        ret.push(Self { current, used, available: iter.collect() });
-
-        ret
-    }
-
-    /// Recompose a vector of concurrent node ids into a single concurrent node ids.
-    /// Return `None` if called on an empty list.
-    pub fn merge(concurrents_node_ids: Vec<ConcurrentNodeIds>) -> Option<Self> {
-        concurrents_node_ids.into_iter().reduce(|left, right| Self {
-            current: left.current,
-            used: left.used,
-            available: left.available | right.available,
-        })
-    }
-
-    /// Clone the concurrent node IDs **with** the available node IDs.
-    /// The available IDs should NEVER be shared between two different threads otherwise, they may
-    /// use the same ID for different nodes.
-    pub fn clone_with_available(&self) -> Self {
-        Self {
-            current: self.current.clone(),
-            used: self.used.clone(),
-            available: self.available.clone(),
-        }
-    }
-
-    /// Clone the concurrent node IDs **without** the available node IDs.
-    pub fn clone_without_available(&self) -> Self {
-        Self {
-            current: self.current.clone(),
-            used: self.used.clone(),
-            available: RoaringBitmap::new(),
-        }
     }
 }
 
