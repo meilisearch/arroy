@@ -137,12 +137,12 @@ pub struct ConcurrentNodeIds {
     /// The total number of tree node IDs used.
     used: AtomicU64,
 
-    /// A list of IDs to exhaust first before picking IDs from `current`.
+    /// A list of IDs to exhaust before picking IDs from `current`.
     available: RoaringBitmap,
-    /// The current IDs we should return in the roaring bitmap.
-    current_in_bitmap: AtomicU32,
-    /// Tells you if you should look in the roaring bitmap or if all the IDs are already exhausted.
-    should_look_into_bitmap: AtomicBool,
+    /// The current Nth ID to select in the bitmap.
+    select_in_bitmap: AtomicU32,
+    /// Tells if you should look in the roaring bitmap or if all the IDs are already exhausted.
+    look_into_bitmap: AtomicBool,
 }
 
 impl ConcurrentNodeIds {
@@ -155,8 +155,8 @@ impl ConcurrentNodeIds {
         ConcurrentNodeIds {
             current: AtomicU32::new(last_id),
             used: AtomicU64::new(used_ids),
-            current_in_bitmap: AtomicU32::new(0),
-            should_look_into_bitmap: AtomicBool::new(!available.is_empty()),
+            select_in_bitmap: AtomicU32::new(0),
+            look_into_bitmap: AtomicBool::new(!available.is_empty()),
             available,
         }
     }
@@ -165,12 +165,12 @@ impl ConcurrentNodeIds {
     pub fn next(&self) -> Result<u32> {
         if self.used.fetch_add(1, Ordering::Relaxed) > u32::MAX as u64 {
             Err(Error::DatabaseFull)
-        } else if self.should_look_into_bitmap.load(Ordering::Relaxed) {
-            let current = self.current_in_bitmap.fetch_add(1, Ordering::Relaxed);
+        } else if self.look_into_bitmap.load(Ordering::Relaxed) {
+            let current = self.select_in_bitmap.fetch_add(1, Ordering::Relaxed);
             match self.available.select(current) {
                 Some(id) => Ok(id),
                 None => {
-                    self.should_look_into_bitmap.store(false, Ordering::Relaxed);
+                    self.look_into_bitmap.store(false, Ordering::Relaxed);
                     Ok(self.current.fetch_add(1, Ordering::Relaxed))
                 }
             }
