@@ -79,8 +79,8 @@ impl<'a, DE: BytesEncode<'a>> TmpNodes<DE> {
     /// Panic if the node wasn't inserted in the tmp_nodes before calling this method.
     pub fn remove(&mut self, item: ItemId) -> heed::Result<()> {
         self.remove_from_db(item);
-        // In the current algorithm, we're supposed to find the node in the two last positions.
-        if let Some(el) = self.ids.iter_mut().rev().take(2).find(|i| **i == item) {
+        // In the current algorithm, we're supposed to find the node in the last positions.
+        if let Some(el) = self.ids.iter_mut().rev().find(|i| **i == item) {
             *el = u32::MAX;
         } else {
             unreachable!();
