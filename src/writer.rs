@@ -365,38 +365,13 @@ fn make_tree_in_file<D: Distance, R: Rng>(
             };
         }
 
-        unsafe {
-            let visualize = VISUALIZE.as_mut().unwrap();
-            let frames = visualize.last_mut().unwrap();
-            let mut frame = frames.splits.last().unwrap().clone();
-            frame.left.build_with = children_left
-                .iter()
-                .map(|id| {
-                    let leaf = reader.leafs.get(id).unwrap().unwrap();
-                    let vector = leaf.vector;
-                    let x = vector.iter().nth(0).unwrap();
-                    let y = vector.iter().nth(1).unwrap();
-                    (x, y)
-                })
-                .collect();
-            frame.right.build_with = children_right
-                .iter()
-                .map(|id| {
-                    let leaf = reader.leafs.get(id).unwrap().unwrap();
-                    let vector = leaf.vector;
-                    let x = vector.iter().nth(0).unwrap();
-                    let y = vector.iter().nth(1).unwrap();
-                    (x, y)
-                })
-                .collect();
-            frames.splits.push(frame);
-        }
-
         if split_imbalance(children_left.len(), children_right.len()) < 0.95
             || remaining_attempts == 0
         {
             break normal;
         }
+        let visualize = unsafe { VISUALIZE.as_mut().unwrap() };
+        visualize.pop(); // throw out the latest frame, we failed
 
         remaining_attempts -= 1;
     };
@@ -407,6 +382,34 @@ fn make_tree_in_file<D: Distance, R: Rng>(
         randomly_split_children(rng, item_indices, &mut children_left, &mut children_right);
         normal.fill(0.0);
     }
+
+    dbg!(children_left.len());
+    dbg!(children_right.len());
+
+    let visualize = unsafe { VISUALIZE.as_mut().unwrap() };
+    let frames = visualize.last_mut().unwrap();
+    let mut frame = frames.splits.last().unwrap().clone();
+    frame.left.build_with = children_left
+        .iter()
+        .map(|id| {
+            let leaf = reader.leafs.get(id).unwrap().unwrap();
+            let vector = leaf.vector;
+            let x = vector.iter().nth(0).unwrap();
+            let y = vector.iter().nth(1).unwrap();
+            (x, y)
+        })
+        .collect();
+    frame.right.build_with = children_right
+        .iter()
+        .map(|id| {
+            let leaf = reader.leafs.get(id).unwrap().unwrap();
+            let vector = leaf.vector;
+            let x = vector.iter().nth(0).unwrap();
+            let y = vector.iter().nth(1).unwrap();
+            (x, y)
+        })
+        .collect();
+    frames.splits.push(frame);
 
     let normal = SplitPlaneNormal {
         normal: Cow::Owned(normal),

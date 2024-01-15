@@ -1,12 +1,10 @@
-use arroy::distances::Euclidean;
-use arroy::{Database, Split, Writer};
-use arroy::{SplitFrame, VISUALIZE};
+use arroy::distances::Manhattan;
+use arroy::{Database, Split, SplitFrame, Writer, VISUALIZE};
 use heed::{EnvFlags, EnvOpenOptions};
-use rand::rngs::StdRng;
-use rand::{Rng, SeedableRng};
-
 use nannou::prelude::*;
 use nannou_egui::{self, egui, Egui};
+use rand::rngs::StdRng;
+use rand::{Rng, SeedableRng};
 
 fn main() {
     let mut rng = StdRng::seed_from_u64(62);
@@ -19,8 +17,8 @@ fn main() {
     let env = env_builder.open(tempdir).unwrap();
 
     let mut wtxn = env.write_txn().unwrap();
-    let database: Database<Euclidean> = env.create_database(&mut wtxn, None).unwrap();
-    let writer = Writer::<Euclidean>::prepare(&mut wtxn, database, 0, 2).unwrap();
+    let database: Database<Manhattan> = env.create_database(&mut wtxn, None).unwrap();
+    let writer = Writer::<Manhattan>::prepare(&mut wtxn, database, 0, 2).unwrap();
 
     for i in 0..1000 {
         writer
