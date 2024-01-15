@@ -22,5 +22,5 @@ jobs:
       # Run fuzzer
       - name: Run the fuzzer
         run: |
-          cargo run --release --examples fuzz $((60 * 5))
+          cargo run --release --example fuzz $((60 * 5))
 
