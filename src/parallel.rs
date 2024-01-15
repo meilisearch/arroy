@@ -148,7 +148,7 @@ pub struct ConcurrentNodeIds {
 impl ConcurrentNodeIds {
     /// Creates an ID generator returning unique IDs, avoiding the specified used IDs.
     pub fn new(used: RoaringBitmap) -> ConcurrentNodeIds {
-        let last_id = used.iter().last().map(|id| id + 1).unwrap_or(0);
+        let last_id = used.max().map_or(0, |id| id + 1);
         let used_ids = used.len();
         let available = RoaringBitmap::from_sorted_iter(0..last_id).unwrap() - used;
 
