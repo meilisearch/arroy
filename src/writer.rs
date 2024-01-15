@@ -327,6 +327,8 @@ impl<D: Distance> Writer<D> {
         let used_node_ids = self.used_tree_node(wtxn)?;
 
         let mut concurrent_node_ids = ConcurrentNodeIds::new(used_node_ids);
+        // this variable doesn't contains the available node ids and will only be used to return the number of used node ids.
+        let cpt_concurrent_node_ids = concurrent_node_ids.clone_without_available();
         let frozzen_reader = FrozzenReader {
             leafs: &ImmutableLeafs::new(wtxn, self.database, self.index)?,
             trees: &ImmutableTrees::new(wtxn, self.database, self.index)?,
@@ -366,7 +368,7 @@ impl<D: Distance> Writer<D> {
             .zip(metadata)
             .map(|(n_trees, metadata)| n_trees.saturating_sub(metadata.roots.len()))
             .or(n_trees);
-        let (mut thread_roots, mut tmp_nodes, concurrent_node_ids) = self.build_trees(
+        let (mut thread_roots, mut tmp_nodes) = self.build_trees(
             rng,
             n_trees_to_build,
             &item_indices,
@@ -402,7 +404,7 @@ impl<D: Distance> Writer<D> {
                 wtxn,
                 &mut roots,
                 n_trees,
-                concurrent_node_ids.used(),
+                cpt_concurrent_node_ids.used(),
                 n_items,
             )?;
         } else {
@@ -443,6 +445,9 @@ impl<D: Distance> Writer<D> {
         concurrent_node_ids: ConcurrentNodeIds,
     ) -> Result<(Vec<ItemId>, Vec<TmpNodesReader>, ConcurrentNodeIds)> {
         let roots: Vec<_> = metadata.roots.iter().collect();
+        if to_insert.is_empty() && to_delete.is_empty() {
+            return Ok((roots, Vec::new(), concurrent_node_ids));
+        }
         let concurrents_node_ids = concurrent_node_ids.split_in(roots.len());
 
         let ((root_nodes, tmp_nodes_readers), concurrents_node_ids) = repeatn(rng.next_u64(), metadata.roots.len())
@@ -666,21 +671,25 @@ impl<D: Distance> Writer<D> {
         item_indices: &RoaringBitmap,
         frozen_reader: &FrozzenReader<D>,
         concurrent_node_ids: ConcurrentNodeIds,
-    ) -> Result<(Vec<ItemId>, Vec<TmpNodesReader>, ConcurrentNodeIds)> {
+    ) -> Result<(Vec<ItemId>, Vec<TmpNodesReader>)> {
         let n_items = item_indices.len();
-        let base_concurrent_node_id = concurrent_node_ids.clone();
 
-        let ((root_nodes, tmp_nodes_readers), concurrents_node_ids) =
         repeatn(rng.next_u64(), n_trees.unwrap_or(usize::MAX))
             .enumerate()
-            .zip(repeatn(base_concurrent_node_id, usize::MAX))
-            // Stop generating trees once the number of tree nodes are generated
-            // but continue to generate trees if the number of trees is specified
-            .take_any_while(|(_, concurrent_node_ids)| match n_trees {
+            // The first iteration will yield the concurrent_node_ids containing all the available
+            // docids, the next one will only use new IDs.
+            .map(|(i, seed)| if i == 0 {
+                (i, seed, concurrent_node_ids.clone_with_available())
+            } else {
+                (i, seed, concurrent_node_ids.clone_without_available())
+            })
+            // Stop generating trees once the specified number of tree nodes are generated
+            // but continue to generate trees if the number of trees is unspecified
+            .take_any_while(|(_, _, concurrent_node_ids)| match n_trees {
                 Some(_) => true,
                 None => concurrent_node_ids.used() < n_items,
             })
-            .map(|((i, seed), mut concurrent_node_ids)| {
+            .map(|(i, seed, mut concurrent_node_ids)| {
                 log::debug!("started generating tree {i:X}...");
                 let mut rng = R::seed_from_u64(seed.wrapping_add(i as u64));
                 let mut tmp_nodes = match self.tmpdir.as_ref() {
@@ -695,13 +704,9 @@ impl<D: Distance> Writer<D> {
                 );
                 log::debug!("finished generating tree {i:X}");
                 // make_tree will NEVER return a leaf when called as root
-                Ok(((root_id.unwrap_tree(), tmp_nodes.into_bytes_reader()?), concurrent_node_ids))
+                Ok((root_id.unwrap_tree(), tmp_nodes.into_bytes_reader()?))
             })
-            .collect::<Result<_>>()?;
-
-        let concurrent_node_ids =
-            ConcurrentNodeIds::merge(concurrents_node_ids).unwrap_or(concurrent_node_ids);
-        Ok((root_nodes, tmp_nodes_readers, concurrent_node_ids))
+            .collect::<Result<_>>()
     }
 
     /// Creates a tree of nodes from the frozzen items that lives

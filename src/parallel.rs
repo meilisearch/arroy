@@ -207,11 +207,20 @@ impl ConcurrentNodeIds {
             available: left.available | right.available,
         })
     }
-}
 
-/// Cloning this type doesn't clone the available node ids
-impl Clone for ConcurrentNodeIds {
-    fn clone(&self) -> Self {
+    /// Clone the concurrent node IDs **with** the available node IDs.
+    /// The available IDs should NEVER be shared between two different threads otherwise, they may
+    /// use the same ID for different nodes.
+    pub fn clone_with_available(&self) -> Self {
+        Self {
+            current: self.current.clone(),
+            used: self.used.clone(),
+            available: self.available.clone(),
+        }
+    }
+
+    /// Clone the concurrent node IDs **without** the available node IDs.
+    pub fn clone_without_available(&self) -> Self {
         Self {
             current: self.current.clone(),
             used: self.used.clone(),

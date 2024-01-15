@@ -867,4 +867,34 @@ fn reuse_node_id() {
     Root: Metadata { dimensions: 2, items: RoaringBitmap<[0, 1, 2, 3, 4, 5]>, roots: [4], distance: "euclidean" }
     updated_item_ids: RoaringBitmap<[]>
     "###);
+
+    let mut wtxn = handle.env.write_txn().unwrap();
+    let writer = Writer::new(handle.database, 0, 2).unwrap();
+
+    // if we now build a new tree, the id 1 should be re-used
+    writer.build(&mut wtxn, &mut rng, Some(2)).unwrap();
+    wtxn.commit().unwrap();
+
+    insta::assert_display_snapshot!(handle, @r###"
+    ==================
+    Dumping index 0
+    Item 0: Leaf(Leaf { header: NodeHeaderEuclidean { bias: 0.0 }, vector: [0.0000, 0.0000] })
+    Item 1: Leaf(Leaf { header: NodeHeaderEuclidean { bias: 0.0 }, vector: [1.0000, 0.0000] })
+    Item 2: Leaf(Leaf { header: NodeHeaderEuclidean { bias: 0.0 }, vector: [2.0000, 0.0000] })
+    Item 3: Leaf(Leaf { header: NodeHeaderEuclidean { bias: 0.0 }, vector: [3.0000, 0.0000] })
+    Item 4: Leaf(Leaf { header: NodeHeaderEuclidean { bias: 0.0 }, vector: [4.0000, 0.0000] })
+    Item 5: Leaf(Leaf { header: NodeHeaderEuclidean { bias: 0.0 }, vector: [5.0000, 0.0000] })
+    Tree 0: Descendants(Descendants { descendants: [2, 3] })
+    Tree 1: Descendants(Descendants { descendants: [3, 4] })
+    Tree 2: Descendants(Descendants { descendants: [4, 5] })
+    Tree 3: SplitPlaneNormal(SplitPlaneNormal { left: Tree(5), right: Tree(2), normal: [0.0000, 0.0000] })
+    Tree 4: SplitPlaneNormal(SplitPlaneNormal { left: Item(0), right: Tree(3), normal: [1.0000, 0.0000] })
+    Tree 5: SplitPlaneNormal(SplitPlaneNormal { left: Tree(0), right: Item(1), normal: [0.0000, 0.0000] })
+    Tree 6: SplitPlaneNormal(SplitPlaneNormal { left: Item(1), right: Tree(1), normal: [0.0000, 0.0000] })
+    Tree 7: Descendants(Descendants { descendants: [2, 5] })
+    Tree 8: SplitPlaneNormal(SplitPlaneNormal { left: Tree(6), right: Tree(7), normal: [0.0000, 0.0000] })
+    Tree 9: SplitPlaneNormal(SplitPlaneNormal { left: Tree(8), right: Item(0), normal: [-1.0000, 0.0000] })
+    Root: Metadata { dimensions: 2, items: RoaringBitmap<[0, 1, 2, 3, 4, 5]>, roots: [4, 9], distance: "euclidean" }
+    updated_item_ids: RoaringBitmap<[]>
+    "###);
 }
