@@ -17,7 +17,7 @@ use crate::parallel::{ConcurrentNodeIds, ImmutableLeafs, ImmutableSubsetLeafs, T
 use crate::reader::item_leaf;
 use crate::{
     Database, Error, ItemId, Key, Metadata, MetadataCodec, Node, NodeCodec, NodeId, Prefix,
-    PrefixCodec, Result,
+    PrefixCodec, Result, VISUALIZE,
 };
 
 /// A writer to store new items, remove existing ones,
@@ -363,6 +363,33 @@ fn make_tree_in_file<D: Distance, R: Rng>(
                 Side::Left => children_left.push(item_id),
                 Side::Right => children_right.push(item_id),
             };
+        }
+
+        unsafe {
+            let visualize = VISUALIZE.as_mut().unwrap();
+            let frames = visualize.last_mut().unwrap();
+            let mut frame = frames.splits.last().unwrap().clone();
+            frame.left.build_with = children_left
+                .iter()
+                .map(|id| {
+                    let leaf = reader.leafs.get(id).unwrap().unwrap();
+                    let vector = leaf.vector;
+                    let x = vector.iter().nth(0).unwrap();
+                    let y = vector.iter().nth(1).unwrap();
+                    (x, y)
+                })
+                .collect();
+            frame.right.build_with = children_right
+                .iter()
+                .map(|id| {
+                    let leaf = reader.leafs.get(id).unwrap().unwrap();
+                    let vector = leaf.vector;
+                    let x = vector.iter().nth(0).unwrap();
+                    let y = vector.iter().nth(1).unwrap();
+                    (x, y)
+                })
+                .collect();
+            frames.splits.push(frame);
         }
 
         if split_imbalance(children_left.len(), children_right.len()) < 0.95

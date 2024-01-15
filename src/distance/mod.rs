@@ -1,3 +1,4 @@
+use std::borrow::Cow;
 use std::fmt;
 
 pub use angular::{Angular, NodeHeaderAngular};
@@ -7,12 +8,13 @@ pub use euclidean::{Euclidean, NodeHeaderEuclidean};
 use heed::{RwPrefix, RwTxn};
 pub use manhattan::{Manhattan, NodeHeaderManhattan};
 use rand::Rng;
+use roaring::RoaringBitmap;
 
 use crate::internals::{KeyCodec, Side};
 use crate::node::{Leaf, UnalignedF32Slice};
 use crate::parallel::ImmutableSubsetLeafs;
 use crate::spaces::simple::dot_product;
-use crate::NodeCodec;
+use crate::{Centroid, NodeCodec, Split, SplitFrame, VISUALIZE};
 
 mod angular;
 mod dot_product;
@@ -86,7 +88,10 @@ pub trait Distance: Send + Sync + Sized + Clone + fmt::Debug + 'static {
     fn margin_no_header(p: &UnalignedF32Slice, q: &UnalignedF32Slice) -> f32;
 
     fn side<R: Rng>(normal_plane: &UnalignedF32Slice, node: &Leaf<Self>, rng: &mut R) -> Side {
-        let dot = Self::margin_no_header(&node.vector, normal_plane);
+        let dot = Self::non_built_distance(
+            node,
+            &Leaf { header: Self::new_header(normal_plane), vector: Cow::Borrowed(normal_plane) },
+        );
         if dot > 0.0 {
             Side::Right
         } else if dot < 0.0 {
@@ -130,6 +135,10 @@ fn two_means<D: Distance, R: Rng>(
     D::init(&mut leaf_p);
     D::init(&mut leaf_q);
 
+    let mut frames = Vec::new();
+    let mut left = Vec::new();
+    let mut right = Vec::new();
+
     let mut ic = 1.0;
     let mut jc = 1.0;
     for _ in 0..ITERATION_STEPS {
@@ -144,11 +153,39 @@ fn two_means<D: Distance, R: Rng>(
             Distance::update_mean(&mut leaf_p, &node_k, norm, ic);
             Distance::init(&mut leaf_p);
             ic += 1.0;
+            right
+                .push((node_k.vector.iter().nth(0).unwrap(), node_k.vector.iter().nth(1).unwrap()));
         } else if dj < di {
             Distance::update_mean(&mut leaf_q, &node_k, norm, jc);
             Distance::init(&mut leaf_q);
             jc += 1.0;
+            left.push((node_k.vector.iter().nth(0).unwrap(), node_k.vector.iter().nth(1).unwrap()));
         }
+
+        let frame = SplitFrame {
+            left: Centroid {
+                coords: (
+                    leaf_q.vector.iter().nth(0).unwrap(),
+                    leaf_q.vector.iter().nth(1).unwrap(),
+                ),
+                weight: ic,
+                build_with: left.clone(),
+            },
+            right: Centroid {
+                coords: (
+                    leaf_p.vector.iter().nth(0).unwrap(),
+                    leaf_p.vector.iter().nth(1).unwrap(),
+                ),
+                weight: jc,
+                build_with: right.clone(),
+            },
+        };
+        frames.push(frame);
+    }
+
+    unsafe {
+        let vec = VISUALIZE.get_or_insert(Vec::new());
+        vec.push(Split { splits: frames });
     }
 
     Ok([leaf_p, leaf_q])

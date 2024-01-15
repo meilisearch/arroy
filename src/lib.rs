@@ -72,6 +72,26 @@
     html_logo_url = "https://raw.githubusercontent.com/meilisearch/arroy/main/assets/arroy-electric-clusters-logo.png?raw=true"
 )]
 
+pub static mut VISUALIZE: Option<Vec<Split>> = None;
+
+#[derive(Clone)]
+pub struct Split {
+    pub splits: Vec<SplitFrame>,
+}
+
+#[derive(Clone)]
+pub struct SplitFrame {
+    pub left: Centroid,
+    pub right: Centroid,
+}
+
+#[derive(Clone)]
+pub struct Centroid {
+    pub coords: (f32, f32),
+    pub weight: f32,
+    pub build_with: Vec<(f32, f32)>,
+}
+
 mod distance;
 mod error;
 mod item_iter;
@@ -99,6 +119,7 @@ use key::{Key, Prefix, PrefixCodec};
 use node::{ItemIds, Node, NodeCodec};
 use node_id::{NodeId, NodeMode};
 pub use reader::Reader;
+use roaring::RoaringBitmap;
 pub use stats::{Stats, TreeStats};
 pub use writer::Writer;
 
