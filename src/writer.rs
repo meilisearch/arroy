@@ -745,10 +745,13 @@ impl<D: Distance> Writer<D> {
         nb_tree_nodes: u64,
         nb_items: u64,
     ) -> Result<()> {
+        if roots.is_empty() {
+            return Ok(());
+        }
         let nb_trees = match nb_trees {
             Some(nb_trees) => nb_trees,
             None => {
-                // 1. Estimate the number of nodes per tree
+                // 1. Estimate the number of nodes per tree; the division is safe because we ensured there was at least one root node above.
                 let nodes_per_tree = nb_tree_nodes / roots.len() as u64;
                 // 2. Estimate the number of tree we need to have AT LEAST as much tree-nodes than items
                 (nb_items / nodes_per_tree) as usize
