@@ -22,5 +22,5 @@ jobs:
       # Run fuzzer
       - name: Run the fuzzer
         run: |
-          cargo run --release --features="assert_reader_validity" --example fuzz $((60 * 5))
+          cargo run --release --features assert-reader-validity --example fuzz $((60 * 5))
 

@@ -41,7 +41,7 @@ default = []
 plot = []
 
 # Enabling this feature provide a method on the reader that assert its own validity.
-assert_reader_validity = []
+assert-reader-validity = []
 
 [[example]]
 name = "graph"
@@ -49,4 +49,4 @@ required-features = ["plot"]
 
 [[example]]
 name = "fuzz"
-required-features = ["assert_reader_validity"]
+required-features = ["assert-reader-validity"]

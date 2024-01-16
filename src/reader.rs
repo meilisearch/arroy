@@ -363,7 +363,7 @@ impl<'t, D: Distance> Reader<'t, D> {
     /// - All the tree nodes are part of a tree.
     /// - No tree shares the same tree node.
     /// - We're effectively working with trees and not graphs (i.e., an item or tree node cannot be linked twice in the tree)
-    #[cfg(any(test, feature = "assert_reader_validity"))]
+    #[cfg(any(test, feature = "assert-reader-validity"))]
     pub fn assert_validity(&self, rtxn: &RoTxn) -> Result<()> {
         // First, get all the items
         let mut item_ids = RoaringBitmap::new();
@@ -404,7 +404,7 @@ impl<'t, D: Distance> Reader<'t, D> {
 
     /// Return first the number of tree nodes and second the items accessible from a node.
     /// And ensure that an item or tree node is never linked twice in the tree
-    #[cfg(any(test, feature = "assert_reader_validity"))]
+    #[cfg(any(test, feature = "assert-reader-validity"))]
     fn gather_items_and_tree_ids(
         &self,
         rtxn: &RoTxn,
