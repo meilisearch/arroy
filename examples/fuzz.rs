@@ -85,7 +85,7 @@ fn main() -> Result<()> {
             let ret = panic::catch_unwind(|| -> arroy::Result<()> {
                 let mut rng_arroy = rng_arroy.clone();
                 let mut wtxn = env.write_txn()?;
-                let writer = Writer::<Euclidean>::new(database, 0, 2)?;
+                let writer = Writer::<Euclidean>::new(database, 0, 2);
 
                 for op in operations {
                     match op {
