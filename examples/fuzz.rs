@@ -3,7 +3,7 @@ use std::{fmt, panic};
 
 use arbitrary::{Arbitrary, Unstructured};
 use arroy::distances::Euclidean;
-use arroy::{Database, Result, Writer};
+use arroy::{Database, Reader, Result, Writer};
 use heed::EnvOpenOptions;
 use rand::rngs::StdRng;
 use rand::{Fill, SeedableRng};
@@ -95,6 +95,9 @@ fn main() -> Result<()> {
                 }
                 writer.build(&mut wtxn, &mut rng_arroy, None)?;
                 wtxn.commit()?;
+                let rtxn = env.read_txn()?;
+                let reader = Reader::<Euclidean>::open(&rtxn, 0, database)?;
+                reader.assert_validity(&rtxn).unwrap();
                 Ok(())
             });
             if let Err(e) = ret {

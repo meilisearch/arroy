@@ -40,6 +40,13 @@ default = []
 # Enabling this feature provide a method on the reader that can plot its root node in the dot format.
 plot = []
 
+# Enabling this feature provide a method on the reader that assert its own validity.
+assert_reader_validity = []
+
 [[example]]
 name = "graph"
 required-features = ["plot"]
+
+[[example]]
+name = "fuzz"
+required-features = ["assert_reader_validity"]
