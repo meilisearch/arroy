@@ -9,7 +9,7 @@ use crate::Writer;
 fn use_u32_max_minus_one_for_a_vec() {
     let handle = create_database::<Euclidean>();
     let mut wtxn = handle.env.write_txn().unwrap();
-    let writer = Writer::new(handle.database, 0, 3).unwrap();
+    let writer = Writer::new(handle.database, 0, 3);
     writer.add_item(&mut wtxn, u32::MAX - 1, &[0.0, 1.0, 2.0]).unwrap();
 
     writer.build(&mut wtxn, &mut rng(), Some(1)).unwrap();
@@ -29,7 +29,7 @@ fn use_u32_max_minus_one_for_a_vec() {
 fn use_u32_max_for_a_vec() {
     let handle = create_database::<Euclidean>();
     let mut wtxn = handle.env.write_txn().unwrap();
-    let writer = Writer::new(handle.database, 0, 3).unwrap();
+    let writer = Writer::new(handle.database, 0, 3);
     writer.add_item(&mut wtxn, u32::MAX, &[0.0, 1.0, 2.0]).unwrap();
 
     writer.build(&mut wtxn, &mut rng(), Some(1)).unwrap();
@@ -49,7 +49,7 @@ fn use_u32_max_for_a_vec() {
 fn write_one_vector() {
     let handle = create_database::<Euclidean>();
     let mut wtxn = handle.env.write_txn().unwrap();
-    let writer = Writer::new(handle.database, 0, 3).unwrap();
+    let writer = Writer::new(handle.database, 0, 3);
     writer.add_item(&mut wtxn, 0, &[0.0, 1.0, 2.0]).unwrap();
 
     writer.build(&mut wtxn, &mut rng(), None).unwrap();
@@ -69,7 +69,7 @@ fn write_one_vector() {
 fn write_one_vector_in_one_tree() {
     let handle = create_database::<Euclidean>();
     let mut wtxn = handle.env.write_txn().unwrap();
-    let writer = Writer::new(handle.database, 0, 3).unwrap();
+    let writer = Writer::new(handle.database, 0, 3);
     writer.add_item(&mut wtxn, 0, &[0.0, 1.0, 2.0]).unwrap();
 
     writer.build(&mut wtxn, &mut rng(), Some(1)).unwrap();
@@ -89,7 +89,7 @@ fn write_one_vector_in_one_tree() {
 fn write_one_vector_in_multiple_trees() {
     let handle = create_database::<Euclidean>();
     let mut wtxn = handle.env.write_txn().unwrap();
-    let writer = Writer::new(handle.database, 0, 3).unwrap();
+    let writer = Writer::new(handle.database, 0, 3);
     writer.add_item(&mut wtxn, 0, &[0.0, 1.0, 2.0]).unwrap();
 
     writer.build(&mut wtxn, &mut rng(), Some(10)).unwrap();
@@ -109,7 +109,7 @@ fn write_one_vector_in_multiple_trees() {
 fn write_vectors_until_there_is_a_descendants() {
     let handle = create_database::<Euclidean>();
     let mut wtxn = handle.env.write_txn().unwrap();
-    let writer = Writer::new(handle.database, 0, 3).unwrap();
+    let writer = Writer::new(handle.database, 0, 3);
     for i in 0..3 {
         let id = i;
         let i = i as f32;
@@ -135,7 +135,7 @@ fn write_vectors_until_there_is_a_descendants() {
 fn write_vectors_until_there_is_a_split() {
     let handle = create_database::<Euclidean>();
     let mut wtxn = handle.env.write_txn().unwrap();
-    let writer = Writer::new(handle.database, 0, 3).unwrap();
+    let writer = Writer::new(handle.database, 0, 3);
     for i in 0..4 {
         let id = i;
         let i = i as f32;
@@ -163,7 +163,7 @@ fn write_vectors_until_there_is_a_split() {
 fn write_and_update_lot_of_random_points() {
     let handle = create_database::<Euclidean>();
     let mut wtxn = handle.env.write_txn().unwrap();
-    let writer = Writer::new(handle.database, 0, 30).unwrap();
+    let writer = Writer::new(handle.database, 0, 30);
     let mut rng = rng();
     for id in 0..100 {
         let vector: [f32; 30] = std::array::from_fn(|_| rng.gen());
@@ -175,7 +175,7 @@ fn write_and_update_lot_of_random_points() {
     insta::assert_display_snapshot!(handle);
 
     let mut wtxn = handle.env.write_txn().unwrap();
-    let writer = Writer::new(handle.database, 0, 30).unwrap();
+    let writer = Writer::new(handle.database, 0, 30);
     for id in (0..100).step_by(2) {
         let vector: [f32; 30] = std::array::from_fn(|_| rng.gen());
         writer.add_item(&mut wtxn, id, &vector).unwrap();
@@ -192,7 +192,7 @@ fn write_multiple_indexes() {
     let mut wtxn = handle.env.write_txn().unwrap();
 
     for i in 0..5 {
-        let writer = Writer::new(handle.database, i, 3).unwrap();
+        let writer = Writer::new(handle.database, i, 3);
         writer.add_item(&mut wtxn, 0, &[0.0, 1.0, 2.0]).unwrap();
         writer.build(&mut wtxn, &mut rng(), Some(1)).unwrap();
     }
@@ -242,7 +242,7 @@ fn write_random_vectors_to_random_indexes() {
     indexes.shuffle(&mut rng);
 
     for index in indexes {
-        let writer = Writer::new(handle.database, index, 10).unwrap();
+        let writer = Writer::new(handle.database, index, 10);
 
         // We're going to write 10 vectors per index
         for i in 0..10 {
@@ -259,7 +259,7 @@ fn overwrite_one_item_incremental() {
     let handle = create_database::<Euclidean>();
     let mut rng = rng();
     let mut wtxn = handle.env.write_txn().unwrap();
-    let writer = Writer::new(handle.database, 0, 2).unwrap();
+    let writer = Writer::new(handle.database, 0, 2);
 
     for i in 0..6 {
         writer.add_item(&mut wtxn, i, &[i as f32, 0.]).unwrap();
@@ -287,7 +287,7 @@ fn overwrite_one_item_incremental() {
 
     let mut wtxn = handle.env.write_txn().unwrap();
 
-    let writer = Writer::new(handle.database, 0, 2).unwrap();
+    let writer = Writer::new(handle.database, 0, 2);
 
     writer.add_item(&mut wtxn, 3, &[6., 0.]).unwrap();
 
@@ -318,7 +318,7 @@ fn delete_one_item_in_a_one_item_db() {
     let handle = create_database::<Euclidean>();
     let mut rng = rng();
     let mut wtxn = handle.env.write_txn().unwrap();
-    let writer = Writer::new(handle.database, 0, 2).unwrap();
+    let writer = Writer::new(handle.database, 0, 2);
 
     writer.add_item(&mut wtxn, 0, &[0., 0.]).unwrap();
     writer.build(&mut wtxn, &mut rng, Some(1)).unwrap();
@@ -334,7 +334,7 @@ fn delete_one_item_in_a_one_item_db() {
     "###);
 
     let mut wtxn = handle.env.write_txn().unwrap();
-    let writer = Writer::new(handle.database, 0, 2).unwrap();
+    let writer = Writer::new(handle.database, 0, 2);
 
     writer.del_item(&mut wtxn, 0).unwrap();
 
@@ -354,7 +354,7 @@ fn delete_one_item_in_a_descendant() {
     let handle = create_database::<Euclidean>();
     let mut rng = rng();
     let mut wtxn = handle.env.write_txn().unwrap();
-    let writer = Writer::new(handle.database, 0, 2).unwrap();
+    let writer = Writer::new(handle.database, 0, 2);
 
     // first, insert a bunch of items
     writer.add_item(&mut wtxn, 0, &[0., 0.]).unwrap();
@@ -373,7 +373,7 @@ fn delete_one_item_in_a_descendant() {
     "###);
 
     let mut wtxn = handle.env.write_txn().unwrap();
-    let writer = Writer::new(handle.database, 0, 2).unwrap();
+    let writer = Writer::new(handle.database, 0, 2);
 
     writer.del_item(&mut wtxn, 0).unwrap();
 
@@ -395,7 +395,7 @@ fn delete_one_leaf_in_a_split() {
     let handle = create_database::<Euclidean>();
     let mut rng = rng();
     let mut wtxn = handle.env.write_txn().unwrap();
-    let writer = Writer::new(handle.database, 0, 2).unwrap();
+    let writer = Writer::new(handle.database, 0, 2);
 
     // first, insert a bunch of elements
     writer.add_item(&mut wtxn, 0, &[0., 0.]).unwrap();
@@ -417,7 +417,7 @@ fn delete_one_leaf_in_a_split() {
     "###);
 
     let mut wtxn = handle.env.write_txn().unwrap();
-    let writer = Writer::new(handle.database, 0, 2).unwrap();
+    let writer = Writer::new(handle.database, 0, 2);
 
     writer.del_item(&mut wtxn, 0).unwrap();
 
@@ -441,7 +441,7 @@ fn delete_one_item() {
     let handle = create_database::<Euclidean>();
     let mut rng = rng();
     let mut wtxn = handle.env.write_txn().unwrap();
-    let writer = Writer::new(handle.database, 0, 2).unwrap();
+    let writer = Writer::new(handle.database, 0, 2);
 
     // first, insert a bunch of elements
     for i in 0..6 {
@@ -469,7 +469,7 @@ fn delete_one_item() {
     "###);
 
     let mut wtxn = handle.env.write_txn().unwrap();
-    let writer = Writer::new(handle.database, 0, 2).unwrap();
+    let writer = Writer::new(handle.database, 0, 2);
 
     writer.del_item(&mut wtxn, 3).unwrap();
 
@@ -494,7 +494,7 @@ fn delete_one_item() {
 
     // delete the last item in a descendants node
     let mut wtxn = handle.env.write_txn().unwrap();
-    let writer = Writer::new(handle.database, 0, 2).unwrap();
+    let writer = Writer::new(handle.database, 0, 2);
 
     writer.del_item(&mut wtxn, 1).unwrap();
 
@@ -521,7 +521,7 @@ fn add_one_item_incrementally_in_an_empty_db() {
     let handle = create_database::<Euclidean>();
     let mut rng = rng();
     let mut wtxn = handle.env.write_txn().unwrap();
-    let writer = Writer::new(handle.database, 0, 2).unwrap();
+    let writer = Writer::new(handle.database, 0, 2);
     writer.build(&mut wtxn, &mut rng, Some(1)).unwrap();
     wtxn.commit().unwrap();
 
@@ -533,7 +533,7 @@ fn add_one_item_incrementally_in_an_empty_db() {
     "###);
 
     let mut wtxn = handle.env.write_txn().unwrap();
-    let writer = Writer::new(handle.database, 0, 2).unwrap();
+    let writer = Writer::new(handle.database, 0, 2);
     writer.add_item(&mut wtxn, 0, &[0., 0.]).unwrap();
     writer.build(&mut wtxn, &mut rng, Some(1)).unwrap();
     wtxn.commit().unwrap();
@@ -553,7 +553,7 @@ fn add_one_item_incrementally_in_a_one_item_db() {
     let handle = create_database::<Euclidean>();
     let mut rng = rng();
     let mut wtxn = handle.env.write_txn().unwrap();
-    let writer = Writer::new(handle.database, 0, 2).unwrap();
+    let writer = Writer::new(handle.database, 0, 2);
     writer.add_item(&mut wtxn, 0, &[0., 0.]).unwrap();
     writer.build(&mut wtxn, &mut rng, Some(1)).unwrap();
     wtxn.commit().unwrap();
@@ -568,7 +568,7 @@ fn add_one_item_incrementally_in_a_one_item_db() {
     "###);
 
     let mut wtxn = handle.env.write_txn().unwrap();
-    let writer = Writer::new(handle.database, 0, 2).unwrap();
+    let writer = Writer::new(handle.database, 0, 2);
     writer.add_item(&mut wtxn, 1, &[1., 0.]).unwrap();
     writer.build(&mut wtxn, &mut rng, Some(1)).unwrap();
     wtxn.commit().unwrap();
@@ -589,7 +589,7 @@ fn add_one_item_incrementally_to_create_a_split_node() {
     let handle = create_database::<Euclidean>();
     let mut rng = rng();
     let mut wtxn = handle.env.write_txn().unwrap();
-    let writer = Writer::new(handle.database, 0, 2).unwrap();
+    let writer = Writer::new(handle.database, 0, 2);
     writer.add_item(&mut wtxn, 0, &[0., 0.]).unwrap();
     writer.add_item(&mut wtxn, 1, &[1., 0.]).unwrap();
     writer.build(&mut wtxn, &mut rng, Some(1)).unwrap();
@@ -606,7 +606,7 @@ fn add_one_item_incrementally_to_create_a_split_node() {
     "###);
 
     let mut wtxn = handle.env.write_txn().unwrap();
-    let writer = Writer::new(handle.database, 0, 2).unwrap();
+    let writer = Writer::new(handle.database, 0, 2);
     writer.add_item(&mut wtxn, 2, &[2., 0.]).unwrap();
     writer.build(&mut wtxn, &mut rng, Some(1)).unwrap();
     wtxn.commit().unwrap();
@@ -629,7 +629,7 @@ fn add_one_item_incrementally() {
     let handle = create_database::<Euclidean>();
     let mut rng = rng();
     let mut wtxn = handle.env.write_txn().unwrap();
-    let writer = Writer::new(handle.database, 0, 2).unwrap();
+    let writer = Writer::new(handle.database, 0, 2);
 
     for i in 0..6 {
         writer.add_item(&mut wtxn, i, &[i as f32, 0.]).unwrap();
@@ -656,7 +656,7 @@ fn add_one_item_incrementally() {
     "###);
 
     let mut wtxn = handle.env.write_txn().unwrap();
-    let writer = Writer::new(handle.database, 0, 2).unwrap();
+    let writer = Writer::new(handle.database, 0, 2);
 
     writer.add_item(&mut wtxn, 25, &[25., 0.]).unwrap();
 
@@ -684,7 +684,7 @@ fn add_one_item_incrementally() {
     "###);
 
     let mut wtxn = handle.env.write_txn().unwrap();
-    let writer = Writer::new(handle.database, 0, 2).unwrap();
+    let writer = Writer::new(handle.database, 0, 2);
 
     writer.add_item(&mut wtxn, 8, &[8., 0.]).unwrap();
 
@@ -720,7 +720,7 @@ fn delete_extraneous_tree() {
     let mut rng = rng();
 
     let mut wtxn = handle.env.write_txn().unwrap();
-    let writer = Writer::new(handle.database, 0, 4).unwrap();
+    let writer = Writer::new(handle.database, 0, 4);
     for i in 0..5 {
         writer.add_item(&mut wtxn, i, &[i as f32, 0., 0., 0.]).unwrap();
     }
@@ -747,7 +747,7 @@ fn delete_extraneous_tree() {
     "###);
 
     let mut wtxn = handle.env.write_txn().unwrap();
-    let writer = Writer::new(handle.database, 0, 2).unwrap();
+    let writer = Writer::new(handle.database, 0, 2);
     writer.build(&mut wtxn, &mut rng, Some(2)).unwrap();
     wtxn.commit().unwrap();
 
@@ -768,7 +768,7 @@ fn delete_extraneous_tree() {
     "###);
 
     let mut wtxn = handle.env.write_txn().unwrap();
-    let writer = Writer::new(handle.database, 0, 2).unwrap();
+    let writer = Writer::new(handle.database, 0, 2);
     writer.build(&mut wtxn, &mut rng, Some(1)).unwrap();
     wtxn.commit().unwrap();
 
@@ -792,7 +792,7 @@ fn reuse_node_id() {
     let handle = create_database::<Euclidean>();
     let mut rng = rng();
     let mut wtxn = handle.env.write_txn().unwrap();
-    let writer = Writer::new(handle.database, 0, 2).unwrap();
+    let writer = Writer::new(handle.database, 0, 2);
 
     for i in 0..6 {
         writer.add_item(&mut wtxn, i, &[i as f32, 0.]).unwrap();
@@ -819,7 +819,7 @@ fn reuse_node_id() {
     "###);
 
     let mut wtxn = handle.env.write_txn().unwrap();
-    let writer = Writer::new(handle.database, 0, 2).unwrap();
+    let writer = Writer::new(handle.database, 0, 2);
 
     // if we delete the 1 it should free the node id 0
     writer.del_item(&mut wtxn, 1).unwrap();
@@ -843,7 +843,7 @@ fn reuse_node_id() {
     "###);
 
     let mut wtxn = handle.env.write_txn().unwrap();
-    let writer = Writer::new(handle.database, 0, 2).unwrap();
+    let writer = Writer::new(handle.database, 0, 2);
 
     // if we re-insert the 1 the node id 0 should be re-used
     writer.add_item(&mut wtxn, 1, &[1., 0.]).unwrap();
@@ -869,7 +869,7 @@ fn reuse_node_id() {
     "###);
 
     let mut wtxn = handle.env.write_txn().unwrap();
-    let writer = Writer::new(handle.database, 0, 2).unwrap();
+    let writer = Writer::new(handle.database, 0, 2);
 
     // if we now build a new tree, the id 1 should be re-used
     writer.build(&mut wtxn, &mut rng, Some(2)).unwrap();
