@@ -7,7 +7,7 @@ use rand::SeedableRng;
 use tempfile::TempDir;
 
 use crate::roaring::RoaringBitmapCodec;
-use crate::{Database, Distance, MetadataCodec, NodeCodec, NodeMode};
+use crate::{Database, Distance, MetadataCodec, NodeCodec, NodeMode, Reader};
 
 mod reader;
 mod writer;
@@ -36,6 +36,10 @@ impl<D: Distance> fmt::Display for DatabaseHandle<D> {
             current_index = Some(key.index);
 
             if old_index != current_index {
+                let reader =
+                    Reader::<D>::open(&rtxn, current_index.unwrap(), self.database).unwrap();
+                reader.assert_validity(&rtxn).unwrap();
+
                 writeln!(f, "==================")?;
                 writeln!(f, "Dumping index {}", current_index.unwrap())?;
             }
@@ -77,6 +81,7 @@ impl<D: Distance> fmt::Display for DatabaseHandle<D> {
                 }
             }
         }
+
         Ok(())
     }
 }

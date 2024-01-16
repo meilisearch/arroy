@@ -3,7 +3,7 @@ use std::{fmt, panic};
 
 use arbitrary::{Arbitrary, Unstructured};
 use arroy::distances::Euclidean;
-use arroy::{Database, Result, Writer};
+use arroy::{Database, Reader, Result, Writer};
 use heed::EnvOpenOptions;
 use rand::rngs::StdRng;
 use rand::{Fill, SeedableRng};
@@ -95,19 +95,20 @@ fn main() -> Result<()> {
                 }
                 writer.build(&mut wtxn, &mut rng_arroy, None)?;
                 wtxn.commit()?;
+                let rtxn = env.read_txn()?;
+                let reader = Reader::<Euclidean>::open(&rtxn, 0, database)?;
+                reader.assert_validity(&rtxn).unwrap();
                 Ok(())
             });
             if let Err(e) = ret {
                 #[cfg(feature = "plot")]
                 {
-                    use arroy::Reader;
-
                     let mut buffer = Vec::new();
 
                     let rtxn = env.read_txn()?;
                     let reader = Reader::<Euclidean>::open(&rtxn, 0, database)?;
                     reader.plot_internals_tree_nodes(&rtxn, &mut buffer)?;
-                    std::fs::write("plot.dot", &buffer);
+                    std::fs::write("plot.dot", &buffer).unwrap();
                     println!("Plotted your database to `plot.dot`");
                 }
                 dbg!(&ops);

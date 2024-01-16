@@ -357,6 +357,88 @@ impl<'t, D: Distance> Reader<'t, D> {
             }
         }
     }
+
+    /// Verify that the whole reader is correctly formed:
+    /// - We can access all the items.
+    /// - All the tree nodes are part of a tree.
+    /// - No tree shares the same tree node.
+    /// - We're effectively working with trees and not graphs (i.e., an item or tree node cannot be linked twice in the tree)
+    #[cfg(any(test, feature = "assert-reader-validity"))]
+    pub fn assert_validity(&self, rtxn: &RoTxn) -> Result<()> {
+        // First, get all the items
+        let mut item_ids = RoaringBitmap::new();
+        for result in self
+            .database
+            .remap_types::<PrefixCodec, DecodeIgnore>()
+            .prefix_iter(rtxn, &Prefix::item(self.index))?
+            .remap_key_type::<KeyCodec>()
+        {
+            let (i, _) = result?;
+            item_ids.push(i.node.unwrap_item());
+        }
+        // Second, get all the tree nodes
+        let mut tree_ids = RoaringBitmap::new();
+        for result in self
+            .database
+            .remap_types::<PrefixCodec, DecodeIgnore>()
+            .prefix_iter(rtxn, &Prefix::tree(self.index))?
+            .remap_key_type::<KeyCodec>()
+        {
+            let (i, _) = result?;
+            tree_ids.push(i.node.unwrap_tree());
+        }
+
+        // The get all the items AND tree nodes PER trees
+        for root in self.roots.iter() {
+            let (trees, items) = self.gather_items_and_tree_ids(rtxn, NodeId::tree(root))?;
+            // Ensure that every tree can access all items
+            assert_eq!(item_ids, items, "A tree cannot access to all items");
+            // We can remove the already explored tree nodes
+            assert!(tree_ids.is_superset(&trees), "A tree contains an invalid tree node. Either doesn't exist or was already used in another tree");
+            tree_ids -= trees;
+        }
+
+        assert!(tree_ids.is_empty(), "There is {tree_ids:?} tree nodes floating around");
+        Ok(())
+    }
+
+    /// Return first the number of tree nodes and second the items accessible from a node.
+    /// And ensure that an item or tree node is never linked twice in the tree
+    #[cfg(any(test, feature = "assert-reader-validity"))]
+    fn gather_items_and_tree_ids(
+        &self,
+        rtxn: &RoTxn,
+        node_id: NodeId,
+    ) -> Result<(RoaringBitmap, RoaringBitmap)> {
+        match self.database.get(rtxn, &Key::new(self.index, node_id))?.unwrap() {
+            Node::Leaf(_) => Ok((
+                RoaringBitmap::new(),
+                RoaringBitmap::from_sorted_iter(Some(node_id.item)).unwrap(),
+            )),
+            Node::Descendants(Descendants { descendants }) => Ok((
+                RoaringBitmap::from_sorted_iter(Some(node_id.item)).unwrap(),
+                descendants.into_owned(),
+            )),
+            Node::SplitPlaneNormal(SplitPlaneNormal { normal: _, left, right }) => {
+                let left = self.gather_items_and_tree_ids(rtxn, left)?;
+                let right = self.gather_items_and_tree_ids(rtxn, right)?;
+
+                let total_trees_size = left.0.len() + right.0.len();
+                let total_items_size = left.1.len() + right.1.len();
+
+                let mut trees = left.0 | right.0;
+                let items = left.1 | right.1;
+
+                // We should never find the same tree node or item ID in a single tree.
+                assert_eq!(total_trees_size, trees.len());
+                assert_eq!(total_items_size, items.len());
+
+                trees.insert(node_id.item);
+
+                Ok((trees, items))
+            }
+        }
+    }
 }
 
 pub fn item_leaf<'a, D: Distance>(

@@ -519,7 +519,7 @@ impl<D: Distance> Writer<D> {
                             Ok((current_node, descendants.into_owned()))
                         } else if !self.fit_in_descendant(new_descendants.len()) {
                             // if it doesn't fit in one descendent we need to craft a new whole subtree
-                            tmp_nodes.remove_from_db(current_node.item);
+                            tmp_nodes.remove(current_node.item);
                             let new_id = self.make_tree_in_file(
                                 frozen_reader,
                                 rng,
@@ -529,7 +529,7 @@ impl<D: Distance> Writer<D> {
 
                             Ok((new_id, new_descendants))
                         } else if new_descendants.len() == 1 {
-                            tmp_nodes.remove_from_db(current_node.item);
+                            tmp_nodes.remove(current_node.item);
                             let item = new_descendants.iter().next().unwrap();
                             Ok((NodeId::item(item), new_descendants))
                         } else {
@@ -582,22 +582,13 @@ impl<D: Distance> Writer<D> {
                         if self.fit_in_descendant(total_items.len()) {
                             // Since we're shrinking we KNOW that new_left and new_right are descendants
                             // thus we can delete them directly knowing there is no sub-tree to look at.
-
-                            // deleting and getting the elements available in our children
                             if new_left.mode == NodeMode::Tree {
-                                if new_left != left {
-                                    tmp_nodes.remove(new_left.item)?;
-                                } else {
-                                    tmp_nodes.remove_from_db(new_left.item);
-                                }
+                                tmp_nodes.remove(new_left.item);
                             }
                             if new_right.mode == NodeMode::Tree {
-                                if new_right != right {
-                                    tmp_nodes.remove(new_right.item)?;
-                                } else {
-                                    tmp_nodes.remove_from_db(new_right.item);
-                                }
+                                tmp_nodes.remove(new_right.item);
                             }
+
                             tmp_nodes.put(
                                 current_node.item,
                                 &Node::Descendants(Descendants {
