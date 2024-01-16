@@ -31,11 +31,11 @@ Arroy was built by [@Kerollmops](https://github.com/Kerollmops) and [@irevoire](
 - Multithreaded tree building using rayon
 - Additional features compared to Annoy
   - Filter when querying
-  - Incrementally update the tree without rebuilding it from scratch ([planned](https://github.com/meilisearch/arroy/issues/21))
-  - Store and Modify different indexes atomically using LMDB (indexes are identified by an `u16`)
+  - Incrementally update the tree without rebuilding it from scratch
+  - Store and modify different indexes atomically using LMDB (indexes are identified by an `u16`)
   - Modify the items list **in place** while performing queries using LMDB
   - Storage based on LMDB using LMDB
-  - Safer to use API, i.e., Check dimensions, distances, etc
+  - Safer to use API, i.e., check dimensions, distances, etc
   - The database size does not depend on the highest item ID but on the number of items
   - Generic over your random number generator
 
