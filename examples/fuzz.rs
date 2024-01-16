@@ -103,14 +103,12 @@ fn main() -> Result<()> {
             if let Err(e) = ret {
                 #[cfg(feature = "plot")]
                 {
-                    use arroy::Reader;
-
                     let mut buffer = Vec::new();
 
                     let rtxn = env.read_txn()?;
                     let reader = Reader::<Euclidean>::open(&rtxn, 0, database)?;
                     reader.plot_internals_tree_nodes(&rtxn, &mut buffer)?;
-                    std::fs::write("plot.dot", &buffer);
+                    std::fs::write("plot.dot", &buffer).unwrap();
                     println!("Plotted your database to `plot.dot`");
                 }
                 dbg!(&ops);
