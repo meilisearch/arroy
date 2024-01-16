@@ -70,25 +70,13 @@ impl<'a, DE: BytesEncode<'a>> TmpNodes<DE> {
         Ok(())
     }
 
-    /// Mark a node to delete from the DB.
-    pub fn remove_from_db(&mut self, item: ItemId) {
-        self.deleted.insert(item);
+    /// Delete the tmp_nodes and the node in the database.
+    pub fn remove(&mut self, item: ItemId) {
+        let deleted = self.deleted.insert(item);
+        debug_assert!(deleted);
     }
 
-    /// Mark a node to delete from the DB and delete it from the tmp nodes as well.
-    /// Panic if the node wasn't inserted in the tmp_nodes before calling this method.
-    pub fn remove(&mut self, item: ItemId) -> heed::Result<()> {
-        self.remove_from_db(item);
-        // In the current algorithm, we're supposed to find the node in the last positions.
-        if let Some(el) = self.ids.iter_mut().rev().find(|i| **i == item) {
-            *el = u32::MAX;
-        } else {
-            unreachable!();
-        }
-        Ok(())
-    }
-
-    /// Converts it into a readers to be able to read the nodes.
+    /// Converts it into a readers to read the nodes.
     pub fn into_bytes_reader(self) -> Result<TmpNodesReader> {
         let file = self.file.into_inner().map_err(|iie| iie.into_error())?;
         let mmap = unsafe { Mmap::map(&file)? };
@@ -121,11 +109,11 @@ impl TmpNodesReader {
         self.ids
             .iter()
             .zip(self.bounds.windows(2))
+            .filter(|(&id, _)| !self.deleted.contains(id))
             .map(|(id, bounds)| {
                 let [start, end] = [bounds[0], bounds[1]];
                 (*id, &self.mmap[start..end])
             })
-            .filter(|(id, _)| *id != ItemId::MAX)
     }
 }
 
