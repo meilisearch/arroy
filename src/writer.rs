@@ -40,9 +40,9 @@ pub struct Writer<D: Distance> {
 
 impl<D: Distance> Writer<D> {
     /// Creates a new writer from a database, index and dimensions.
-    pub fn new(database: Database<D>, index: u16, dimensions: usize) -> Result<Writer<D>> {
+    pub fn new(database: Database<D>, index: u16, dimensions: usize) -> Writer<D> {
         let database: Database<D> = database.remap_data_type();
-        Ok(Writer { database, index, dimensions, tmpdir: None })
+        Writer { database, index, dimensions, tmpdir: None }
     }
 
     /// Returns a writer after having deleted the tree nodes and rewrote all the items

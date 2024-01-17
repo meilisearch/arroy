@@ -29,7 +29,7 @@
 //! // Now we can give it to our arroy writer
 //! let index = 0;
 //! let dimensions = 5;
-//! let writer = Writer::<Euclidean>::new(db, index, dimensions)?;
+//! let writer = Writer::<Euclidean>::new(db, index, dimensions);
 //!
 //! // let's write some vectors
 //! writer.add_item(&mut wtxn, 0,    &[0.8,  0.49, 0.27, 0.76, 0.94])?;
