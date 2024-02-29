@@ -1,9 +1,31 @@
+use heed::EnvOpenOptions;
 use rand::seq::SliceRandom;
 use rand::Rng;
 
 use super::{create_database, rng};
-use crate::distance::Euclidean;
-use crate::Writer;
+use crate::distance::{DotProduct, Euclidean};
+use crate::{Database, Writer};
+
+#[test]
+fn clear_small_database() {
+    let _ = rayon::ThreadPoolBuilder::new().num_threads(1).build_global();
+
+    let dir = tempfile::tempdir().unwrap();
+    let env = EnvOpenOptions::new().map_size(200 * 1024 * 1024).open(dir.path()).unwrap();
+
+    let mut wtxn = env.write_txn().unwrap();
+    let database: Database<DotProduct> = env.create_database(&mut wtxn, None).unwrap();
+    let writer = Writer::new(database, 0, 3);
+    writer.add_item(&mut wtxn, 0, &[0.0, 1.0, 2.0]).unwrap();
+    writer.clear(&mut wtxn).unwrap();
+    writer.build(&mut wtxn, &mut rng(), None).unwrap();
+    wtxn.commit().unwrap();
+
+    let mut wtxn = env.write_txn().unwrap();
+    let writer = Writer::new(database, 0, 3);
+    writer.clear(&mut wtxn).unwrap();
+    wtxn.commit().unwrap();
+}
 
 #[test]
 fn use_u32_max_minus_one_for_a_vec() {
