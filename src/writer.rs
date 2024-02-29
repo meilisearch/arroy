@@ -205,7 +205,7 @@ impl<D: Distance> Writer<D> {
             .database
             .remap_key_type::<PrefixCodec>()
             .prefix_iter_mut(wtxn, &Prefix::all(self.index))?
-            .remap_key_type::<DecodeIgnore>();
+            .remap_types::<DecodeIgnore, DecodeIgnore>();
 
         while let Some((_id, _node)) = cursor.next().transpose()? {
             // safety: we don't have any reference to the database
