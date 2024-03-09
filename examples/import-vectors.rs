@@ -6,7 +6,7 @@ use std::path::PathBuf;
 use std::time::Instant;
 
 use arroy::distances::DotProduct;
-use arroy::{Database, Writer};
+use arroy::{Database, Reader, Writer};
 use clap::Parser;
 use heed::{EnvFlags, EnvOpenOptions};
 use rand::rngs::StdRng;
@@ -99,7 +99,7 @@ fn main() -> Result<(), heed::BoxedError> {
         count += 1;
     }
     println!("Took {:.2?} to parse and insert into arroy", now.elapsed());
-    println!("There are {count} vectors");
+    println!("We imported {count} vectors");
     println!();
 
     println!("Building the arroy internal trees...");
@@ -107,6 +107,10 @@ fn main() -> Result<(), heed::BoxedError> {
     writer.build(&mut wtxn, &mut rng, n_trees).unwrap();
     wtxn.commit().unwrap();
     println!("Took {:.2?} to build", now.elapsed());
+
+    let rtxn = env.read_txn().unwrap();
+    let reader = Reader::open(&rtxn, 0, database)?;
+    println!("There is a total of {} vectors in the database, now!", reader.n_items());
 
     Ok(())
 }
