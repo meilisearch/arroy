@@ -1,13 +1,27 @@
-use std::io::{BufRead, BufReader};
+use std::io::{self, BufRead, BufReader, BufWriter, Write};
 
+use clap::Parser;
 use rand::rngs::StdRng;
 use rand::seq::SliceRandom;
 use rand::SeedableRng;
 
-const DEFAULT_COUNT: usize = 1_000_000;
+#[derive(Parser)]
+#[command(author, version, about, long_about = None)]
+struct Cli {
+    /// Specify the number of items to generate.
+    #[arg(default_value_t = 1_000)]
+    count: usize,
 
-fn main() {
-    let count = std::env::args().nth(1).map(|c| c.parse().unwrap()).unwrap_or(DEFAULT_COUNT);
+    #[arg(long, default_value_t = 0)]
+    first_id: u32,
+
+    /// The seed to generate the internal trees.
+    #[arg(long, default_value_t = 42)]
+    seed: u64,
+}
+
+fn main() -> anyhow::Result<()> {
+    let Cli { count, first_id, seed } = Cli::parse();
     let reader = BufReader::new(std::io::stdin());
     let mut vectors: Vec<(u32, Vec<f32>)> = Vec::new();
 
@@ -18,7 +32,7 @@ fn main() {
         }
 
         let (id, vector) = line.split_once(',').expect(&line);
-        let id: u32 = id.parse().unwrap();
+        let id: u32 = id.parse()?;
 
         let vector = vector
             .trim_matches(|c: char| c.is_whitespace() || c == '[' || c == ']')
@@ -30,10 +44,12 @@ fn main() {
         assert_eq!(vectors[0].1.len(), vectors.last().unwrap().1.len());
     }
 
-    println!("=== BEGIN vectors ===");
     let vector_len = vectors[0].1.len();
-    let mut rng = StdRng::seed_from_u64(42);
-    let mut id = 0;
+    eprintln!("The dimension of the vector is {}", vector_len);
+
+    let mut writer = BufWriter::new(io::stdout());
+    let mut rng = StdRng::seed_from_u64(seed);
+    let mut id = first_id;
     for _ in 0..(count.checked_div(2).unwrap()) {
         let mut iter = vectors.choose_multiple(&mut rng, 2);
         let a = iter.next().unwrap();
@@ -44,10 +60,17 @@ fn main() {
 
         let newa: Vec<f32> = al.iter().copied().chain(br.iter().copied()).collect();
         let newb: Vec<f32> = bl.iter().copied().chain(ar.iter().copied()).collect();
-        println!("{}, {:?}", id, newa);
-        println!("{}, {:?}", id + 1, newb);
 
-        id += 2;
+        writer.write_all(&id.to_be_bytes())?;
+        newa.iter().try_for_each(|f| writer.write_all(&f.to_be_bytes()))?;
+
+        writer.write_all(&(id + 1).to_be_bytes())?;
+        newb.iter().try_for_each(|f| writer.write_all(&f.to_be_bytes()))?;
+
+        id = id.checked_add(2).unwrap();
     }
-    println!("=== END vectors ===");
+
+    eprintln!("The last id generated was {}", id.saturating_sub(1));
+
+    Ok(())
 }
