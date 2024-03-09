@@ -1,7 +1,7 @@
 //! Download the associated file at https://www.notion.so/meilisearch/Movies-embeddings-1de3258859f54b799b7883882219d266
 
 use std::fs;
-use std::io::{BufRead, BufReader};
+use std::io::{BufReader, ErrorKind, Read};
 use std::path::PathBuf;
 use std::time::Instant;
 
@@ -53,7 +53,7 @@ fn main() -> Result<(), heed::BoxedError> {
     let Cli { database, map_size, dimensions, write_map, no_append, n_trees, seed } = Cli::parse();
 
     let mut rng = StdRng::seed_from_u64(seed);
-    let reader = BufReader::new(std::io::stdin());
+    let mut reader = BufReader::new(std::io::stdin());
 
     let _ = fs::create_dir_all(&database);
 
@@ -74,26 +74,28 @@ fn main() -> Result<(), heed::BoxedError> {
     // === END vectors ===
 
     let now = Instant::now();
+    let mut vector = Vec::with_capacity(dimensions);
     let mut count = 0;
-    for line in reader.lines() {
-        let line = line?;
-        if line.starts_with("===") {
-            continue;
-        }
+    loop {
+        let mut block = [0; 4];
+        let id = match reader.read_exact(&mut block) {
+            Ok(()) => u32::from_be_bytes(block),
+            Err(e) if e.kind() == ErrorKind::UnexpectedEof => break,
+            Err(e) => return Err(e.into()),
+        };
 
-        let (id, vector) = line.split_once(',').expect(&line);
-        let id: u32 = id.parse()?;
-        let vector: Vec<_> = vector
-            .trim_matches(|c: char| c.is_whitespace() || c == '[' || c == ']')
-            .split(',')
-            .map(|s| s.trim().parse::<f32>().unwrap())
-            .collect();
+        vector.clear();
+        for _ in 0..dimensions {
+            reader.read_exact(&mut block)?;
+            vector.push(f32::from_be_bytes(block));
+        }
 
         if no_append {
             writer.add_item(&mut wtxn, id, &vector)?;
         } else {
             writer.append_item(&mut wtxn, id, &vector)?;
         }
+
         count += 1;
     }
     println!("Took {:.2?} to parse and insert into arroy", now.elapsed());
