@@ -18,7 +18,7 @@ fn main() -> anyhow::Result<()> {
     let Cli { database } = Cli::parse();
 
     let _ = fs::create_dir_all(&database);
-    let env = EnvOpenOptions::new().open(&database)?;
+    let env = unsafe { EnvOpenOptions::new().open(&database) }?;
 
     let rtxn = env.read_txn()?;
     let database: Database<DotProduct> = env.open_database(&rtxn, None)?.unwrap();

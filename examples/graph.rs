@@ -29,10 +29,12 @@ fn main() {
     let output = File::create(&output_path).unwrap();
     let writer = BufWriter::new(output);
 
-    let env = EnvOpenOptions::new()
-        .map_size(1024 * 1024 * 1024 * 2) // 2GiB
-        .open(database)
-        .unwrap();
+    let env = unsafe {
+        EnvOpenOptions::new()
+            .map_size(1024 * 1024 * 1024 * 2) // 2GiB
+            .open(database)
+    }
+    .unwrap();
 
     let rtxn = env.read_txn().unwrap();
     let database: Database<DotProduct> =

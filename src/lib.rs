@@ -20,7 +20,7 @@
 //!
 //! # fn main() -> Result<(), Box<dyn std::error::Error>> {
 //! let dir = tempfile::tempdir()?;
-//! let env = heed::EnvOpenOptions::new().map_size(TWENTY_HUNDRED_MIB).open(dir.path())?;
+//! let env = unsafe { heed::EnvOpenOptions::new().map_size(TWENTY_HUNDRED_MIB).open(dir.path()) }?;
 //!
 //! // we will open the default LMDB unnamed database
 //! let mut wtxn = env.write_txn()?;

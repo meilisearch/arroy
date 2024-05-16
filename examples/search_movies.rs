@@ -8,10 +8,12 @@ fn main() {
     let mut args = std::env::args();
     let dir_path = args.nth(1).expect("Provide the path to a database");
 
-    let env = EnvOpenOptions::new()
-        .map_size(1024 * 1024 * 1024 * 2) // 2GiB
-        .open(dir_path)
-        .unwrap();
+    let env = unsafe {
+        EnvOpenOptions::new()
+            .map_size(1024 * 1024 * 1024 * 2) // 2GiB
+            .open(dir_path)
+    }
+    .unwrap();
 
     let rtxn = env.read_txn().unwrap();
     let database: Database<DotProduct> =
