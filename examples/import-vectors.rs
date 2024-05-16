@@ -62,7 +62,7 @@ fn main() -> Result<(), heed::BoxedError> {
     let mut env_builder = EnvOpenOptions::new();
     env_builder.map_size(map_size);
     unsafe { env_builder.flags(flags) };
-    let env = env_builder.open(&database).unwrap();
+    let env = unsafe { env_builder.open(&database) }.unwrap();
 
     let mut wtxn = env.write_txn().unwrap();
     let database: Database<DotProduct> = env.create_database(&mut wtxn, None)?;

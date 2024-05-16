@@ -17,7 +17,7 @@ const NUMBER_FETCHED: usize = 5;
 
 fn main() -> Result<()> {
     let dir = tempfile::tempdir().unwrap();
-    let env = EnvOpenOptions::new().map_size(TWENTY_HUNDRED_MIB).open(dir.path())?;
+    let env = unsafe { EnvOpenOptions::new().map_size(TWENTY_HUNDRED_MIB).open(dir.path()) }?;
 
     let rng_points = StdRng::seed_from_u64(42);
     let mut rng_arroy = rng_points.clone();

@@ -45,7 +45,7 @@ fn main() -> Result<()> {
         .map(|s| Duration::from_secs(s.parse().expect("Expected a whole number of seconds")));
 
     let dir = tempfile::tempdir().unwrap();
-    let env = EnvOpenOptions::new().map_size(TWENTY_GIB).open(dir.path())?;
+    let env = unsafe { EnvOpenOptions::new().map_size(TWENTY_GIB).open(dir.path()) }?;
     let mut wtxn = env.write_txn()?;
     let database: Database<Euclidean> = env.create_database(&mut wtxn, None)?;
     wtxn.commit()?;
