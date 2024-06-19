@@ -3,7 +3,7 @@ use rand::seq::SliceRandom;
 use rand::Rng;
 
 use super::{create_database, rng};
-use crate::distance::{DotProduct, Euclidean};
+use crate::distance::{Angular, DotProduct, Euclidean};
 use crate::{Database, Reader, Writer};
 
 #[test]
@@ -463,6 +463,43 @@ fn delete_one_leaf_in_a_split() {
     Item 2: Leaf(Leaf { header: NodeHeaderEuclidean { bias: 0.0 }, vector: [2.0000, 0.0000] })
     Tree 0: Descendants(Descendants { descendants: [1, 2] })
     Root: Metadata { dimensions: 2, items: RoaringBitmap<[1, 2]>, roots: [0], distance: "euclidean" }
+    updated_item_ids: RoaringBitmap<[]>
+    "###);
+}
+
+#[test]
+fn delete_one_item_in_a_single_document_database() {
+    let handle = create_database::<Angular>();
+    let mut rng = rng();
+    let mut wtxn = handle.env.write_txn().unwrap();
+    let writer = Writer::new(handle.database, 0, 2);
+
+    // first, insert a bunch of elements
+    writer.add_item(&mut wtxn, 0, &[0., 0.]).unwrap();
+    writer.build(&mut wtxn, &mut rng, None).unwrap();
+    wtxn.commit().unwrap();
+
+    insta::assert_display_snapshot!(handle, @r###"
+    ==================
+    Dumping index 0
+    Item 0: Leaf(Leaf { header: NodeHeaderAngular { norm: 0.0 }, vector: [0.0000, 0.0000] })
+    Tree 0: Descendants(Descendants { descendants: [0] })
+    Root: Metadata { dimensions: 2, items: RoaringBitmap<[0]>, roots: [0], distance: "angular" }
+    updated_item_ids: RoaringBitmap<[]>
+    "###);
+
+    let mut wtxn = handle.env.write_txn().unwrap();
+    let writer = Writer::new(handle.database, 0, 2);
+
+    writer.del_item(&mut wtxn, 0).unwrap();
+
+    writer.build(&mut wtxn, &mut rng, None).unwrap();
+    wtxn.commit().unwrap();
+
+    insta::assert_display_snapshot!(handle, @r###"
+    ==================
+    Dumping index 0
+    Root: Metadata { dimensions: 2, items: RoaringBitmap<[]>, roots: [], distance: "angular" }
     updated_item_ids: RoaringBitmap<[]>
     "###);
 }

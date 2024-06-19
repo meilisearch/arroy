@@ -203,6 +203,9 @@ impl<'t, D: Distance> Reader<'t, D> {
         search_k: Option<NonZeroUsize>,
         candidates: Option<&RoaringBitmap>,
     ) -> Result<Vec<(ItemId, f32)>> {
+        if self.items.is_empty() {
+            return Ok(Vec::new());
+        }
         // Since the datastructure describes a kind of btree, the capacity is something in the order of:
         // The number of root nodes + log2 of the total number of vectors.
         let mut queue =
