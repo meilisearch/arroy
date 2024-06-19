@@ -203,3 +203,19 @@ fn filtering() {
     id(99): distance(99)
     "###);
 }
+
+#[test]
+fn search_in_empty_database() {
+    // See https://github.com/meilisearch/arroy/issues/74
+    let handle = create_database::<Euclidean>();
+
+    let mut wtxn = handle.env.write_txn().unwrap();
+    let writer = Writer::new(handle.database, 0, 2);
+    writer.build(&mut wtxn, &mut rng(), None).unwrap();
+    wtxn.commit().unwrap();
+
+    let rtxn = handle.env.read_txn().unwrap();
+    let reader = Reader::open(&rtxn, 0, handle.database).unwrap();
+    let ret = reader.nns_by_vector(&rtxn, &[0., 0.], 10, None, None).unwrap();
+    insta::assert_debug_snapshot!(ret, @"[]");
+}
