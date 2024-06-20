@@ -57,6 +57,7 @@ impl UnalignedF32Slice {
     /// Creates an unaligned slice of f32 wrapper from a slice of bytes.
     pub fn from_bytes(bytes: &[u8]) -> Result<&Self, SizeMismatch> {
         if bytes.len() % size_of::<f32>() == 0 {
+            // safety: `UnalignedF32Slice` is transparent
             Ok(unsafe { transmute(bytes) })
         } else {
             Err(SizeMismatch)

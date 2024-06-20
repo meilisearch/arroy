@@ -79,6 +79,7 @@ impl<'a, DE: BytesEncode<'a>> TmpNodes<DE> {
     /// Converts it into a readers to read the nodes.
     pub fn into_bytes_reader(self) -> Result<TmpNodesReader> {
         let file = self.file.into_inner().map_err(|iie| iie.into_error())?;
+        // safety: No one should move our files around
         let mmap = unsafe { Mmap::map(&file)? };
         #[cfg(unix)]
         mmap.advise(memmap2::Advice::Sequential)?;
@@ -224,6 +225,10 @@ impl<'t, D: Distance> ImmutableLeafs<'t, D> {
             Some(ptr) => *ptr,
             None => return Ok(None),
         };
+
+        // safety:
+        // - ptr: The pointer comes from LMDB. Since the database cannot be written to, it is still valid.
+        // - len: All the items share the same dimensions and are the same size
         let bytes = unsafe { slice::from_raw_parts(ptr, len) };
         NodeCodec::bytes_decode(bytes).map_err(heed::Error::Decoding).map(|node| node.leaf())
     }
@@ -326,6 +331,9 @@ impl<'t, D: Distance> ImmutableTrees<'t, D> {
             None => return Ok(None),
         };
 
+        // safety:
+        // - ptr: The pointer comes from LMDB. Since the database cannot be written to, it is still valid.
+        // - len: The len cannot change either
         let bytes = unsafe { slice::from_raw_parts(ptr, len) };
         NodeCodec::bytes_decode(bytes).map_err(heed::Error::Decoding).map(Some)
     }
