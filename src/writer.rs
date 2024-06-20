@@ -775,7 +775,7 @@ impl<D: Distance> Writer<D> {
 
     fn delete_tree(&self, wtxn: &mut RwTxn, node: NodeId) -> Result<()> {
         let key = Key::new(self.index, node);
-        match self.database.get(wtxn, &key)?.ok_or(Error::MissingNode)? {
+        match self.database.get(wtxn, &key)?.ok_or(Error::MissingKey(key))? {
             // the leafs are shared between the trees, we MUST NOT delete them.
             Node::Leaf(_) => Ok(()),
             Node::Descendants(_) => {

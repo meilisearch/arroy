@@ -1,5 +1,7 @@
 use std::io;
 
+use crate::key::Key;
+
 /// The different set of errors that arroy can encounter.
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
@@ -50,6 +52,6 @@ pub enum Error {
     NeedBuild(u16),
 
     /// Internal error
-    #[error("Internal error: Node is missing")]
-    MissingNode,
+    #[error("Internal error: {:?} is missing in index `{}`.", .0.node, .0.index)]
+    MissingKey(Key),
 }
