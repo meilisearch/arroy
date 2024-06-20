@@ -5,7 +5,7 @@ use std::iter::repeat;
 use std::marker;
 use std::num::NonZeroUsize;
 
-use heed::types::DecodeIgnore;
+use heed::types::{Bytes, DecodeIgnore};
 use heed::RoTxn;
 use ordered_float::OrderedFloat;
 use roaring::RoaringBitmap;
@@ -36,7 +36,7 @@ impl<'t, D: Distance> Reader<'t, D> {
         let metadata_key = Key::metadata(index);
         let metadata = match database.remap_data_type::<MetadataCodec>().get(rtxn, &metadata_key)? {
             Some(metadata) => metadata,
-            None => return Err(Error::MissingMetadata),
+            None => return Err(Error::MissingMetadata(index)),
         };
 
         if D::name() != metadata.distance {
@@ -44,6 +44,11 @@ impl<'t, D: Distance> Reader<'t, D> {
                 expected: metadata.distance.to_owned(),
                 received: D::name(),
             });
+        }
+        let need_build =
+            database.remap_data_type::<Bytes>().get(rtxn, &Key::updated(index))?.is_some();
+        if need_build {
+            return Err(Error::NeedBuild(index));
         }
 
         Ok(Reader {

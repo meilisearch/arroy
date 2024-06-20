@@ -284,11 +284,7 @@ impl<D: Distance> Writer<D> {
             }
 
             log::debug!("reset the updated items...");
-            self.database.remap_data_type::<RoaringBitmapCodec>().put(
-                wtxn,
-                &Key::updated(self.index),
-                &RoaringBitmap::new(),
-            )?;
+            self.database.delete(wtxn, &Key::updated(self.index))?;
 
             log::debug!("write the metadata...");
             let metadata = Metadata {
@@ -400,11 +396,7 @@ impl<D: Distance> Writer<D> {
         }
 
         log::debug!("reset the updated items...");
-        self.database.remap_data_type::<RoaringBitmapCodec>().put(
-            wtxn,
-            &Key::updated(self.index),
-            &RoaringBitmap::new(),
-        )?;
+        self.database.delete(wtxn, &Key::updated(self.index))?;
 
         log::debug!("write the metadata...");
         let metadata = Metadata {

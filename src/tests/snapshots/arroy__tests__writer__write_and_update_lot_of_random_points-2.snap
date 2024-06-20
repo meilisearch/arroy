@@ -213,5 +213,4 @@ Tree 124: Descendants(Descendants { descendants: [14, 16, 22, 38, 41, 42, 43, 44
 Tree 125: Descendants(Descendants { descendants: [2, 10, 21, 23, 26, 28, 29, 30, 34, 37, 39, 47, 52, 54, 55, 67, 68, 69, 71, 72, 76, 78, 86, 88, 90, 94, 97, 98] })
 Tree 126: SplitPlaneNormal(SplitPlaneNormal { left: Tree(124), right: Tree(125), normal: [-0.2156, 0.0925, 0.0242, 0.1246, -0.0758, -0.0672, -0.1816, 0.4853, 0.1643, 0.1418, 0.2752, -0.1825, -0.2671, 0.0674, -0.1950, -0.0743, -0.1493, -0.0368, -0.1929, 0.2540, -0.0441, 0.3135, -0.2219, 0.1059, 0.2115, 0.0749, 0.1629, -0.1050, -0.0211, 0.0051] })
 Root: Metadata { dimensions: 30, items: RoaringBitmap<100 values between 0 and 99>, roots: [8, 17, 24, 35, 44, 55, 64, 75, 86, 97], distance: "euclidean" }
-updated_item_ids: RoaringBitmap<[]>
 

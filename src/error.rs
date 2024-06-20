@@ -40,8 +40,14 @@ pub enum Error {
 
     /// Arroy is not able to find the metadata for a given index.
     /// It is probably because the user forget to build the database.
-    #[error("Metadata are missing, did you build your database before trying to read it.")]
-    MissingMetadata,
+    #[error(
+        "Metadata are missing on index {0}, did you build your database before trying to read it."
+    )]
+    MissingMetadata(u16),
+
+    /// The last time items in the database were updated, the [`Writer::build`] method wasn't called.
+    #[error("The trees have not been built after an update on index {0}.")]
+    NeedBuild(u16),
 
     /// Internal error
     #[error("Internal error: Node is missing")]
