@@ -34,7 +34,7 @@ fn open_unfinished_db() {
 
     let rtxn = handle.env.read_txn().unwrap();
     let ret = Reader::<Euclidean>::open(&rtxn, 0, handle.database).map(|_| ()).unwrap_err();
-    insta::assert_display_snapshot!(ret, @"Metadata are missing, did you build your database before trying to read it.");
+    insta::assert_display_snapshot!(ret, @"Metadata are missing on index 0, You must build your database before attempting to read it");
 }
 
 #[test]
@@ -50,7 +50,7 @@ fn open_db_with_wrong_dimension() {
     let rtxn = handle.env.read_txn().unwrap();
     let reader = Reader::<Euclidean>::open(&rtxn, 0, handle.database).unwrap();
     let ret = reader.nns_by_vector(&rtxn, &[1.0, 2.0, 3.0], 5, None, None).unwrap_err();
-    insta::assert_display_snapshot!(ret, @"Invalid vector dimensions. Got 3 but expected 2.");
+    insta::assert_display_snapshot!(ret, @"Invalid vector dimensions. Got 3 but expected 2");
 }
 
 #[test]
@@ -206,7 +206,7 @@ fn filtering() {
 
 #[test]
 fn search_in_empty_database() {
-    // See https://github.com/meilisearch/arroy/issues/74
+    // See https://github.com/meilisearch/arroy/issues/75
     let handle = create_database::<Euclidean>();
 
     let mut wtxn = handle.env.write_txn().unwrap();
@@ -218,4 +218,42 @@ fn search_in_empty_database() {
     let reader = Reader::open(&rtxn, 0, handle.database).unwrap();
     let ret = reader.nns_by_vector(&rtxn, &[0., 0.], 10, None, None).unwrap();
     insta::assert_debug_snapshot!(ret, @"[]");
+}
+
+#[test]
+fn try_reading_in_a_non_built_database() {
+    // See https://github.com/meilisearch/arroy/issues/74
+    let handle = create_database::<Euclidean>();
+
+    let mut wtxn = handle.env.write_txn().unwrap();
+    let writer = Writer::new(handle.database, 0, 2);
+    writer.add_item(&mut wtxn, 0, &[0.0, 0.0]).unwrap();
+    // We don't build the database
+    wtxn.commit().unwrap();
+
+    let rtxn = handle.env.read_txn().unwrap();
+    let error = Reader::open(&rtxn, 0, handle.database).unwrap_err();
+    insta::assert_debug_snapshot!(error, @r###"
+    MissingMetadata(
+        0,
+    )
+    "###);
+    drop(rtxn);
+
+    // we build the database once to get valid metadata
+    let mut wtxn = handle.env.write_txn().unwrap();
+    let writer = Writer::new(handle.database, 0, 2);
+    writer.build(&mut wtxn, &mut rng(), None).unwrap();
+    let writer = Writer::new(handle.database, 0, 2);
+    writer.del_item(&mut wtxn, 0).unwrap();
+    // We don't build the database; this leaves the database in a corrupted state
+    wtxn.commit().unwrap();
+
+    let rtxn = handle.env.read_txn().unwrap();
+    let error = Reader::open(&rtxn, 0, handle.database).unwrap_err();
+    insta::assert_debug_snapshot!(error, @r###"
+    NeedBuild(
+        0,
+    )
+    "###);
 }

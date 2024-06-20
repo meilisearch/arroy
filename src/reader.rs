@@ -5,7 +5,7 @@ use std::iter::repeat;
 use std::marker;
 use std::num::NonZeroUsize;
 
-use heed::types::DecodeIgnore;
+use heed::types::{Bytes, DecodeIgnore};
 use heed::RoTxn;
 use ordered_float::OrderedFloat;
 use roaring::RoaringBitmap;
@@ -36,7 +36,7 @@ impl<'t, D: Distance> Reader<'t, D> {
         let metadata_key = Key::metadata(index);
         let metadata = match database.remap_data_type::<MetadataCodec>().get(rtxn, &metadata_key)? {
             Some(metadata) => metadata,
-            None => return Err(Error::MissingMetadata),
+            None => return Err(Error::MissingMetadata(index)),
         };
 
         if D::name() != metadata.distance {
@@ -44,6 +44,9 @@ impl<'t, D: Distance> Reader<'t, D> {
                 expected: metadata.distance.to_owned(),
                 received: D::name(),
             });
+        }
+        if database.remap_data_type::<Bytes>().get(rtxn, &Key::updated(index))?.is_some() {
+            return Err(Error::NeedBuild(index));
         }
 
         Ok(Reader {
@@ -222,7 +225,8 @@ impl<'t, D: Distance> Reader<'t, D> {
                 None => break,
             };
 
-            match self.database.get(rtxn, &Key::new(self.index, item))?.unwrap() {
+            let key = Key::new(self.index, item);
+            match self.database.get(rtxn, &key)?.ok_or(Error::missing_key(key))? {
                 Node::Leaf(_) => {
                     if candidates.map_or(true, |c| c.contains(item.item)) {
                         nns.push(item.unwrap_item());
@@ -250,7 +254,8 @@ impl<'t, D: Distance> Reader<'t, D> {
 
         let mut nns_distances = Vec::with_capacity(nns.len());
         for nn in nns {
-            let leaf = match self.database.get(rtxn, &Key::item(self.index, nn))?.unwrap() {
+            let key = Key::item(self.index, nn);
+            let leaf = match self.database.get(rtxn, &key)?.ok_or(Error::missing_key(key))? {
                 Node::Leaf(leaf) => leaf,
                 Node::Descendants(_) | Node::SplitPlaneNormal(_) => unreachable!(),
             };

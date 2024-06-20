@@ -95,6 +95,20 @@ impl<D: Distance> Writer<D> {
         self.iter(rtxn).map(|mut iter| iter.next().is_none())
     }
 
+    /// Returns `true` if the index needs to be built before being able to read in it.
+    pub fn need_build(&self, rtxn: &RoTxn) -> Result<bool> {
+        Ok(self
+            .database
+            .remap_data_type::<DecodeIgnore>()
+            .get(rtxn, &Key::updated(self.index))?
+            .is_some()
+            || self
+                .database
+                .remap_data_type::<DecodeIgnore>()
+                .get(rtxn, &Key::metadata(self.index))?
+                .is_none())
+    }
+
     /// Returns `true` if the database contains the given item.
     pub fn contains_item(&self, rtxn: &RoTxn, item: ItemId) -> Result<bool> {
         self.database
@@ -284,11 +298,7 @@ impl<D: Distance> Writer<D> {
             }
 
             log::debug!("reset the updated items...");
-            self.database.remap_data_type::<RoaringBitmapCodec>().put(
-                wtxn,
-                &Key::updated(self.index),
-                &RoaringBitmap::new(),
-            )?;
+            self.database.delete(wtxn, &Key::updated(self.index))?;
 
             log::debug!("write the metadata...");
             let metadata = Metadata {
@@ -400,11 +410,7 @@ impl<D: Distance> Writer<D> {
         }
 
         log::debug!("reset the updated items...");
-        self.database.remap_data_type::<RoaringBitmapCodec>().put(
-            wtxn,
-            &Key::updated(self.index),
-            &RoaringBitmap::new(),
-        )?;
+        self.database.delete(wtxn, &Key::updated(self.index))?;
 
         log::debug!("write the metadata...");
         let metadata = Metadata {
@@ -769,7 +775,7 @@ impl<D: Distance> Writer<D> {
 
     fn delete_tree(&self, wtxn: &mut RwTxn, node: NodeId) -> Result<()> {
         let key = Key::new(self.index, node);
-        match self.database.get(wtxn, &key)?.ok_or(Error::MissingNode)? {
+        match self.database.get(wtxn, &key)?.ok_or(Error::missing_key(key))? {
             // the leafs are shared between the trees, we MUST NOT delete them.
             Node::Leaf(_) => Ok(()),
             Node::Descendants(_) => {
