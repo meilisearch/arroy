@@ -14,7 +14,7 @@ pub enum Error {
     Io(#[from] io::Error),
 
     /// The user is trying to insert or search for a vector that is not of the right dimensions.
-    #[error("Invalid vector dimensions. Got {received} but expected {expected}.")]
+    #[error("Invalid vector dimensions. Got {received} but expected {expected}")]
     InvalidVecDimension {
         /// The expected number of dimensions.
         expected: usize,
@@ -23,7 +23,7 @@ pub enum Error {
     },
 
     /// An internal error returned when arroy cannot generate internal IDs.
-    #[error("Database full. Arroy cannot generate enough internal IDs for your items.")]
+    #[error("Database full. Arroy cannot generate enough internal IDs for your items")]
     DatabaseFull,
 
     /// The user tried to append an item in the database but the last inserted item
@@ -32,7 +32,7 @@ pub enum Error {
     InvalidItemAppend,
 
     /// The user is trying to query a database with a distance that is not of the right type.
-    #[error("Invalid distance provided. Got {received} but expected {expected}.")]
+    #[error("Invalid distance provided. Got {received} but expected {expected}")]
     UnmatchingDistance {
         /// The expected distance type.
         expected: String,
@@ -43,15 +43,15 @@ pub enum Error {
     /// Arroy is not able to find the metadata for a given index.
     /// It is probably because the user forget to build the database.
     #[error(
-        "Metadata are missing on index {0}, did you build your database before trying to read it."
+        "Metadata are missing on index {0}, did you build your database before trying to read it"
     )]
     MissingMetadata(u16),
 
     /// The last time items in the database were updated, the [`Writer::build`] method wasn't called.
-    #[error("The trees have not been built after an update on index {0}.")]
+    #[error("The trees have not been built after an update on index {0}")]
     NeedBuild(u16),
 
     /// Internal error
-    #[error("Internal error: {:?} is missing in index `{}`.", .0.node, .0.index)]
+    #[error("Internal error: {:?} is missing in index `{}`", .0.node, .0.index)]
     MissingKey(Key),
 }
