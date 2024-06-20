@@ -170,6 +170,23 @@ fn two_dimension_on_a_column() {
 }
 
 #[test]
+fn get_item_ids() {
+    let handle = create_database();
+    let mut wtxn = handle.env.write_txn().unwrap();
+    let writer = Writer::new(handle.database, 0, 2);
+    for i in 0..10 {
+        writer.add_item(&mut wtxn, i, &[0.0, i as f32]).unwrap();
+    }
+
+    writer.build(&mut wtxn, &mut rng(), Some(50)).unwrap();
+
+    let reader = Reader::<Euclidean>::open(&wtxn, 0, handle.database).unwrap();
+    let ret = reader.item_ids();
+
+    insta::assert_debug_snapshot!(ret, @"RoaringBitmap<[0, 1, 2, 3, 4, 5, 6, 7, 8, 9]>");
+}
+
+#[test]
 fn filtering() {
     let handle = create_database();
     let mut wtxn = handle.env.write_txn().unwrap();

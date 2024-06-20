@@ -71,6 +71,11 @@ impl<'t, D: Distance> Reader<'t, D> {
         self.items.len()
     }
 
+    /// Returns all the item ids contained in this index.
+    pub fn item_ids(&self) -> &RoaringBitmap {
+        &self.items
+    }
+
     /// Returns the index of this reader in the database.
     pub fn index(&self) -> u16 {
         self.index
