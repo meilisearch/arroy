@@ -34,7 +34,7 @@ fn open_unfinished_db() {
 
     let rtxn = handle.env.read_txn().unwrap();
     let ret = Reader::<Euclidean>::open(&rtxn, 0, handle.database).map(|_| ()).unwrap_err();
-    insta::assert_display_snapshot!(ret, @"Metadata are missing on index 0, did you build your database before trying to read it.");
+    insta::assert_display_snapshot!(ret, @"Metadata are missing on index 0, did you build your database before trying to read it");
 }
 
 #[test]
@@ -50,7 +50,7 @@ fn open_db_with_wrong_dimension() {
     let rtxn = handle.env.read_txn().unwrap();
     let reader = Reader::<Euclidean>::open(&rtxn, 0, handle.database).unwrap();
     let ret = reader.nns_by_vector(&rtxn, &[1.0, 2.0, 3.0], 5, None, None).unwrap_err();
-    insta::assert_display_snapshot!(ret, @"Invalid vector dimensions. Got 3 but expected 2.");
+    insta::assert_display_snapshot!(ret, @"Invalid vector dimensions. Got 3 but expected 2");
 }
 
 #[test]

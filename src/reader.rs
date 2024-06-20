@@ -228,7 +228,7 @@ impl<'t, D: Distance> Reader<'t, D> {
             };
 
             let key = Key::new(self.index, item);
-            match self.database.get(rtxn, &key)?.ok_or(Error::MissingKey(key))? {
+            match self.database.get(rtxn, &key)?.ok_or(Error::missing_key(key))? {
                 Node::Leaf(_) => {
                     if candidates.map_or(true, |c| c.contains(item.item)) {
                         nns.push(item.unwrap_item());
@@ -257,7 +257,7 @@ impl<'t, D: Distance> Reader<'t, D> {
         let mut nns_distances = Vec::with_capacity(nns.len());
         for nn in nns {
             let key = Key::item(self.index, nn);
-            let leaf = match self.database.get(rtxn, &key)?.ok_or(Error::MissingKey(key))? {
+            let leaf = match self.database.get(rtxn, &key)?.ok_or(Error::missing_key(key))? {
                 Node::Leaf(leaf) => leaf,
                 Node::Descendants(_) | Node::SplitPlaneNormal(_) => unreachable!(),
             };

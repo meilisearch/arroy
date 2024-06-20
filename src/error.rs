@@ -1,6 +1,6 @@
 use std::io;
 
-use crate::key::Key;
+use crate::{key::Key, node_id::NodeMode, ItemId};
 
 /// The different set of errors that arroy can encounter.
 #[derive(Debug, thiserror::Error)]
@@ -52,6 +52,27 @@ pub enum Error {
     NeedBuild(u16),
 
     /// Internal error
-    #[error("Internal error: {:?} is missing in index `{}`", .0.node, .0.index)]
-    MissingKey(Key),
+    #[error("Internal error: {mode}({item}) is missing in index `{index}`")]
+    MissingKey {
+        /// The index that caused the error
+        index: u16,
+        /// The kind of item that was being queried
+        mode: &'static str,
+        /// The item ID queried
+        item: ItemId,
+    },
+}
+
+impl Error {
+    pub(crate) fn missing_key(key: Key) -> Self {
+        Self::MissingKey {
+            index: key.index,
+            mode: match key.node.mode {
+                NodeMode::Item => "Item",
+                NodeMode::Tree => "Tree",
+                NodeMode::Metadata => "Metadata",
+            },
+            item: key.node.item,
+        }
+    }
 }
