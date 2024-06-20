@@ -46,7 +46,7 @@ fn use_u32_max_minus_one_for_a_vec() {
     writer.build(&mut wtxn, &mut rng(), Some(1)).unwrap();
     wtxn.commit().unwrap();
 
-    insta::assert_display_snapshot!(handle, @r###"
+    insta::assert_snapshot!(handle, @r###"
     ==================
     Dumping index 0
     Item 4294967294: Leaf(Leaf { header: NodeHeaderEuclidean { bias: 0.0 }, vector: [0.0000, 1.0000, 2.0000] })
@@ -65,7 +65,7 @@ fn use_u32_max_for_a_vec() {
     writer.build(&mut wtxn, &mut rng(), Some(1)).unwrap();
     wtxn.commit().unwrap();
 
-    insta::assert_display_snapshot!(handle, @r###"
+    insta::assert_snapshot!(handle, @r###"
     ==================
     Dumping index 0
     Item 4294967295: Leaf(Leaf { header: NodeHeaderEuclidean { bias: 0.0 }, vector: [0.0000, 1.0000, 2.0000] })
@@ -84,7 +84,7 @@ fn write_one_vector() {
     writer.build(&mut wtxn, &mut rng(), None).unwrap();
     wtxn.commit().unwrap();
 
-    insta::assert_display_snapshot!(handle, @r###"
+    insta::assert_snapshot!(handle, @r###"
     ==================
     Dumping index 0
     Item 0: Leaf(Leaf { header: NodeHeaderEuclidean { bias: 0.0 }, vector: [0.0000, 1.0000, 2.0000] })
@@ -103,7 +103,7 @@ fn write_one_vector_in_one_tree() {
     writer.build(&mut wtxn, &mut rng(), Some(1)).unwrap();
     wtxn.commit().unwrap();
 
-    insta::assert_display_snapshot!(handle, @r###"
+    insta::assert_snapshot!(handle, @r###"
     ==================
     Dumping index 0
     Item 0: Leaf(Leaf { header: NodeHeaderEuclidean { bias: 0.0 }, vector: [0.0000, 1.0000, 2.0000] })
@@ -122,7 +122,7 @@ fn write_one_vector_in_multiple_trees() {
     writer.build(&mut wtxn, &mut rng(), Some(10)).unwrap();
     wtxn.commit().unwrap();
 
-    insta::assert_display_snapshot!(handle, @r###"
+    insta::assert_snapshot!(handle, @r###"
     ==================
     Dumping index 0
     Item 0: Leaf(Leaf { header: NodeHeaderEuclidean { bias: 0.0 }, vector: [0.0000, 1.0000, 2.0000] })
@@ -145,7 +145,7 @@ fn write_vectors_until_there_is_a_descendants() {
     writer.build(&mut wtxn, &mut rng(), Some(1)).unwrap();
     wtxn.commit().unwrap();
 
-    insta::assert_display_snapshot!(handle, @r###"
+    insta::assert_snapshot!(handle, @r###"
     ==================
     Dumping index 0
     Item 0: Leaf(Leaf { header: NodeHeaderEuclidean { bias: 0.0 }, vector: [0.0000, 0.0000, 0.0000] })
@@ -170,7 +170,7 @@ fn write_vectors_until_there_is_a_split() {
     writer.build(&mut wtxn, &mut rng(), Some(1)).unwrap();
     wtxn.commit().unwrap();
 
-    insta::assert_display_snapshot!(handle, @r###"
+    insta::assert_snapshot!(handle, @r###"
     ==================
     Dumping index 0
     Item 0: Leaf(Leaf { header: NodeHeaderEuclidean { bias: 0.0 }, vector: [0.0000, 0.0000, 0.0000] })
@@ -196,7 +196,7 @@ fn write_and_update_lot_of_random_points() {
 
     writer.build(&mut wtxn, &mut rng, Some(10)).unwrap();
     wtxn.commit().unwrap();
-    insta::assert_display_snapshot!(handle);
+    insta::assert_snapshot!(handle);
 
     let mut wtxn = handle.env.write_txn().unwrap();
     let writer = Writer::new(handle.database, 0, 30);
@@ -207,7 +207,7 @@ fn write_and_update_lot_of_random_points() {
     writer.build(&mut wtxn, &mut rng, Some(10)).unwrap();
     wtxn.commit().unwrap();
 
-    insta::assert_display_snapshot!(handle);
+    insta::assert_snapshot!(handle);
 }
 
 #[test]
@@ -222,7 +222,7 @@ fn write_multiple_indexes() {
     }
     wtxn.commit().unwrap();
 
-    insta::assert_display_snapshot!(handle, @r###"
+    insta::assert_snapshot!(handle, @r###"
     ==================
     Dumping index 0
     Item 0: Leaf(Leaf { header: NodeHeaderEuclidean { bias: 0.0 }, vector: [0.0000, 1.0000, 2.0000] })
@@ -286,7 +286,7 @@ fn overwrite_one_item_incremental() {
     writer.build(&mut wtxn, &mut rng, Some(1)).unwrap();
     wtxn.commit().unwrap();
 
-    insta::assert_display_snapshot!(handle, @r###"
+    insta::assert_snapshot!(handle, @r###"
     ==================
     Dumping index 0
     Item 0: Leaf(Leaf { header: NodeHeaderEuclidean { bias: 0.0 }, vector: [0.0000, 0.0000] })
@@ -312,7 +312,7 @@ fn overwrite_one_item_incremental() {
     writer.build(&mut wtxn, &mut rng, Some(1)).unwrap();
     wtxn.commit().unwrap();
 
-    insta::assert_display_snapshot!(handle, @r###"
+    insta::assert_snapshot!(handle, @r###"
     ==================
     Dumping index 0
     Item 0: Leaf(Leaf { header: NodeHeaderEuclidean { bias: 0.0 }, vector: [0.0000, 0.0000] })
@@ -341,7 +341,7 @@ fn delete_one_item_in_a_one_item_db() {
     writer.build(&mut wtxn, &mut rng, Some(1)).unwrap();
     wtxn.commit().unwrap();
 
-    insta::assert_display_snapshot!(handle, @r###"
+    insta::assert_snapshot!(handle, @r###"
     ==================
     Dumping index 0
     Item 0: Leaf(Leaf { header: NodeHeaderEuclidean { bias: 0.0 }, vector: [0.0000, 0.0000] })
@@ -357,7 +357,7 @@ fn delete_one_item_in_a_one_item_db() {
     writer.build(&mut wtxn, &mut rng, Some(1)).unwrap();
     wtxn.commit().unwrap();
 
-    insta::assert_display_snapshot!(handle, @r###"
+    insta::assert_snapshot!(handle, @r###"
     ==================
     Dumping index 0
     Root: Metadata { dimensions: 2, items: RoaringBitmap<[]>, roots: [], distance: "euclidean" }
@@ -435,7 +435,7 @@ fn delete_one_item_in_a_descendant() {
     writer.build(&mut wtxn, &mut rng, Some(1)).unwrap();
     wtxn.commit().unwrap();
 
-    insta::assert_display_snapshot!(handle, @r###"
+    insta::assert_snapshot!(handle, @r###"
     ==================
     Dumping index 0
     Item 0: Leaf(Leaf { header: NodeHeaderEuclidean { bias: 0.0 }, vector: [0.0000, 0.0000] })
@@ -452,7 +452,7 @@ fn delete_one_item_in_a_descendant() {
     writer.build(&mut wtxn, &mut rng, Some(1)).unwrap();
     wtxn.commit().unwrap();
 
-    insta::assert_display_snapshot!(handle, @r###"
+    insta::assert_snapshot!(handle, @r###"
     ==================
     Dumping index 0
     Item 1: Leaf(Leaf { header: NodeHeaderEuclidean { bias: 0.0 }, vector: [1.0000, 0.0000] })
@@ -475,7 +475,7 @@ fn delete_one_leaf_in_a_split() {
     writer.build(&mut wtxn, &mut rng, Some(1)).unwrap();
     wtxn.commit().unwrap();
 
-    insta::assert_display_snapshot!(handle, @r###"
+    insta::assert_snapshot!(handle, @r###"
     ==================
     Dumping index 0
     Item 0: Leaf(Leaf { header: NodeHeaderEuclidean { bias: 0.0 }, vector: [0.0000, 0.0000] })
@@ -495,7 +495,7 @@ fn delete_one_leaf_in_a_split() {
     wtxn.commit().unwrap();
 
     // after deleting the leaf, the split node should be replaced by a descendant
-    insta::assert_display_snapshot!(handle, @r###"
+    insta::assert_snapshot!(handle, @r###"
     ==================
     Dumping index 0
     Item 1: Leaf(Leaf { header: NodeHeaderEuclidean { bias: 0.0 }, vector: [1.0000, 0.0000] })
@@ -517,7 +517,7 @@ fn delete_one_item_in_a_single_document_database() {
     writer.build(&mut wtxn, &mut rng, None).unwrap();
     wtxn.commit().unwrap();
 
-    insta::assert_display_snapshot!(handle, @r###"
+    insta::assert_snapshot!(handle, @r###"
     ==================
     Dumping index 0
     Item 0: Leaf(Leaf { header: NodeHeaderAngular { norm: 0.0 }, vector: [0.0000, 0.0000] })
@@ -533,7 +533,7 @@ fn delete_one_item_in_a_single_document_database() {
     writer.build(&mut wtxn, &mut rng, None).unwrap();
     wtxn.commit().unwrap();
 
-    insta::assert_display_snapshot!(handle, @r###"
+    insta::assert_snapshot!(handle, @r###"
     ==================
     Dumping index 0
     Root: Metadata { dimensions: 2, items: RoaringBitmap<[]>, roots: [], distance: "angular" }
@@ -554,7 +554,7 @@ fn delete_one_item() {
     writer.build(&mut wtxn, &mut rng, Some(1)).unwrap();
     wtxn.commit().unwrap();
 
-    insta::assert_display_snapshot!(handle, @r###"
+    insta::assert_snapshot!(handle, @r###"
     ==================
     Dumping index 0
     Item 0: Leaf(Leaf { header: NodeHeaderEuclidean { bias: 0.0 }, vector: [0.0000, 0.0000] })
@@ -579,7 +579,7 @@ fn delete_one_item() {
     writer.build(&mut wtxn, &mut rng, Some(1)).unwrap();
     wtxn.commit().unwrap();
 
-    insta::assert_display_snapshot!(handle, @r###"
+    insta::assert_snapshot!(handle, @r###"
     ==================
     Dumping index 0
     Item 0: Leaf(Leaf { header: NodeHeaderEuclidean { bias: 0.0 }, vector: [0.0000, 0.0000] })
@@ -603,7 +603,7 @@ fn delete_one_item() {
     writer.build(&mut wtxn, &mut rng, Some(1)).unwrap();
     wtxn.commit().unwrap();
 
-    insta::assert_display_snapshot!(handle, @r###"
+    insta::assert_snapshot!(handle, @r###"
     ==================
     Dumping index 0
     Item 0: Leaf(Leaf { header: NodeHeaderEuclidean { bias: 0.0 }, vector: [0.0000, 0.0000] })
@@ -626,7 +626,7 @@ fn add_one_item_incrementally_in_an_empty_db() {
     writer.build(&mut wtxn, &mut rng, Some(1)).unwrap();
     wtxn.commit().unwrap();
 
-    insta::assert_display_snapshot!(handle, @r###"
+    insta::assert_snapshot!(handle, @r###"
     ==================
     Dumping index 0
     Root: Metadata { dimensions: 2, items: RoaringBitmap<[]>, roots: [], distance: "euclidean" }
@@ -638,7 +638,7 @@ fn add_one_item_incrementally_in_an_empty_db() {
     writer.build(&mut wtxn, &mut rng, Some(1)).unwrap();
     wtxn.commit().unwrap();
 
-    insta::assert_display_snapshot!(handle, @r###"
+    insta::assert_snapshot!(handle, @r###"
     ==================
     Dumping index 0
     Item 0: Leaf(Leaf { header: NodeHeaderEuclidean { bias: 0.0 }, vector: [0.0000, 0.0000] })
@@ -657,7 +657,7 @@ fn add_one_item_incrementally_in_a_one_item_db() {
     writer.build(&mut wtxn, &mut rng, Some(1)).unwrap();
     wtxn.commit().unwrap();
 
-    insta::assert_display_snapshot!(handle, @r###"
+    insta::assert_snapshot!(handle, @r###"
     ==================
     Dumping index 0
     Item 0: Leaf(Leaf { header: NodeHeaderEuclidean { bias: 0.0 }, vector: [0.0000, 0.0000] })
@@ -671,7 +671,7 @@ fn add_one_item_incrementally_in_a_one_item_db() {
     writer.build(&mut wtxn, &mut rng, Some(1)).unwrap();
     wtxn.commit().unwrap();
 
-    insta::assert_display_snapshot!(handle, @r###"
+    insta::assert_snapshot!(handle, @r###"
     ==================
     Dumping index 0
     Item 0: Leaf(Leaf { header: NodeHeaderEuclidean { bias: 0.0 }, vector: [0.0000, 0.0000] })
@@ -692,7 +692,7 @@ fn add_one_item_incrementally_to_create_a_split_node() {
     writer.build(&mut wtxn, &mut rng, Some(1)).unwrap();
     wtxn.commit().unwrap();
 
-    insta::assert_display_snapshot!(handle, @r###"
+    insta::assert_snapshot!(handle, @r###"
     ==================
     Dumping index 0
     Item 0: Leaf(Leaf { header: NodeHeaderEuclidean { bias: 0.0 }, vector: [0.0000, 0.0000] })
@@ -707,7 +707,7 @@ fn add_one_item_incrementally_to_create_a_split_node() {
     writer.build(&mut wtxn, &mut rng, Some(1)).unwrap();
     wtxn.commit().unwrap();
 
-    insta::assert_display_snapshot!(handle, @r###"
+    insta::assert_snapshot!(handle, @r###"
     ==================
     Dumping index 0
     Item 0: Leaf(Leaf { header: NodeHeaderEuclidean { bias: 0.0 }, vector: [0.0000, 0.0000] })
@@ -732,7 +732,7 @@ fn add_one_item_incrementally() {
     writer.build(&mut wtxn, &mut rng, Some(1)).unwrap();
     wtxn.commit().unwrap();
 
-    insta::assert_display_snapshot!(handle, @r###"
+    insta::assert_snapshot!(handle, @r###"
     ==================
     Dumping index 0
     Item 0: Leaf(Leaf { header: NodeHeaderEuclidean { bias: 0.0 }, vector: [0.0000, 0.0000] })
@@ -757,7 +757,7 @@ fn add_one_item_incrementally() {
     writer.build(&mut wtxn, &mut rng, Some(1)).unwrap();
     wtxn.commit().unwrap();
 
-    insta::assert_display_snapshot!(handle, @r###"
+    insta::assert_snapshot!(handle, @r###"
     ==================
     Dumping index 0
     Item 0: Leaf(Leaf { header: NodeHeaderEuclidean { bias: 0.0 }, vector: [0.0000, 0.0000] })
@@ -784,7 +784,7 @@ fn add_one_item_incrementally() {
     writer.build(&mut wtxn, &mut rng, Some(1)).unwrap();
     wtxn.commit().unwrap();
 
-    insta::assert_display_snapshot!(handle, @r###"
+    insta::assert_snapshot!(handle, @r###"
     ==================
     Dumping index 0
     Item 0: Leaf(Leaf { header: NodeHeaderEuclidean { bias: 0.0 }, vector: [0.0000, 0.0000] })
@@ -820,7 +820,7 @@ fn delete_extraneous_tree() {
     writer.build(&mut wtxn, &mut rng, None).unwrap();
     wtxn.commit().unwrap();
 
-    insta::assert_display_snapshot!(handle, @r###"
+    insta::assert_snapshot!(handle, @r###"
     ==================
     Dumping index 0
     Item 0: Leaf(Leaf { header: NodeHeaderEuclidean { bias: 0.0 }, vector: [0.0000, 0.0000, 0.0000, 0.0000] })
@@ -842,7 +842,7 @@ fn delete_extraneous_tree() {
     writer.build(&mut wtxn, &mut rng, Some(2)).unwrap();
     wtxn.commit().unwrap();
 
-    insta::assert_display_snapshot!(handle, @r###"
+    insta::assert_snapshot!(handle, @r###"
     ==================
     Dumping index 0
     Item 0: Leaf(Leaf { header: NodeHeaderEuclidean { bias: 0.0 }, vector: [0.0000, 0.0000, 0.0000, 0.0000] })
@@ -862,7 +862,7 @@ fn delete_extraneous_tree() {
     writer.build(&mut wtxn, &mut rng, Some(1)).unwrap();
     wtxn.commit().unwrap();
 
-    insta::assert_display_snapshot!(handle, @r###"
+    insta::assert_snapshot!(handle, @r###"
     ==================
     Dumping index 0
     Item 0: Leaf(Leaf { header: NodeHeaderEuclidean { bias: 0.0 }, vector: [0.0000, 0.0000, 0.0000, 0.0000] })
@@ -889,7 +889,7 @@ fn reuse_node_id() {
     writer.build(&mut wtxn, &mut rng, Some(1)).unwrap();
     wtxn.commit().unwrap();
 
-    insta::assert_display_snapshot!(handle, @r###"
+    insta::assert_snapshot!(handle, @r###"
     ==================
     Dumping index 0
     Item 0: Leaf(Leaf { header: NodeHeaderEuclidean { bias: 0.0 }, vector: [0.0000, 0.0000] })
@@ -914,7 +914,7 @@ fn reuse_node_id() {
     writer.build(&mut wtxn, &mut rng, Some(1)).unwrap();
     wtxn.commit().unwrap();
 
-    insta::assert_display_snapshot!(handle, @r###"
+    insta::assert_snapshot!(handle, @r###"
     ==================
     Dumping index 0
     Item 0: Leaf(Leaf { header: NodeHeaderEuclidean { bias: 0.0 }, vector: [0.0000, 0.0000] })
@@ -937,7 +937,7 @@ fn reuse_node_id() {
     writer.build(&mut wtxn, &mut rng, Some(1)).unwrap();
     wtxn.commit().unwrap();
 
-    insta::assert_display_snapshot!(handle, @r###"
+    insta::assert_snapshot!(handle, @r###"
     ==================
     Dumping index 0
     Item 0: Leaf(Leaf { header: NodeHeaderEuclidean { bias: 0.0 }, vector: [0.0000, 0.0000] })
@@ -961,7 +961,7 @@ fn reuse_node_id() {
     writer.build(&mut wtxn, &mut rng, Some(2)).unwrap();
     wtxn.commit().unwrap();
 
-    insta::assert_display_snapshot!(handle, @r###"
+    insta::assert_snapshot!(handle, @r###"
     ==================
     Dumping index 0
     Item 0: Leaf(Leaf { header: NodeHeaderEuclidean { bias: 0.0 }, vector: [0.0000, 0.0000] })
