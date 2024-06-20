@@ -984,3 +984,23 @@ fn reuse_node_id() {
     Root: Metadata { dimensions: 2, items: RoaringBitmap<[0, 1, 2, 3, 4, 5]>, roots: [4, 9], distance: "euclidean" }
     "###);
 }
+
+#[test]
+fn need_build() {
+    let handle = create_database::<Euclidean>();
+    let mut rng = rng();
+    let mut wtxn = handle.env.write_txn().unwrap();
+    let writer = Writer::new(handle.database, 0, 2);
+    assert!(writer.need_build(&wtxn).unwrap(), "because metadata are missing");
+
+    writer.add_item(&mut wtxn, 0, &[0.0, 0.0]).unwrap();
+    assert!(
+        writer.need_build(&wtxn).unwrap(),
+        "because metadata are missing and an item has been updated"
+    );
+    writer.build(&mut wtxn, &mut rng, None).unwrap();
+
+    let writer = Writer::new(handle.database, 0, 2);
+    writer.del_item(&mut wtxn, 0).unwrap();
+    assert!(writer.need_build(&wtxn).unwrap(), "because an item has been updated");
+}

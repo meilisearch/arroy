@@ -95,6 +95,20 @@ impl<D: Distance> Writer<D> {
         self.iter(rtxn).map(|mut iter| iter.next().is_none())
     }
 
+    /// Returns `true` if the index needs to be built before being able to read in it.
+    pub fn need_build(&self, rtxn: &RoTxn) -> Result<bool> {
+        Ok(self
+            .database
+            .remap_data_type::<DecodeIgnore>()
+            .get(rtxn, &Key::updated(self.index))?
+            .is_some()
+            || self
+                .database
+                .remap_data_type::<DecodeIgnore>()
+                .get(rtxn, &Key::metadata(self.index))?
+                .is_none())
+    }
+
     /// Returns `true` if the database contains the given item.
     pub fn contains_item(&self, rtxn: &RoTxn, item: ItemId) -> Result<bool> {
         self.database
