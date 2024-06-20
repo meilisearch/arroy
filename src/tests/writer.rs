@@ -95,7 +95,6 @@ fn write_one_vector() {
 
 #[test]
 fn write_one_vector_in_one_tree() {
-    let _ = env_logger::builder().is_test(true).parse_filters("trace").try_init();
     let handle = create_database::<Euclidean>();
     let mut wtxn = handle.env.write_txn().unwrap();
     let writer = Writer::new(handle.database, 0, 3);

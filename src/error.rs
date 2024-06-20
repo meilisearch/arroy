@@ -43,7 +43,7 @@ pub enum Error {
     /// Arroy is not able to find the metadata for a given index.
     /// It is probably because the user forget to build the database.
     #[error(
-        "Metadata are missing on index {0}, did you build your database before trying to read it"
+        "Metadata are missing on index {0}, You must build your database before attempting to read it"
     )]
     MissingMetadata(u16),
 

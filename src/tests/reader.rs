@@ -34,7 +34,7 @@ fn open_unfinished_db() {
 
     let rtxn = handle.env.read_txn().unwrap();
     let ret = Reader::<Euclidean>::open(&rtxn, 0, handle.database).map(|_| ()).unwrap_err();
-    insta::assert_display_snapshot!(ret, @"Metadata are missing on index 0, did you build your database before trying to read it");
+    insta::assert_display_snapshot!(ret, @"Metadata are missing on index 0, You must build your database before attempting to read it");
 }
 
 #[test]

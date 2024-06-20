@@ -45,9 +45,7 @@ impl<'t, D: Distance> Reader<'t, D> {
                 received: D::name(),
             });
         }
-        let need_build =
-            database.remap_data_type::<Bytes>().get(rtxn, &Key::updated(index))?.is_some();
-        if need_build {
+        if database.remap_data_type::<Bytes>().get(rtxn, &Key::updated(index))?.is_some() {
             return Err(Error::NeedBuild(index));
         }
 
