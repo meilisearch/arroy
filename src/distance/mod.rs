@@ -15,6 +15,7 @@ use crate::spaces::simple::dot_product;
 use crate::NodeCodec;
 
 mod angular;
+mod binary_quantized_euclidean;
 mod dot_product;
 mod euclidean;
 mod manhattan;
