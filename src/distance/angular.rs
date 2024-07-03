@@ -5,7 +5,7 @@ use rand::Rng;
 
 use super::two_means;
 use crate::distance::Distance;
-use crate::node::{Leaf, UnalignedF32Slice};
+use crate::node::{Leaf, UnalignedVector};
 use crate::parallel::ImmutableSubsetLeafs;
 use crate::spaces::simple::dot_product;
 
@@ -29,7 +29,7 @@ impl Distance for Angular {
         "angular"
     }
 
-    fn new_header(vector: &UnalignedF32Slice) -> Self::Header {
+    fn new_header(vector: &UnalignedVector) -> Self::Header {
         NodeHeaderAngular { norm: Self::norm_no_header(vector) }
     }
 
@@ -58,20 +58,21 @@ impl Distance for Angular {
         node.header.norm = dot_product(&node.vector, &node.vector).sqrt();
     }
 
-    fn create_split<R: Rng>(
-        children: &ImmutableSubsetLeafs<Self>,
+    fn create_split<'a, R: Rng>(
+        children: &'a ImmutableSubsetLeafs<Self>,
         rng: &mut R,
-    ) -> heed::Result<Vec<f32>> {
+    ) -> heed::Result<Cow<'a, UnalignedVector>> {
         let [node_p, node_q] = two_means(rng, children, true)?;
-        let vector = node_p.vector.iter().zip(node_q.vector.iter()).map(|(p, q)| p - q).collect();
-        let mut normal =
-            Leaf { header: NodeHeaderAngular { norm: 0.0 }, vector: Cow::Owned(vector) };
+        let vector: Vec<f32> =
+            node_p.vector.iter_f32().zip(node_q.vector.iter_f32()).map(|(p, q)| p - q).collect();
+        let unaligned_vector = Self::craft_owned_unaligned_vector_from_f32(vector);
+        let mut normal = Leaf { header: NodeHeaderAngular { norm: 0.0 }, vector: unaligned_vector };
         Self::normalize(&mut normal);
 
-        Ok(normal.vector.into_owned())
+        Ok(normal.vector)
     }
 
-    fn margin_no_header(p: &UnalignedF32Slice, q: &UnalignedF32Slice) -> f32 {
+    fn margin_no_header(p: &UnalignedVector, q: &UnalignedVector) -> f32 {
         dot_product(p, q)
     }
 }

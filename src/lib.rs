@@ -107,7 +107,7 @@ pub mod internals {
         NodeHeaderAngular, NodeHeaderDotProduct, NodeHeaderEuclidean, NodeHeaderManhattan,
     };
     pub use crate::key::KeyCodec;
-    pub use crate::node::{Leaf, NodeCodec, UnalignedF32Slice};
+    pub use crate::node::{Leaf, NodeCodec, UnalignedVector};
 
     /// A type that is used to decide on
     /// which side of a plane we move an item.

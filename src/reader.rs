@@ -13,7 +13,7 @@ use roaring::RoaringBitmap;
 use crate::distance::Distance;
 use crate::internals::{KeyCodec, Side};
 use crate::item_iter::ItemIter;
-use crate::node::{Descendants, ItemIds, Leaf, SplitPlaneNormal, UnalignedF32Slice};
+use crate::node::{Descendants, ItemIds, Leaf, SplitPlaneNormal, UnalignedVector};
 use crate::{
     Database, Error, ItemId, Key, MetadataCodec, Node, NodeId, Prefix, PrefixCodec, Result, Stats,
     TreeStats,
@@ -102,7 +102,7 @@ impl<'t, D: Distance> Reader<'t, D> {
                 Node::SplitPlaneNormal(SplitPlaneNormal { normal, left, right }) => {
                     let left = recursive_depth(rtxn, database, index, left)?;
                     let right = recursive_depth(rtxn, database, index, right)?;
-                    let is_zero_normal = normal.iter().all(|f| f == 0.0) as usize;
+                    let is_zero_normal = normal.iter_f32().all(|f| f == 0.0) as usize;
 
                     Ok(TreeStats {
                         depth: 1 + left.depth.max(right.depth),
@@ -131,7 +131,8 @@ impl<'t, D: Distance> Reader<'t, D> {
 
     /// Returns the vector for item `i` that was previously added.
     pub fn item_vector(&self, rtxn: &'t RoTxn, item: ItemId) -> Result<Option<Vec<f32>>> {
-        Ok(item_leaf(self.database, self.index, rtxn, item)?.map(|leaf| leaf.vector.into_owned()))
+        Ok(item_leaf(self.database, self.index, rtxn, item)?
+            .map(|leaf| D::read_unaligned_vector(&leaf.vector)))
     }
 
     /// Returns `true` if the index is empty.
@@ -198,7 +199,7 @@ impl<'t, D: Distance> Reader<'t, D> {
             });
         }
 
-        let vector = UnalignedF32Slice::from_slice(vector);
+        let vector = UnalignedVector::f32_vectors_from_f32_slice(vector);
         let leaf = Leaf { header: D::new_header(vector), vector: Cow::Borrowed(vector) };
         self.nns_by_leaf(rtxn, &leaf, count, search_k, candidates)
     }

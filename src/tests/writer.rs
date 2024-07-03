@@ -382,7 +382,7 @@ fn delete_document_in_an_empty_index_74() {
 
     wtxn.commit().unwrap();
 
-    insta::assert_display_snapshot!(handle, @r###"
+    insta::assert_snapshot!(handle, @r###"
     ==================
     Dumping index 0
     Item 0: Leaf(Leaf { header: NodeHeaderEuclidean { bias: 0.0 }, vector: [0.0000, 0.0000] })
@@ -407,7 +407,7 @@ fn delete_document_in_an_empty_index_74() {
 
     wtxn.commit().unwrap();
 
-    insta::assert_display_snapshot!(handle, @r###"
+    insta::assert_snapshot!(handle, @r###"
     ==================
     Dumping index 0
     Root: Metadata { dimensions: 2, items: RoaringBitmap<[]>, roots: [], distance: "euclidean" }

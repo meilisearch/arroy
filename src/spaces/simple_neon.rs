@@ -2,15 +2,15 @@
 use std::arch::aarch64::*;
 use std::ptr::read_unaligned;
 
-use crate::node::UnalignedF32Slice;
+use crate::node::UnalignedVector;
 
 #[cfg(target_feature = "neon")]
-pub(crate) unsafe fn euclid_similarity_neon(v1: &UnalignedF32Slice, v2: &UnalignedF32Slice) -> f32 {
+pub(crate) unsafe fn euclid_similarity_neon(v1: &UnalignedVector, v2: &UnalignedVector) -> f32 {
     // We use the unaligned_float32x4_t helper function to read f32x4 NEON SIMD types
     // from potentially unaligned memory locations safely.
     // https://github.com/meilisearch/arroy/pull/13
 
-    let n = v1.len();
+    let n = v1.f32_len();
     let m = n - (n % 16);
     let mut ptr1 = v1.as_ptr() as *const f32;
     let mut ptr2 = v2.as_ptr() as *const f32;
@@ -50,12 +50,12 @@ pub(crate) unsafe fn euclid_similarity_neon(v1: &UnalignedF32Slice, v2: &Unalign
 }
 
 #[cfg(target_feature = "neon")]
-pub(crate) unsafe fn dot_similarity_neon(v1: &UnalignedF32Slice, v2: &UnalignedF32Slice) -> f32 {
+pub(crate) unsafe fn dot_similarity_neon(v1: &UnalignedVector, v2: &UnalignedVector) -> f32 {
     // We use the unaligned_float32x4_t helper function to read f32x4 NEON SIMD types
     // from potentially unaligned memory locations safely.
     // https://github.com/meilisearch/arroy/pull/13
 
-    let n = v1.len();
+    let n = v1.f32_len();
     let m = n - (n % 16);
     let mut ptr1 = v1.as_ptr() as *const f32;
     let mut ptr2 = v2.as_ptr() as *const f32;
@@ -112,8 +112,8 @@ mod tests {
                 56., 57., 58., 59., 60., 61.,
             ];
 
-            let v1 = UnalignedF32Slice::from_slice(&v1[..]);
-            let v2 = UnalignedF32Slice::from_slice(&v2[..]);
+            let v1 = UnalignedVector::f32_vectors_from_f32_slice(&v1[..]);
+            let v2 = UnalignedVector::f32_vectors_from_f32_slice(&v2[..]);
 
             let euclid_simd = unsafe { euclid_similarity_neon(v1, v2) };
             let euclid = euclidean_distance_non_optimized(v1, v2);

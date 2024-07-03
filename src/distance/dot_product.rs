@@ -7,7 +7,7 @@ use rand::Rng;
 use super::two_means;
 use crate::distance::Distance;
 use crate::internals::KeyCodec;
-use crate::node::{Leaf, UnalignedF32Slice};
+use crate::node::{Leaf, UnalignedVector};
 use crate::parallel::ImmutableSubsetLeafs;
 use crate::spaces::simple::dot_product;
 use crate::{Node, NodeCodec};
@@ -34,7 +34,7 @@ impl Distance for DotProduct {
         "dot-product"
     }
 
-    fn new_header(_vector: &UnalignedF32Slice) -> Self::Header {
+    fn new_header(_vector: &UnalignedVector) -> Self::Header {
         // We compute the norm when we preprocess the vector, before generating the tree nodes.
         NodeHeaderDotProduct { extra_dim: 0.0, norm: 0.0 }
     }
@@ -71,7 +71,8 @@ impl Distance for DotProduct {
     fn normalize(node: &mut Leaf<Self>) {
         let norm = Self::norm(node);
         if norm > 0.0 {
-            node.vector.to_mut().iter_mut().for_each(|x| *x /= norm);
+            let vec: Vec<_> = node.vector.iter_f32().map(|x| x / norm).collect();
+            node.vector = UnalignedVector::owned_f32_vectors_from_f32_slice(vec);
             node.header.extra_dim /= norm;
         }
     }
@@ -80,27 +81,28 @@ impl Distance for DotProduct {
         node.header.norm = dot_product(&node.vector, &node.vector);
     }
 
-    fn create_split<R: Rng>(
-        children: &ImmutableSubsetLeafs<Self>,
+    fn create_split<'a, R: Rng>(
+        children: &'a ImmutableSubsetLeafs<Self>,
         rng: &mut R,
-    ) -> heed::Result<Vec<f32>> {
+    ) -> heed::Result<Cow<'a, UnalignedVector>> {
         let [node_p, node_q] = two_means(rng, children, true)?;
-        let vector = node_p.vector.iter().zip(node_q.vector.iter()).map(|(p, q)| p - q).collect();
+        let vector: Vec<f32> =
+            node_p.vector.iter_f32().zip(node_q.vector.iter_f32()).map(|(p, q)| p - q).collect();
         let mut normal = Leaf::<Self> {
             header: NodeHeaderDotProduct { norm: 0.0, extra_dim: 0.0 },
-            vector: Cow::Owned(vector),
+            vector: Self::craft_owned_unaligned_vector_from_f32(vector),
         };
         normal.header.extra_dim = node_p.header.extra_dim - node_q.header.extra_dim;
         Self::normalize(&mut normal);
 
-        Ok(normal.vector.into_owned())
+        Ok(normal.vector)
     }
 
     fn margin(p: &Leaf<Self>, q: &Leaf<Self>) -> f32 {
         dot_product(&p.vector, &q.vector) + p.header.extra_dim * q.header.extra_dim
     }
 
-    fn margin_no_header(p: &UnalignedF32Slice, q: &UnalignedF32Slice) -> f32 {
+    fn margin_no_header(p: &UnalignedVector, q: &UnalignedVector) -> f32 {
         dot_product(p, q)
     }
 
