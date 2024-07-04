@@ -55,10 +55,9 @@ impl<D: Distance> Writer<D> {
             while let Some((item_id, node)) = cursor.next().transpose()? {
                 match node {
                     Node::Leaf(Leaf { header: _, vector }) => {
-                        let new_leaf = Node::Leaf(Leaf {
-                            header: ND::new_header(&vector),
-                            vector: Cow::Owned(vector.into_owned()),
-                        });
+                        let vector = D::read_unaligned_vector(&vector);
+                        let vector = ND::craft_owned_unaligned_vector_from_f32(vector);
+                        let new_leaf = Node::Leaf(Leaf { header: ND::new_header(&vector), vector });
                         unsafe {
                             // safety: We do not keep a reference to the current value, we own it.
                             cursor.put_current_with_options::<NodeCodec<ND>>(
@@ -87,8 +86,11 @@ impl<D: Distance> Writer<D> {
 
     /// Returns an `Option`al vector previous stored in this database.
     pub fn item_vector(&self, rtxn: &RoTxn, item: ItemId) -> Result<Option<Vec<f32>>> {
-        Ok(item_leaf(self.database, self.index, rtxn, item)?
-            .map(|leaf| D::read_unaligned_vector(&leaf.vector)))
+        Ok(item_leaf(self.database, self.index, rtxn, item)?.map(|leaf| {
+            let mut vec = D::read_unaligned_vector(&leaf.vector);
+            vec.drain(self.dimensions..);
+            vec
+        }))
     }
 
     /// Returns `true` if the index is empty.

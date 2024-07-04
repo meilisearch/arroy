@@ -1,5 +1,6 @@
 use std::borrow::{Borrow, Cow};
 use std::fmt;
+use std::marker::PhantomData;
 use std::mem::{size_of, transmute};
 
 use bytemuck::{bytes_of, cast_slice, pod_collect_to_vec, pod_read_unaligned};
@@ -10,11 +11,24 @@ use roaring::RoaringBitmap;
 use crate::distance::Distance;
 use crate::{ItemId, NodeId};
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub enum Node<'a, D: Distance> {
     Leaf(Leaf<'a, D>),
     Descendants(Descendants<'a>),
     SplitPlaneNormal(SplitPlaneNormal<'a>),
+}
+
+impl<D: Distance> fmt::Debug for Node<'_, D> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Node::Leaf(leaf) => f.debug_tuple("Leaf").field(&leaf).finish(),
+            Node::Descendants(desc) => f.debug_tuple("Descendants").field(&desc).finish(),
+            Node::SplitPlaneNormal(split) => f
+                .debug_tuple("SplitPlaneNormal")
+                .field(&DisplaySplitPlaneNormal::<D>(split, PhantomData))
+                .finish(),
+        }
+    }
 }
 
 const LEAF_TAG: u8 = 0;
@@ -31,14 +45,33 @@ impl<'a, D: Distance> Node<'a, D> {
     }
 }
 
+/// Small structure used to implement `Debug` for the `Leaf` and the `SplitPlaneNormal`.
+struct DisplayVec(Vec<f32>);
+impl fmt::Debug for DisplayVec {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let mut list = f.debug_list();
+        self.0.iter().for_each(|float| {
+            list.entry(&format_args!("{:.4?}", float));
+        });
+        list.finish()
+    }
+}
+
 /// A leaf node which corresponds to the vector inputed
 /// by the user and the distance header.
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct Leaf<'a, D: Distance> {
     /// The header of this leaf.
     pub header: D::Header,
     /// The vector of this leaf.
     pub vector: Cow<'a, UnalignedVector>,
+}
+
+impl<D: Distance> fmt::Debug for Leaf<'_, D> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let vec = DisplayVec(D::read_unaligned_vector(&self.vector));
+        f.debug_struct("Leaf").field("header", &self.header).field("vector", &vec).finish()
+    }
 }
 
 impl<D: Distance> Leaf<'_, D> {
@@ -83,16 +116,6 @@ impl UnalignedVector {
         }
     }
 
-    /// Creates an unaligned slice of `usize` wrapper from a slice of bytes.
-    pub(crate) fn quantized_vectors_from_bytes(bytes: &[u8]) -> Result<&Self, SizeMismatch> {
-        if bytes.len() % size_of::<QuantizedWord>() == 0 {
-            // safety: `UnalignedF32Slice` is transparent
-            Ok(unsafe { transmute(bytes) })
-        } else {
-            Err(SizeMismatch)
-        }
-    }
-
     /// Creates an unaligned slice of f32 wrapper from a slice of f32.
     /// The slice is already known to be of the right length.
     pub(crate) fn f32_vectors_from_f32_slice(slice: &[f32]) -> &Self {
@@ -106,16 +129,27 @@ impl UnalignedVector {
         Cow::Owned(bytes)
     }
 
-    /// Creates an unaligned slice of f32 wrapper from a slice of f32.
-    /// The slice is already known to be of the right length.
-    pub(crate) fn binary_quantized_vectors_from_slice(slice: &[f32]) -> Cow<Self> {
-        let mut output: Vec<u8> = vec![0; slice.len() / QUANTIZED_WORD_SIZE];
-        for chunk in slice.chunks_exact(QUANTIZED_WORD_SIZE) {
+    /// Creates a binary quantized wrapper from a slice of bytes.
+    pub(crate) fn quantized_vectors_from_bytes(bytes: &[u8]) -> Result<&Self, SizeMismatch> {
+        if bytes.len() % size_of::<QuantizedWord>() == 0 {
+            // safety: `UnalignedF32Slice` is transparent
+            Ok(unsafe { transmute(bytes) })
+        } else {
+            Err(SizeMismatch)
+        }
+    }
+
+    /// Creates a binary quantized unaligned slice of bytes from a slice of f32.
+    /// Will allocate.
+    pub(crate) fn binary_quantized_vectors_from_slice(slice: &[f32]) -> Cow<'static, Self> {
+        let mut output: Vec<u8> = Vec::with_capacity(slice.len() / QUANTIZED_WORD_SIZE);
+        for chunk in slice.chunks(QUANTIZED_WORD_SIZE) {
             let mut word: QuantizedWord = 0;
-            for bit in chunk {
-                let bit = bit.is_sign_positive();
-                todo!()
+            for bit in chunk.iter().rev() {
+                word <<= 1;
+                word += bit.is_sign_positive() as QuantizedWord;
             }
+            output.extend_from_slice(&word.to_ne_bytes());
         }
 
         Cow::Owned(output)
@@ -142,14 +176,23 @@ impl UnalignedVector {
         self.0.chunks_exact(size_of::<f32>()).map(NativeEndian::read_f32)
     }
 
-    /// Returns an iterator of f32 that are read from the slice.
+    /// Returns an iterator of f32 that are read from the binary quantized slice.
     /// The f32 are copied in memory and are therefore, aligned.
-    pub(crate) fn map_f32(&mut self, f: impl Fn(f32) -> f32) {
-        self.0.chunks_exact_mut(size_of::<f32>()).for_each(|chunk| {
-            let mut scalar = NativeEndian::read_f32(chunk);
-            scalar = f(scalar);
-            NativeEndian::write_f32(chunk, scalar);
-        })
+    pub(crate) fn iter_binary_quantized(&self) -> impl Iterator<Item = f32> + '_ {
+        self.0
+            .chunks_exact(size_of::<QuantizedWord>())
+            .map(|bytes| QuantizedWord::from_ne_bytes(bytes.try_into().unwrap()))
+            .flat_map(|mut word| {
+                let mut ret = vec![0.0; QUANTIZED_WORD_SIZE];
+                for index in 0..QUANTIZED_WORD_SIZE {
+                    let bit = word & 1;
+                    word >>= 1;
+                    if bit == 1 {
+                        ret[index] = 1.0;
+                    }
+                }
+                ret
+            })
     }
 
     /// Returns the raw pointer to the start of this slice.
@@ -172,24 +215,7 @@ impl ToOwned for UnalignedVector {
 
 impl Borrow<UnalignedVector> for Vec<u8> {
     fn borrow(&self) -> &UnalignedVector {
-        UnalignedVector::from_bytes_unchecked(&self)
-    }
-}
-
-impl fmt::Debug for UnalignedVector {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        struct SmallF32(f32);
-        impl fmt::Debug for SmallF32 {
-            fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-                f.write_fmt(format_args!("{:.4?}", self.0))
-            }
-        }
-
-        let mut list = f.debug_list();
-        self.iter_f32().for_each(|float| {
-            list.entry(&SmallF32(float));
-        });
-        list.finish()
+        UnalignedVector::from_bytes_unchecked(self)
     }
 }
 
@@ -244,11 +270,25 @@ impl fmt::Debug for ItemIds<'_> {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct SplitPlaneNormal<'a> {
     pub left: NodeId,
     pub right: NodeId,
     pub normal: Cow<'a, UnalignedVector>,
+}
+
+/// Wraps a `SplitPlaneNormal` with its distance type to display it.
+/// The distance is required to be able to read the normal.
+pub struct DisplaySplitPlaneNormal<'a, D: Distance>(&'a SplitPlaneNormal<'a>, PhantomData<D>);
+impl<D: Distance> fmt::Debug for DisplaySplitPlaneNormal<'_, D> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let normal = DisplayVec(D::read_unaligned_vector(&self.0.normal));
+        f.debug_struct("SplitPlaneNormal")
+            .field("left", &self.0.left)
+            .field("right", &self.0.right)
+            .field("normal", &normal)
+            .finish()
+    }
 }
 
 /// The codec used internally to encode and decode nodes.

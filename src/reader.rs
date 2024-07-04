@@ -131,8 +131,12 @@ impl<'t, D: Distance> Reader<'t, D> {
 
     /// Returns the vector for item `i` that was previously added.
     pub fn item_vector(&self, rtxn: &'t RoTxn, item: ItemId) -> Result<Option<Vec<f32>>> {
-        Ok(item_leaf(self.database, self.index, rtxn, item)?
-            .map(|leaf| D::read_unaligned_vector(&leaf.vector)))
+        Ok(item_leaf(self.database, self.index, rtxn, item)?.map(|leaf| {
+            let mut vec = D::read_unaligned_vector(&leaf.vector);
+            // Depending on the distance we may have up to 63 additional elements in the vec
+            vec.drain(self.dimensions()..);
+            vec
+        }))
     }
 
     /// Returns `true` if the index is empty.

@@ -5,7 +5,7 @@ use rand::Rng;
 
 use super::two_means;
 use crate::distance::Distance;
-use crate::node::{Leaf, UnalignedVector};
+use crate::node::{Leaf, SizeMismatch, UnalignedVector};
 use crate::parallel::ImmutableSubsetLeafs;
 use crate::spaces::simple::dot_product;
 
@@ -29,6 +29,25 @@ impl Distance for BinaryQuantizedEuclidean {
 
     fn name() -> &'static str {
         "binary quantized euclidean"
+    }
+
+    fn craft_owned_unaligned_vector_from_f32(vector: Vec<f32>) -> Cow<'static, UnalignedVector> {
+        // We need to allocate anyway so we use the version that take a ref
+        UnalignedVector::binary_quantized_vectors_from_slice(&vector)
+    }
+
+    fn craft_unaligned_vector_from_f32(vector: &[f32]) -> Cow<UnalignedVector> {
+        UnalignedVector::binary_quantized_vectors_from_slice(vector)
+    }
+
+    fn craft_unaligned_vector_from_bytes(
+        vector: &[u8],
+    ) -> Result<Cow<UnalignedVector>, SizeMismatch> {
+        UnalignedVector::quantized_vectors_from_bytes(vector).map(Cow::Borrowed)
+    }
+
+    fn read_unaligned_vector(vector: &UnalignedVector) -> Vec<f32> {
+        vector.iter_binary_quantized().collect()
     }
 
     fn new_header(_vector: &UnalignedVector) -> Self::Header {

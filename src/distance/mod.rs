@@ -2,6 +2,9 @@ use std::borrow::Cow;
 use std::fmt;
 
 pub use angular::{Angular, NodeHeaderAngular};
+pub use binary_quantized_euclidean::{
+    BinaryQuantizedEuclidean, NodeHeaderBinaryQuantizedEuclidean,
+};
 use bytemuck::{Pod, Zeroable};
 pub use dot_product::{DotProduct, NodeHeaderDotProduct};
 pub use euclidean::{Euclidean, NodeHeaderEuclidean};

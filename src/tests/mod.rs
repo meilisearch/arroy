@@ -9,6 +9,7 @@ use tempfile::TempDir;
 use crate::roaring::RoaringBitmapCodec;
 use crate::{Database, Distance, MetadataCodec, NodeCodec, NodeMode, Reader};
 
+mod binary_quantized;
 mod node;
 mod reader;
 mod writer;
