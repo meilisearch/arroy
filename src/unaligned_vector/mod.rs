@@ -12,9 +12,10 @@ use bytemuck::pod_collect_to_vec;
 mod binary_quantized;
 mod f32;
 
+/// Determine the way the vectors should be read and written from the database
 pub trait UnalignedVectorCodec: std::borrow::ToOwned + Sized {
     /// Creates an unaligned vector from a slice of bytes.
-    // Don't allocate.
+    /// Don't allocate.
     fn from_bytes(bytes: &[u8]) -> Result<Cow<UnalignedVector<Self>>, SizeMismatch>;
 
     /// Creates an unaligned vector from a slice of f32.
@@ -51,7 +52,7 @@ impl<Codec: UnalignedVectorCodec> UnalignedVector<Codec> {
     }
 
     /// Creates an unaligned vector from a slice of bytes.
-    // Don't allocate.
+    /// Don't allocate.
     pub fn from_bytes(bytes: &[u8]) -> Result<Cow<UnalignedVector<Codec>>, SizeMismatch> {
         Codec::from_bytes(bytes)
     }
@@ -105,9 +106,17 @@ impl<Codec: UnalignedVectorCodec> UnalignedVector<Codec> {
     }
 }
 
+/// Returned in case you tried to make an unaligned vector from a slice of bytes that don't have the right number of elements
 #[derive(Debug, thiserror::Error)]
-#[error("invalid slice of float dimension")]
-pub struct SizeMismatch;
+#[error(
+    "Slice of bytes contains {rem} too many bytes to be decoded with the {vector_codec} codec."
+)]
+pub struct SizeMismatch {
+    /// The name of the codec used.
+    vector_codec: &'static str,
+    /// The number of bytes remaining after decoding as many words as possible.
+    rem: usize,
+}
 
 impl<Codec: UnalignedVectorCodec> ToOwned for UnalignedVector<Codec> {
     type Owned = Vec<u8>;
@@ -127,8 +136,17 @@ impl<Codec: UnalignedVectorCodec> fmt::Debug for UnalignedVector<Codec> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let mut list = f.debug_list();
 
+        struct Number(f32);
+        impl fmt::Debug for Number {
+            fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+                write!(f, "{:0.4}", self.0)
+            }
+        }
+
         let vec = self.to_vec();
-        list.entries(vec.iter().take(10));
+        for v in vec.iter().take(10) {
+            list.entry(&Number(*v));
+        }
         if vec.len() < 10 {
             return list.finish();
         }
@@ -136,7 +154,7 @@ impl<Codec: UnalignedVectorCodec> fmt::Debug for UnalignedVector<Codec> {
         // With binary quantization we may be padding with a lot of zeros
         if vec[10..].iter().all(|v| *v == 0.0) {
             list.entry(&"0.0, ...");
-        } else if vec[10..].iter().all(|v| *v == 0.0) {
+        } else {
             list.entry(&"other ...");
         }
 

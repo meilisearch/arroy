@@ -15,11 +15,12 @@ pub enum BinaryQuantized {}
 
 impl UnalignedVectorCodec for BinaryQuantized {
     fn from_bytes(bytes: &[u8]) -> Result<Cow<UnalignedVector<Self>>, SizeMismatch> {
-        if bytes.len() % size_of::<QuantizedWord>() == 0 {
+        let rem = bytes.len() % size_of::<QuantizedWord>();
+        if rem == 0 {
             // safety: `UnalignedVector` is transparent
             Ok(Cow::Borrowed(unsafe { transmute(bytes) }))
         } else {
-            Err(SizeMismatch)
+            Err(SizeMismatch { vector_codec: "binary quantized", rem })
         }
     }
 

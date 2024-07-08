@@ -11,11 +11,12 @@ use super::{SizeMismatch, UnalignedVector, UnalignedVectorCodec};
 impl UnalignedVectorCodec for f32 {
     /// Creates an unaligned slice of f32 wrapper from a slice of bytes.
     fn from_bytes(bytes: &[u8]) -> Result<Cow<UnalignedVector<Self>>, SizeMismatch> {
-        if bytes.len() % size_of::<f32>() == 0 {
+        let rem = bytes.len() % size_of::<f32>();
+        if rem == 0 {
             // safety: `UnalignedF32Slice` is transparent
             Ok(Cow::Borrowed(unsafe { transmute(bytes) }))
         } else {
-            Err(SizeMismatch)
+            Err(SizeMismatch { vector_codec: "f32", rem })
         }
     }
 
