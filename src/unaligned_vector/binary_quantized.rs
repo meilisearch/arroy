@@ -1,6 +1,7 @@
 use std::{
     borrow::Cow,
     mem::{size_of, transmute},
+    slice::ChunksExact,
 };
 
 use super::{SizeMismatch, UnalignedVector, UnalignedVectorCodec};
@@ -43,23 +44,54 @@ impl UnalignedVectorCodec for BinaryQuantized {
     }
 
     fn iter(vec: &UnalignedVector<Self>) -> impl Iterator<Item = f32> + '_ {
-        vec.vector
-            .chunks_exact(size_of::<QuantizedWord>())
-            .map(|bytes| QuantizedWord::from_ne_bytes(bytes.try_into().unwrap()))
-            .flat_map(|mut word| {
-                let mut ret = vec![0.0; QUANTIZED_WORD_SIZE];
-                for index in 0..QUANTIZED_WORD_SIZE {
-                    let bit = word & 1;
-                    word >>= 1;
-                    if bit == 1 {
-                        ret[index] = 1.0;
-                    }
-                }
-                ret
-            })
+        BinaryQuantizedIterator {
+            current_element: 0,
+            // Force the pulling of the first word
+            current_iteration: QUANTIZED_WORD_SIZE,
+            iter: vec.vector.chunks_exact(size_of::<QuantizedWord>()),
+        }
     }
 
     fn len(vec: &UnalignedVector<Self>) -> usize {
         vec.vector.len() / size_of::<QuantizedWord>()
+    }
+}
+
+pub struct BinaryQuantizedIterator<'a> {
+    current_element: usize,
+    current_iteration: usize,
+    iter: ChunksExact<'a, u8>,
+}
+
+impl Iterator for BinaryQuantizedIterator<'_> {
+    type Item = f32;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.current_iteration >= QUANTIZED_WORD_SIZE {
+            let bytes = self.iter.next()?;
+            self.current_element = QuantizedWord::from_ne_bytes(bytes.try_into().unwrap());
+            self.current_iteration = 0;
+        }
+
+        let bit = self.current_element & 1;
+        self.current_element >>= 1;
+        self.current_iteration += 1;
+
+        Some(bit as f32)
+    }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        let (low, high) = self.iter.size_hint();
+        let rem = QUANTIZED_WORD_SIZE - self.current_iteration;
+
+        (low + rem, high.map(|h| h + rem))
+    }
+}
+
+impl ExactSizeIterator for BinaryQuantizedIterator<'_> {
+    fn len(&self) -> usize {
+        let (lower, upper) = self.size_hint();
+        debug_assert_eq!(upper, Some(lower));
+        lower
     }
 }
