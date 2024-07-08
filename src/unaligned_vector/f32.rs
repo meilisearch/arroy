@@ -35,7 +35,7 @@ impl UnalignedVectorCodec for f32 {
 
     /// Returns an iterator of f32 that are read from the slice.
     /// The f32 are copied in memory and are therefore, aligned.
-    fn iter(vec: &UnalignedVector<Self>) -> impl Iterator<Item = f32> + '_ {
+    fn iter(vec: &UnalignedVector<Self>) -> impl ExactSizeIterator<Item = f32> + '_ {
         vec.vector.chunks_exact(size_of::<f32>()).map(NativeEndian::read_f32)
     }
 

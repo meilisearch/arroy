@@ -29,9 +29,9 @@ impl UnalignedVectorCodec for BinaryQuantized {
         let mut output: Vec<u8> = Vec::with_capacity(slice.len() / QUANTIZED_WORD_SIZE);
         for chunk in slice.chunks(QUANTIZED_WORD_SIZE) {
             let mut word: QuantizedWord = 0;
-            for bit in chunk.iter().rev() {
+            for scalar in chunk.iter().rev() {
                 word <<= 1;
-                word += bit.is_sign_positive() as QuantizedWord;
+                word += scalar.is_sign_positive() as QuantizedWord;
             }
             output.extend_from_slice(&word.to_ne_bytes());
         }
@@ -43,7 +43,7 @@ impl UnalignedVectorCodec for BinaryQuantized {
         Cow::Owned(Self::from_slice(&vec).into_owned())
     }
 
-    fn iter(vec: &UnalignedVector<Self>) -> impl Iterator<Item = f32> + '_ {
+    fn iter(vec: &UnalignedVector<Self>) -> impl ExactSizeIterator<Item = f32> + '_ {
         BinaryQuantizedIterator {
             current_element: 0,
             // Force the pulling of the first word
@@ -53,7 +53,7 @@ impl UnalignedVectorCodec for BinaryQuantized {
     }
 
     fn len(vec: &UnalignedVector<Self>) -> usize {
-        vec.vector.len() / size_of::<QuantizedWord>()
+        (vec.vector.len() / size_of::<QuantizedWord>()) * QUANTIZED_WORD_SIZE
     }
 }
 
@@ -84,7 +84,7 @@ impl Iterator for BinaryQuantizedIterator<'_> {
         let (low, high) = self.iter.size_hint();
         let rem = QUANTIZED_WORD_SIZE - self.current_iteration;
 
-        (low + rem, high.map(|h| h + rem))
+        (low * QUANTIZED_WORD_SIZE + rem, high.map(|h| h * QUANTIZED_WORD_SIZE + rem))
     }
 }
 

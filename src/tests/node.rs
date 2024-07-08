@@ -18,6 +18,25 @@ fn unaligned_f32_vec() {
 }
 
 #[test]
+fn unaligned_binary_quantized_iter_size() {
+    let original: Vec<f32> = vec![-1.0, 2.0, -3.0, 4.0, 5.0];
+    let unaligned = UnalignedVector::<BinaryQuantized>::from_slice(&original);
+    assert_snapshot!(unaligned.len(), @"64");
+    let mut iter = unaligned.iter();
+    assert_snapshot!(iter.len(), @"64");
+    iter.next().unwrap();
+    assert_snapshot!(iter.len(), @"63");
+    iter.by_ref().take(10).for_each(drop);
+    assert_snapshot!(iter.len(), @"53");
+    iter.by_ref().take(52).for_each(drop);
+    assert_snapshot!(iter.len(), @"1");
+    iter.next().unwrap();
+    assert_snapshot!(iter.len(), @"0");
+    iter.next();
+    assert_snapshot!(iter.len(), @"0");
+}
+
+#[test]
 fn unaligned_binary_quantized_smol() {
     let original: Vec<f32> = vec![-1.0, 2.0, -3.0, 4.0, 5.0];
 
