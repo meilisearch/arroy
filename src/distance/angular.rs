@@ -5,9 +5,10 @@ use rand::Rng;
 
 use super::two_means;
 use crate::distance::Distance;
-use crate::node::{Leaf, UnalignedVector};
+use crate::node::Leaf;
 use crate::parallel::ImmutableSubsetLeafs;
 use crate::spaces::simple::dot_product;
+use crate::unaligned_vector::UnalignedVector;
 
 /// The Cosine similarity is a measure of similarity between two
 /// non-zero vectors defined in an inner product space. Cosine similarity
@@ -24,12 +25,13 @@ pub struct NodeHeaderAngular {
 
 impl Distance for Angular {
     type Header = NodeHeaderAngular;
+    type VectorFormat = f32;
 
     fn name() -> &'static str {
         "angular"
     }
 
-    fn new_header(vector: &UnalignedVector) -> Self::Header {
+    fn new_header(vector: &UnalignedVector<Self::VectorFormat>) -> Self::Header {
         NodeHeaderAngular { norm: Self::norm_no_header(vector) }
     }
 
@@ -54,6 +56,10 @@ impl Distance for Angular {
         d
     }
 
+    fn norm_no_header(v: &UnalignedVector<Self::VectorFormat>) -> f32 {
+        dot_product(v, v).sqrt()
+    }
+
     fn init(node: &mut Leaf<Self>) {
         node.header.norm = dot_product(&node.vector, &node.vector).sqrt();
     }
@@ -61,10 +67,10 @@ impl Distance for Angular {
     fn create_split<'a, R: Rng>(
         children: &'a ImmutableSubsetLeafs<Self>,
         rng: &mut R,
-    ) -> heed::Result<Cow<'a, UnalignedVector>> {
+    ) -> heed::Result<Cow<'a, UnalignedVector<Self::VectorFormat>>> {
         let [node_p, node_q] = two_means(rng, children, true)?;
         let vector: Vec<f32> =
-            node_p.vector.iter_f32().zip(node_q.vector.iter_f32()).map(|(p, q)| p - q).collect();
+            node_p.vector.iter().zip(node_q.vector.iter()).map(|(p, q)| p - q).collect();
         let unaligned_vector = Self::craft_owned_unaligned_vector_from_f32(vector);
         let mut normal = Leaf { header: NodeHeaderAngular { norm: 0.0 }, vector: unaligned_vector };
         Self::normalize(&mut normal);
@@ -72,7 +78,10 @@ impl Distance for Angular {
         Ok(normal.vector)
     }
 
-    fn margin_no_header(p: &UnalignedVector, q: &UnalignedVector) -> f32 {
+    fn margin_no_header(
+        p: &UnalignedVector<Self::VectorFormat>,
+        q: &UnalignedVector<Self::VectorFormat>,
+    ) -> f32 {
         dot_product(p, q)
     }
 }

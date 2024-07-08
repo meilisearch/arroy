@@ -13,7 +13,7 @@ use roaring::RoaringBitmap;
 use crate::distance::Distance;
 use crate::internals::{KeyCodec, Side};
 use crate::item_iter::ItemIter;
-use crate::node::{Descendants, ItemIds, Leaf, SplitPlaneNormal, UnalignedVector};
+use crate::node::{Descendants, ItemIds, Leaf, SplitPlaneNormal};
 use crate::node_id::NodeMode;
 use crate::parallel::{
     ConcurrentNodeIds, ImmutableLeafs, ImmutableSubsetLeafs, ImmutableTrees, TmpNodes,
@@ -21,6 +21,7 @@ use crate::parallel::{
 };
 use crate::reader::item_leaf;
 use crate::roaring::RoaringBitmapCodec;
+use crate::unaligned_vector::UnalignedVector;
 use crate::{
     Database, Error, ItemId, Key, Metadata, MetadataCodec, Node, NodeCodec, NodeId, Prefix,
     PrefixCodec, Result,
@@ -55,7 +56,7 @@ impl<D: Distance> Writer<D> {
             while let Some((item_id, node)) = cursor.next().transpose()? {
                 match node {
                     Node::Leaf(Leaf { header: _, vector }) => {
-                        let vector = D::read_unaligned_vector(&vector);
+                        let vector = vector.to_vec();
                         let vector = ND::craft_owned_unaligned_vector_from_f32(vector);
                         let new_leaf = Node::Leaf(Leaf { header: ND::new_header(&vector), vector });
                         unsafe {
@@ -87,7 +88,7 @@ impl<D: Distance> Writer<D> {
     /// Returns an `Option`al vector previous stored in this database.
     pub fn item_vector(&self, rtxn: &RoTxn, item: ItemId) -> Result<Option<Vec<f32>>> {
         Ok(item_leaf(self.database, self.index, rtxn, item)?.map(|leaf| {
-            let mut vec = D::read_unaligned_vector(&leaf.vector);
+            let mut vec = leaf.vector.to_vec();
             vec.drain(self.dimensions..);
             vec
         }))
@@ -141,7 +142,7 @@ impl<D: Distance> Writer<D> {
             });
         }
 
-        let vector = D::craft_unaligned_vector_from_f32(vector);
+        let vector = UnalignedVector::from_slice(vector);
         let leaf = Leaf { header: D::new_header(&vector), vector };
         self.database.put(wtxn, &Key::item(self.index, item), &Node::Leaf(leaf))?;
         let mut updated = self
@@ -172,7 +173,7 @@ impl<D: Distance> Writer<D> {
             });
         }
 
-        let vector = D::craft_unaligned_vector_from_f32(vector);
+        let vector = UnalignedVector::from_slice(vector);
         let leaf = Leaf { header: D::new_header(&vector), vector };
         let key = Key::item(self.index, item);
         match self.database.put_with_flags(wtxn, PutFlags::APPEND, &key, &Node::Leaf(leaf)) {
@@ -557,7 +558,7 @@ impl<D: Distance> Writer<D> {
                         let mut left_ids = RoaringBitmap::new();
                         let mut right_ids = RoaringBitmap::new();
 
-                        if normal.iter_f32().all(|d| d == 0.0) {
+                        if normal.iter().all(|d| d == 0.0) {
                             randomly_split_children(rng, to_insert, &mut left_ids, &mut right_ids);
                         } else {
                             for leaf in to_insert {

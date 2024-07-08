@@ -15,7 +15,7 @@ impl<'t, D: Distance> Iterator for ItemIter<'t, D> {
         match self.inner.next() {
             Some(Ok((key, node))) => match node {
                 Node::Leaf(Leaf { header: _, vector }) => {
-                    Some(Ok((key.node.item, D::read_unaligned_vector(&vector))))
+                    Some(Ok((key.node.item, vector.to_vec())))
                 }
                 Node::Descendants(_) | Node::SplitPlaneNormal(_) => None,
             },

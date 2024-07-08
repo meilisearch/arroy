@@ -1,34 +1,21 @@
-use std::borrow::{Borrow, Cow};
+use std::borrow::Cow;
 use std::fmt;
-use std::marker::PhantomData;
-use std::mem::{size_of, transmute};
+use std::mem::size_of;
 
-use bytemuck::{bytes_of, cast_slice, pod_collect_to_vec, pod_read_unaligned};
+use bytemuck::{bytes_of, cast_slice, pod_read_unaligned};
 use byteorder::{ByteOrder, NativeEndian};
 use heed::{BoxedError, BytesDecode, BytesEncode};
 use roaring::RoaringBitmap;
 
 use crate::distance::Distance;
+use crate::unaligned_vector::UnalignedVector;
 use crate::{ItemId, NodeId};
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub enum Node<'a, D: Distance> {
     Leaf(Leaf<'a, D>),
     Descendants(Descendants<'a>),
-    SplitPlaneNormal(SplitPlaneNormal<'a>),
-}
-
-impl<D: Distance> fmt::Debug for Node<'_, D> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Node::Leaf(leaf) => f.debug_tuple("Leaf").field(&leaf).finish(),
-            Node::Descendants(desc) => f.debug_tuple("Descendants").field(&desc).finish(),
-            Node::SplitPlaneNormal(split) => f
-                .debug_tuple("SplitPlaneNormal")
-                .field(&DisplaySplitPlaneNormal::<D>(split, PhantomData))
-                .finish(),
-        }
-    }
+    SplitPlaneNormal(SplitPlaneNormal<'a, D>),
 }
 
 const LEAF_TAG: u8 = 0;
@@ -45,32 +32,24 @@ impl<'a, D: Distance> Node<'a, D> {
     }
 }
 
-/// Small structure used to implement `Debug` for the `Leaf` and the `SplitPlaneNormal`.
-struct DisplayVec(Vec<f32>);
-impl fmt::Debug for DisplayVec {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let mut list = f.debug_list();
-        self.0.iter().for_each(|float| {
-            list.entry(&format_args!("{:.4?}", float));
-        });
-        list.finish()
-    }
-}
-
 /// A leaf node which corresponds to the vector inputed
 /// by the user and the distance header.
-#[derive(Clone)]
 pub struct Leaf<'a, D: Distance> {
     /// The header of this leaf.
     pub header: D::Header,
     /// The vector of this leaf.
-    pub vector: Cow<'a, UnalignedVector>,
+    pub vector: Cow<'a, UnalignedVector<D::VectorFormat>>,
 }
 
 impl<D: Distance> fmt::Debug for Leaf<'_, D> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let vec = DisplayVec(D::read_unaligned_vector(&self.vector));
-        f.debug_struct("Leaf").field("header", &self.header).field("vector", &vec).finish()
+        f.debug_struct("Leaf").field("header", &self.header).field("vector", &self.vector).finish()
+    }
+}
+
+impl<D: Distance> Clone for Leaf<'_, D> {
+    fn clone(&self) -> Self {
+        Self { header: self.header, vector: self.vector.clone() }
     }
 }
 
@@ -79,143 +58,6 @@ impl<D: Distance> Leaf<'_, D> {
     /// the internal vector. Doing so will make it mutable.
     pub fn into_owned(self) -> Leaf<'static, D> {
         Leaf { header: self.header, vector: Cow::Owned(self.vector.into_owned()) }
-    }
-}
-
-/// A wrapper struct that is used to read unaligned vectors directly from memory.
-#[repr(transparent)]
-pub struct UnalignedVector([u8]);
-
-/// The type of the words used to quantize a vector
-type QuantizedWord = usize;
-/// The size of the words used to quantize a vector
-const QUANTIZED_WORD_SIZE: usize = QuantizedWord::BITS as usize;
-
-impl UnalignedVector {
-    /// Creates an unaligned slice of something. It's up to the caller to ensure
-    /// it will be used with the same type it was created initially.
-    pub(crate) fn reset(vector: &mut Cow<'_, UnalignedVector>) {
-        match vector {
-            Cow::Borrowed(slice) => *vector = Cow::Owned(vec![0; slice.as_bytes().len()]),
-            Cow::Owned(bytes) => bytes.fill(0),
-        }
-    }
-    /// Creates an unaligned slice of something. It's up to the caller to ensure
-    /// it will be used with the same type it was created initially.
-    pub(crate) fn from_bytes_unchecked(bytes: &[u8]) -> &Self {
-        unsafe { transmute(bytes) }
-    }
-
-    /// Creates an unaligned slice of f32 wrapper from a slice of bytes.
-    pub(crate) fn f32_vectors_from_bytes(bytes: &[u8]) -> Result<&Self, SizeMismatch> {
-        if bytes.len() % size_of::<f32>() == 0 {
-            // safety: `UnalignedF32Slice` is transparent
-            Ok(unsafe { transmute(bytes) })
-        } else {
-            Err(SizeMismatch)
-        }
-    }
-
-    /// Creates an unaligned slice of f32 wrapper from a slice of f32.
-    /// The slice is already known to be of the right length.
-    pub(crate) fn f32_vectors_from_f32_slice(slice: &[f32]) -> &Self {
-        Self::f32_vectors_from_bytes(cast_slice(slice)).unwrap()
-    }
-
-    /// Creates an unaligned slice of f32 wrapper from a slice of f32.
-    /// The slice is already known to be of the right length.
-    pub(crate) fn owned_f32_vectors_from_f32_slice(vec: Vec<f32>) -> Cow<'static, Self> {
-        let bytes = vec.into_iter().flat_map(|f| f.to_ne_bytes()).collect();
-        Cow::Owned(bytes)
-    }
-
-    /// Creates a binary quantized wrapper from a slice of bytes.
-    pub(crate) fn quantized_vectors_from_bytes(bytes: &[u8]) -> Result<&Self, SizeMismatch> {
-        if bytes.len() % size_of::<QuantizedWord>() == 0 {
-            // safety: `UnalignedF32Slice` is transparent
-            Ok(unsafe { transmute(bytes) })
-        } else {
-            Err(SizeMismatch)
-        }
-    }
-
-    /// Creates a binary quantized unaligned slice of bytes from a slice of f32.
-    /// Will allocate.
-    pub(crate) fn binary_quantized_vectors_from_slice(slice: &[f32]) -> Cow<'static, Self> {
-        let mut output: Vec<u8> = Vec::with_capacity(slice.len() / QUANTIZED_WORD_SIZE);
-        for chunk in slice.chunks(QUANTIZED_WORD_SIZE) {
-            let mut word: QuantizedWord = 0;
-            for bit in chunk.iter().rev() {
-                word <<= 1;
-                word += bit.is_sign_positive() as QuantizedWord;
-            }
-            output.extend_from_slice(&word.to_ne_bytes());
-        }
-
-        Cow::Owned(output)
-    }
-
-    /// Returns the original raw slice of bytes.
-    pub(crate) fn as_bytes(&self) -> &[u8] {
-        &self.0
-    }
-
-    /// Return the number of f32 that fits into this slice.
-    pub(crate) fn f32_len(&self) -> usize {
-        self.0.len() / size_of::<f32>()
-    }
-
-    /// Returns wether it is empty or not.
-    pub fn is_empty(&self) -> bool {
-        self.0.is_empty()
-    }
-
-    /// Returns an iterator of f32 that are read from the slice.
-    /// The f32 are copied in memory and are therefore, aligned.
-    pub(crate) fn iter_f32(&self) -> impl Iterator<Item = f32> + '_ {
-        self.0.chunks_exact(size_of::<f32>()).map(NativeEndian::read_f32)
-    }
-
-    /// Returns an iterator of f32 that are read from the binary quantized slice.
-    /// The f32 are copied in memory and are therefore, aligned.
-    pub(crate) fn iter_binary_quantized(&self) -> impl Iterator<Item = f32> + '_ {
-        self.0
-            .chunks_exact(size_of::<QuantizedWord>())
-            .map(|bytes| QuantizedWord::from_ne_bytes(bytes.try_into().unwrap()))
-            .flat_map(|mut word| {
-                let mut ret = vec![0.0; QUANTIZED_WORD_SIZE];
-                for index in 0..QUANTIZED_WORD_SIZE {
-                    let bit = word & 1;
-                    word >>= 1;
-                    if bit == 1 {
-                        ret[index] = 1.0;
-                    }
-                }
-                ret
-            })
-    }
-
-    /// Returns the raw pointer to the start of this slice.
-    pub(crate) fn as_ptr(&self) -> *const u8 {
-        self.0.as_ptr()
-    }
-}
-
-#[derive(Debug, thiserror::Error)]
-#[error("invalid slice of float dimension")]
-pub struct SizeMismatch;
-
-impl ToOwned for UnalignedVector {
-    type Owned = Vec<u8>;
-
-    fn to_owned(&self) -> Self::Owned {
-        pod_collect_to_vec(&self.0)
-    }
-}
-
-impl Borrow<UnalignedVector> for Vec<u8> {
-    fn borrow(&self) -> &UnalignedVector {
-        UnalignedVector::from_bytes_unchecked(self)
     }
 }
 
@@ -270,24 +112,25 @@ impl fmt::Debug for ItemIds<'_> {
     }
 }
 
-#[derive(Clone)]
-pub struct SplitPlaneNormal<'a> {
+pub struct SplitPlaneNormal<'a, D: Distance> {
     pub left: NodeId,
     pub right: NodeId,
-    pub normal: Cow<'a, UnalignedVector>,
+    pub normal: Cow<'a, UnalignedVector<D::VectorFormat>>,
 }
 
-/// Wraps a `SplitPlaneNormal` with its distance type to display it.
-/// The distance is required to be able to read the normal.
-pub struct DisplaySplitPlaneNormal<'a, D: Distance>(&'a SplitPlaneNormal<'a>, PhantomData<D>);
-impl<D: Distance> fmt::Debug for DisplaySplitPlaneNormal<'_, D> {
+impl<D: Distance> fmt::Debug for SplitPlaneNormal<'_, D> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let normal = DisplayVec(D::read_unaligned_vector(&self.0.normal));
         f.debug_struct("SplitPlaneNormal")
-            .field("left", &self.0.left)
-            .field("right", &self.0.right)
-            .field("normal", &normal)
+            .field("left", &self.left)
+            .field("right", &self.right)
+            .field("normal", &self.normal)
             .finish()
+    }
+}
+
+impl<D: Distance> Clone for SplitPlaneNormal<'_, D> {
+    fn clone(&self) -> Self {
+        Self { left: self.left, right: self.right, normal: self.normal.clone() }
     }
 }
 
@@ -328,7 +171,7 @@ impl<'a, D: Distance> BytesDecode<'a> for NodeCodec<D> {
             [LEAF_TAG, bytes @ ..] => {
                 let (header_bytes, remaining) = bytes.split_at(size_of::<D::Header>());
                 let header = pod_read_unaligned(header_bytes);
-                let vector = D::craft_unaligned_vector_from_bytes(remaining)?;
+                let vector = UnalignedVector::<D::VectorFormat>::from_bytes(remaining)?;
 
                 Ok(Node::Leaf(Leaf { header, vector }))
             }
@@ -336,7 +179,7 @@ impl<'a, D: Distance> BytesDecode<'a> for NodeCodec<D> {
                 let (left, bytes) = NodeId::from_bytes(bytes);
                 let (right, bytes) = NodeId::from_bytes(bytes);
                 Ok(Node::SplitPlaneNormal(SplitPlaneNormal {
-                    normal: D::craft_unaligned_vector_from_bytes(bytes)?,
+                    normal: UnalignedVector::<D::VectorFormat>::from_bytes(bytes)?,
                     left,
                     right,
                 }))

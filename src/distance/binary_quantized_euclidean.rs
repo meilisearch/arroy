@@ -5,9 +5,9 @@ use rand::Rng;
 
 use super::two_means;
 use crate::distance::Distance;
-use crate::node::{Leaf, SizeMismatch, UnalignedVector};
+use crate::node::Leaf;
 use crate::parallel::ImmutableSubsetLeafs;
-use crate::spaces::simple::dot_product;
+use crate::unaligned_vector::{self, BinaryQuantized, UnalignedVector};
 
 /// The Euclidean distance between two points in Euclidean space
 /// is the length of the line segment between them.
@@ -26,36 +26,22 @@ pub struct NodeHeaderBinaryQuantizedEuclidean {
 
 impl Distance for BinaryQuantizedEuclidean {
     type Header = NodeHeaderBinaryQuantizedEuclidean;
+    type VectorFormat = unaligned_vector::BinaryQuantized;
 
     fn name() -> &'static str {
         "binary quantized euclidean"
     }
 
-    fn craft_owned_unaligned_vector_from_f32(vector: Vec<f32>) -> Cow<'static, UnalignedVector> {
-        // We need to allocate anyway so we use the version that take a ref
-        UnalignedVector::binary_quantized_vectors_from_slice(&vector)
-    }
-
-    fn craft_unaligned_vector_from_f32(vector: &[f32]) -> Cow<UnalignedVector> {
-        UnalignedVector::binary_quantized_vectors_from_slice(vector)
-    }
-
-    fn craft_unaligned_vector_from_bytes(
-        vector: &[u8],
-    ) -> Result<Cow<UnalignedVector>, SizeMismatch> {
-        UnalignedVector::quantized_vectors_from_bytes(vector).map(Cow::Borrowed)
-    }
-
-    fn read_unaligned_vector(vector: &UnalignedVector) -> Vec<f32> {
-        vector.iter_binary_quantized().collect()
-    }
-
-    fn new_header(_vector: &UnalignedVector) -> Self::Header {
+    fn new_header(_vector: &UnalignedVector<Self::VectorFormat>) -> Self::Header {
         NodeHeaderBinaryQuantizedEuclidean { bias: 0.0 }
     }
 
     fn built_distance(p: &Leaf<Self>, q: &Leaf<Self>) -> f32 {
-        binary_quantized_euclidean_distance(&p.vector, &q.vector)
+        dot_product(&p.vector, &q.vector)
+    }
+
+    fn norm_no_header(v: &UnalignedVector<Self::VectorFormat>) -> f32 {
+        dot_product(v, v).sqrt()
     }
 
     fn init(_node: &mut Leaf<Self>) {}
@@ -63,36 +49,31 @@ impl Distance for BinaryQuantizedEuclidean {
     fn create_split<'a, R: Rng>(
         children: &'a ImmutableSubsetLeafs<Self>,
         rng: &mut R,
-    ) -> heed::Result<Cow<'a, UnalignedVector>> {
+    ) -> heed::Result<Cow<'a, UnalignedVector<Self::VectorFormat>>> {
         let [node_p, node_q] = two_means(rng, children, false)?;
         let vector: Vec<f32> =
-            node_p.vector.iter_f32().zip(node_q.vector.iter_f32()).map(|(p, q)| p - q).collect();
+            node_p.vector.iter().zip(node_q.vector.iter()).map(|(p, q)| p - q).collect();
         let mut normal = Leaf {
             header: NodeHeaderBinaryQuantizedEuclidean { bias: 0.0 },
-            vector: Self::craft_owned_unaligned_vector_from_f32(vector),
+            vector: UnalignedVector::from_slice(&vector),
         };
         Self::normalize(&mut normal);
 
-        normal.header.bias = normal
-            .vector
-            .iter_f32()
-            .zip(node_p.vector.iter_f32())
-            .zip(node_q.vector.iter_f32())
-            .map(|((n, p), q)| -n * (p + q) / 2.0)
-            .sum();
-
-        Ok(normal.vector)
+        Ok(Cow::Owned(normal.vector.into_owned()))
     }
 
     fn margin(p: &Leaf<Self>, q: &Leaf<Self>) -> f32 {
         p.header.bias + dot_product(&p.vector, &q.vector)
     }
 
-    fn margin_no_header(p: &UnalignedVector, q: &UnalignedVector) -> f32 {
+    fn margin_no_header(
+        p: &UnalignedVector<Self::VectorFormat>,
+        q: &UnalignedVector<Self::VectorFormat>,
+    ) -> f32 {
         dot_product(p, q)
     }
 }
 
-fn binary_quantized_euclidean_distance(u: &UnalignedVector, v: &UnalignedVector) -> f32 {
+fn dot_product(u: &UnalignedVector<BinaryQuantized>, v: &UnalignedVector<BinaryQuantized>) -> f32 {
     u.as_bytes().iter().zip(v.as_bytes()).map(|(u, v)| (u ^ v).count_ones()).sum::<u32>() as f32
 }

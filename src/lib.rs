@@ -88,6 +88,7 @@ mod writer;
 
 #[cfg(test)]
 mod tests;
+mod unaligned_vector;
 
 pub use distance::Distance;
 pub use error::Error;
@@ -104,10 +105,12 @@ pub mod internals {
     use rand::Rng;
 
     pub use crate::distance::{
-        NodeHeaderAngular, NodeHeaderDotProduct, NodeHeaderEuclidean, NodeHeaderManhattan,
+        NodeHeaderAngular, NodeHeaderBinaryQuantizedEuclidean, NodeHeaderDotProduct,
+        NodeHeaderEuclidean, NodeHeaderManhattan,
     };
     pub use crate::key::KeyCodec;
-    pub use crate::node::{Leaf, NodeCodec, UnalignedVector};
+    pub use crate::node::{Leaf, NodeCodec};
+    pub use crate::unaligned_vector::{SizeMismatch, UnalignedVector, UnalignedVectorCodec};
 
     /// A type that is used to decide on
     /// which side of a plane we move an item.
@@ -132,7 +135,9 @@ pub mod internals {
 
 /// The set of distances implementing the [`Distance`] and supported by arroy.
 pub mod distances {
-    pub use crate::distance::{Angular, DotProduct, Euclidean, Manhattan};
+    pub use crate::distance::{
+        Angular, BinaryQuantizedEuclidean, DotProduct, Euclidean, Manhattan,
+    };
 }
 
 /// A custom Result type that is returning an arroy error by default.

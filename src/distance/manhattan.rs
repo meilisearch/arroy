@@ -5,9 +5,10 @@ use rand::Rng;
 
 use super::two_means;
 use crate::distance::Distance;
-use crate::node::{Leaf, UnalignedVector};
+use crate::node::Leaf;
 use crate::parallel::ImmutableSubsetLeafs;
 use crate::spaces::simple::dot_product;
+use crate::unaligned_vector::UnalignedVector;
 
 /// A taxicab geometry or a Manhattan geometry is a geometry whose usual distance function
 /// or metric of Euclidean geometry is replaced by a new metric in which the distance between
@@ -25,21 +26,26 @@ pub struct NodeHeaderManhattan {
 
 impl Distance for Manhattan {
     type Header = NodeHeaderManhattan;
+    type VectorFormat = f32;
 
     fn name() -> &'static str {
         "manhattan"
     }
 
-    fn new_header(_vector: &UnalignedVector) -> Self::Header {
+    fn new_header(_vector: &UnalignedVector<Self::VectorFormat>) -> Self::Header {
         NodeHeaderManhattan { bias: 0.0 }
     }
 
     fn built_distance(p: &Leaf<Self>, q: &Leaf<Self>) -> f32 {
-        p.vector.iter_f32().zip(q.vector.iter_f32()).map(|(p, q)| (p - q).abs()).sum()
+        p.vector.iter().zip(q.vector.iter()).map(|(p, q)| (p - q).abs()).sum()
     }
 
     fn normalized_distance(d: f32) -> f32 {
         d.max(0.0)
+    }
+
+    fn norm_no_header(v: &UnalignedVector<Self::VectorFormat>) -> f32 {
+        dot_product(v, v).sqrt()
     }
 
     fn init(_node: &mut Leaf<Self>) {}
@@ -47,10 +53,10 @@ impl Distance for Manhattan {
     fn create_split<'a, R: Rng>(
         children: &'a ImmutableSubsetLeafs<Self>,
         rng: &mut R,
-    ) -> heed::Result<Cow<'a, UnalignedVector>> {
+    ) -> heed::Result<Cow<'a, UnalignedVector<Self::VectorFormat>>> {
         let [node_p, node_q] = two_means(rng, children, false)?;
         let vector: Vec<_> =
-            node_p.vector.iter_f32().zip(node_q.vector.iter_f32()).map(|(p, q)| p - q).collect();
+            node_p.vector.iter().zip(node_q.vector.iter()).map(|(p, q)| p - q).collect();
         let mut normal = Leaf {
             header: NodeHeaderManhattan { bias: 0.0 },
             vector: Self::craft_owned_unaligned_vector_from_f32(vector),
@@ -59,9 +65,9 @@ impl Distance for Manhattan {
 
         normal.header.bias = normal
             .vector
-            .iter_f32()
-            .zip(node_p.vector.iter_f32())
-            .zip(node_q.vector.iter_f32())
+            .iter()
+            .zip(node_p.vector.iter())
+            .zip(node_q.vector.iter())
             .map(|((n, p), q)| -n * (p + q) / 2.0)
             .sum();
 
@@ -72,7 +78,10 @@ impl Distance for Manhattan {
         p.header.bias + dot_product(&p.vector, &q.vector)
     }
 
-    fn margin_no_header(p: &UnalignedVector, q: &UnalignedVector) -> f32 {
+    fn margin_no_header(
+        p: &UnalignedVector<Self::VectorFormat>,
+        q: &UnalignedVector<Self::VectorFormat>,
+    ) -> f32 {
         dot_product(p, q)
     }
 }

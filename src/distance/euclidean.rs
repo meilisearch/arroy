@@ -5,9 +5,10 @@ use rand::Rng;
 
 use super::two_means;
 use crate::distance::Distance;
-use crate::node::{Leaf, UnalignedVector};
+use crate::node::Leaf;
 use crate::parallel::ImmutableSubsetLeafs;
 use crate::spaces::simple::{dot_product, euclidean_distance};
+use crate::unaligned_vector::UnalignedVector;
 
 /// The Euclidean distance between two points in Euclidean space
 /// is the length of the line segment between them.
@@ -26,12 +27,13 @@ pub struct NodeHeaderEuclidean {
 
 impl Distance for Euclidean {
     type Header = NodeHeaderEuclidean;
+    type VectorFormat = f32;
 
     fn name() -> &'static str {
         "euclidean"
     }
 
-    fn new_header(_vector: &UnalignedVector) -> Self::Header {
+    fn new_header(_vector: &UnalignedVector<Self::VectorFormat>) -> Self::Header {
         NodeHeaderEuclidean { bias: 0.0 }
     }
 
@@ -39,15 +41,19 @@ impl Distance for Euclidean {
         euclidean_distance(&p.vector, &q.vector)
     }
 
+    fn norm_no_header(v: &UnalignedVector<Self::VectorFormat>) -> f32 {
+        dot_product(v, v).sqrt()
+    }
+
     fn init(_node: &mut Leaf<Self>) {}
 
     fn create_split<'a, R: Rng>(
         children: &'a ImmutableSubsetLeafs<Self>,
         rng: &mut R,
-    ) -> heed::Result<Cow<'a, UnalignedVector>> {
+    ) -> heed::Result<Cow<'a, UnalignedVector<Self::VectorFormat>>> {
         let [node_p, node_q] = two_means(rng, children, false)?;
         let vector: Vec<_> =
-            node_p.vector.iter_f32().zip(node_q.vector.iter_f32()).map(|(p, q)| p - q).collect();
+            node_p.vector.iter().zip(node_q.vector.iter()).map(|(p, q)| p - q).collect();
         let mut normal = Leaf {
             header: NodeHeaderEuclidean { bias: 0.0 },
             vector: Self::craft_owned_unaligned_vector_from_f32(vector),
@@ -56,9 +62,9 @@ impl Distance for Euclidean {
 
         normal.header.bias = normal
             .vector
-            .iter_f32()
-            .zip(node_p.vector.iter_f32())
-            .zip(node_q.vector.iter_f32())
+            .iter()
+            .zip(node_p.vector.iter())
+            .zip(node_q.vector.iter())
             .map(|((n, p), q)| -n * (p + q) / 2.0)
             .sum();
 
@@ -69,7 +75,10 @@ impl Distance for Euclidean {
         p.header.bias + dot_product(&p.vector, &q.vector)
     }
 
-    fn margin_no_header(p: &UnalignedVector, q: &UnalignedVector) -> f32 {
+    fn margin_no_header(
+        p: &UnalignedVector<Self::VectorFormat>,
+        q: &UnalignedVector<Self::VectorFormat>,
+    ) -> f32 {
         dot_product(p, q)
     }
 }

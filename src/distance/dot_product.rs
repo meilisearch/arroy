@@ -7,9 +7,10 @@ use rand::Rng;
 use super::two_means;
 use crate::distance::Distance;
 use crate::internals::KeyCodec;
-use crate::node::{Leaf, UnalignedVector};
+use crate::node::Leaf;
 use crate::parallel::ImmutableSubsetLeafs;
 use crate::spaces::simple::dot_product;
+use crate::unaligned_vector::UnalignedVector;
 use crate::{Node, NodeCodec};
 
 /// In mathematics, the dot product or scalar product is an algebraic
@@ -29,12 +30,13 @@ pub struct NodeHeaderDotProduct {
 
 impl Distance for DotProduct {
     type Header = NodeHeaderDotProduct;
+    type VectorFormat = f32;
 
     fn name() -> &'static str {
         "dot-product"
     }
 
-    fn new_header(_vector: &UnalignedVector) -> Self::Header {
+    fn new_header(_vector: &UnalignedVector<Self::VectorFormat>) -> Self::Header {
         // We compute the norm when we preprocess the vector, before generating the tree nodes.
         NodeHeaderDotProduct { extra_dim: 0.0, norm: 0.0 }
     }
@@ -64,6 +66,10 @@ impl Distance for DotProduct {
         (dot + leaf.header.extra_dim * leaf.header.extra_dim).sqrt()
     }
 
+    fn norm_no_header(v: &UnalignedVector<Self::VectorFormat>) -> f32 {
+        dot_product(v, v).sqrt()
+    }
+
     fn normalized_distance(d: f32) -> f32 {
         -d
     }
@@ -71,8 +77,8 @@ impl Distance for DotProduct {
     fn normalize(node: &mut Leaf<Self>) {
         let norm = Self::norm(node);
         if norm > 0.0 {
-            let vec: Vec<_> = node.vector.iter_f32().map(|x| x / norm).collect();
-            node.vector = UnalignedVector::owned_f32_vectors_from_f32_slice(vec);
+            let vec: Vec<_> = node.vector.iter().map(|x| x / norm).collect();
+            node.vector = UnalignedVector::from_vec(vec);
             node.header.extra_dim /= norm;
         }
     }
@@ -84,10 +90,10 @@ impl Distance for DotProduct {
     fn create_split<'a, R: Rng>(
         children: &'a ImmutableSubsetLeafs<Self>,
         rng: &mut R,
-    ) -> heed::Result<Cow<'a, UnalignedVector>> {
+    ) -> heed::Result<Cow<'a, UnalignedVector<Self::VectorFormat>>> {
         let [node_p, node_q] = two_means(rng, children, true)?;
         let vector: Vec<f32> =
-            node_p.vector.iter_f32().zip(node_q.vector.iter_f32()).map(|(p, q)| p - q).collect();
+            node_p.vector.iter().zip(node_q.vector.iter()).map(|(p, q)| p - q).collect();
         let mut normal = Leaf::<Self> {
             header: NodeHeaderDotProduct { norm: 0.0, extra_dim: 0.0 },
             vector: Self::craft_owned_unaligned_vector_from_f32(vector),
@@ -102,7 +108,10 @@ impl Distance for DotProduct {
         dot_product(&p.vector, &q.vector) + p.header.extra_dim * q.header.extra_dim
     }
 
-    fn margin_no_header(p: &UnalignedVector, q: &UnalignedVector) -> f32 {
+    fn margin_no_header(
+        p: &UnalignedVector<Self::VectorFormat>,
+        q: &UnalignedVector<Self::VectorFormat>,
+    ) -> f32 {
         dot_product(p, q)
     }
 

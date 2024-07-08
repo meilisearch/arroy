@@ -1,16 +1,18 @@
 #[cfg(target_feature = "neon")]
+use crate::unaligned_vector::UnalignedVector;
 use std::arch::aarch64::*;
 use std::ptr::read_unaligned;
 
-use crate::node::UnalignedVector;
-
 #[cfg(target_feature = "neon")]
-pub(crate) unsafe fn euclid_similarity_neon(v1: &UnalignedVector, v2: &UnalignedVector) -> f32 {
+pub(crate) unsafe fn euclid_similarity_neon(
+    v1: &UnalignedVector<f32>,
+    v2: &UnalignedVector<f32>,
+) -> f32 {
     // We use the unaligned_float32x4_t helper function to read f32x4 NEON SIMD types
     // from potentially unaligned memory locations safely.
     // https://github.com/meilisearch/arroy/pull/13
 
-    let n = v1.f32_len();
+    let n = v1.len();
     let m = n - (n % 16);
     let mut ptr1 = v1.as_ptr() as *const f32;
     let mut ptr2 = v2.as_ptr() as *const f32;
@@ -50,12 +52,15 @@ pub(crate) unsafe fn euclid_similarity_neon(v1: &UnalignedVector, v2: &Unaligned
 }
 
 #[cfg(target_feature = "neon")]
-pub(crate) unsafe fn dot_similarity_neon(v1: &UnalignedVector, v2: &UnalignedVector) -> f32 {
+pub(crate) unsafe fn dot_similarity_neon(
+    v1: &UnalignedVector<f32>,
+    v2: &UnalignedVector<f32>,
+) -> f32 {
     // We use the unaligned_float32x4_t helper function to read f32x4 NEON SIMD types
     // from potentially unaligned memory locations safely.
     // https://github.com/meilisearch/arroy/pull/13
 
-    let n = v1.f32_len();
+    let n = v1.len();
     let m = n - (n % 16);
     let mut ptr1 = v1.as_ptr() as *const f32;
     let mut ptr2 = v2.as_ptr() as *const f32;
@@ -112,15 +117,15 @@ mod tests {
                 56., 57., 58., 59., 60., 61.,
             ];
 
-            let v1 = UnalignedVector::f32_vectors_from_f32_slice(&v1[..]);
-            let v2 = UnalignedVector::f32_vectors_from_f32_slice(&v2[..]);
+            let v1 = UnalignedVector::from_slice(&v1[..]);
+            let v2 = UnalignedVector::from_slice(&v2[..]);
 
-            let euclid_simd = unsafe { euclid_similarity_neon(v1, v2) };
-            let euclid = euclidean_distance_non_optimized(v1, v2);
+            let euclid_simd = unsafe { euclid_similarity_neon(&v1, &v2) };
+            let euclid = euclidean_distance_non_optimized(&v1, &v2);
             assert_eq!(euclid_simd, euclid);
 
-            let dot_simd = unsafe { dot_similarity_neon(v1, v2) };
-            let dot = dot_product_non_optimized(v1, v2);
+            let dot_simd = unsafe { dot_similarity_neon(&v1, &v2) };
+            let dot = dot_product_non_optimized(&v1, &v2);
             assert_eq!(dot_simd, dot);
 
             // let cosine_simd = unsafe { cosine_preprocess_neon(v1.clone()) };

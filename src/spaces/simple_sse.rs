@@ -4,7 +4,7 @@ use std::arch::x86::*;
 use std::arch::x86_64::*;
 use std::ptr::read_unaligned;
 
-use crate::node::UnalignedF32Slice;
+use crate::unaligned_vector::UnalignedVector;
 
 #[target_feature(enable = "sse")]
 unsafe fn hsum128_ps_sse(x: __m128) -> f32 {

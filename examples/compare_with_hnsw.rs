@@ -2,7 +2,7 @@ use std::num::NonZeroUsize;
 use std::time::Instant;
 
 use arroy::distances::Euclidean;
-use arroy::internals::Leaf;
+use arroy::internals::{Leaf, UnalignedVector};
 use arroy::{Database, Distance, ItemId, Reader, Result, Writer};
 use heed::{EnvOpenOptions, RwTxn};
 use instant_distance::{Builder, HnswMap, MapItem};
@@ -93,8 +93,8 @@ struct Point(Vec<f32>);
 
 impl instant_distance::Point for Point {
     fn distance(&self, other: &Self) -> f32 {
-        let this = Euclidean::craft_unaligned_vector_from_f32(&self.0);
-        let other = Euclidean::craft_unaligned_vector_from_f32(&other.0);
+        let this = UnalignedVector::from_slice(&self.0);
+        let other = UnalignedVector::from_slice(&other.0);
         let p = Leaf { header: Euclidean::new_header(&this), vector: this };
         let q = Leaf { header: Euclidean::new_header(&other), vector: other };
         arroy::distances::Euclidean::built_distance(&p, &q).sqrt()

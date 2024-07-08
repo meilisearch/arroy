@@ -13,9 +13,9 @@ pub use manhattan::{Manhattan, NodeHeaderManhattan};
 use rand::Rng;
 
 use crate::internals::{KeyCodec, Side};
-use crate::node::{Leaf, SizeMismatch, UnalignedVector};
+use crate::node::Leaf;
 use crate::parallel::ImmutableSubsetLeafs;
-use crate::spaces::simple::dot_product;
+use crate::unaligned_vector::{UnalignedVector, UnalignedVectorCodec};
 use crate::NodeCodec;
 
 mod angular;
@@ -30,28 +30,17 @@ mod manhattan;
 pub trait Distance: Send + Sync + Sized + Clone + fmt::Debug + 'static {
     /// A header structure with informations related to the
     type Header: Pod + Zeroable + fmt::Debug;
+    type VectorFormat: UnalignedVectorCodec;
 
     fn name() -> &'static str;
 
-    fn craft_owned_unaligned_vector_from_f32(vector: Vec<f32>) -> Cow<'static, UnalignedVector> {
-        UnalignedVector::owned_f32_vectors_from_f32_slice(vector)
+    fn craft_owned_unaligned_vector_from_f32(
+        vector: Vec<f32>,
+    ) -> Cow<'static, UnalignedVector<Self::VectorFormat>> {
+        UnalignedVector::from_vec(vector)
     }
 
-    fn craft_unaligned_vector_from_f32(vector: &[f32]) -> Cow<UnalignedVector> {
-        Cow::Borrowed(UnalignedVector::f32_vectors_from_f32_slice(vector))
-    }
-
-    fn craft_unaligned_vector_from_bytes(
-        vector: &[u8],
-    ) -> Result<Cow<UnalignedVector>, SizeMismatch> {
-        UnalignedVector::f32_vectors_from_bytes(vector).map(Cow::Borrowed)
-    }
-
-    fn read_unaligned_vector(vector: &UnalignedVector) -> Vec<f32> {
-        vector.iter_f32().collect()
-    }
-
-    fn new_header(vector: &UnalignedVector) -> Self::Header;
+    fn new_header(vector: &UnalignedVector<Self::VectorFormat>) -> Self::Header;
 
     /// Returns a non-normalized distance.
     fn built_distance(p: &Leaf<Self>, q: &Leaf<Self>) -> f32;
@@ -76,14 +65,12 @@ pub trait Distance: Send + Sync + Sized + Clone + fmt::Debug + 'static {
         Self::norm_no_header(&leaf.vector)
     }
 
-    fn norm_no_header(v: &UnalignedVector) -> f32 {
-        dot_product(v, v).sqrt()
-    }
+    fn norm_no_header(v: &UnalignedVector<Self::VectorFormat>) -> f32;
 
     fn normalize(node: &mut Leaf<Self>) {
         let norm = Self::norm(node);
         if norm > 0.0 {
-            let vec: Vec<_> = node.vector.iter_f32().map(|x| x / norm).collect();
+            let vec: Vec<_> = node.vector.iter().map(|x| x / norm).collect();
             node.vector = Self::craft_owned_unaligned_vector_from_f32(vec);
         }
     }
@@ -93,8 +80,8 @@ pub trait Distance: Send + Sync + Sized + Clone + fmt::Debug + 'static {
     fn update_mean(mean: &mut Leaf<Self>, new_node: &Leaf<Self>, norm: f32, c: f32) {
         let vec: Vec<_> = mean
             .vector
-            .iter_f32()
-            .zip(new_node.vector.iter_f32())
+            .iter()
+            .zip(new_node.vector.iter())
             .map(|(x, n)| (x * c + n / norm) / (c + 1.0))
             .collect();
         mean.vector = Self::craft_owned_unaligned_vector_from_f32(vec);
@@ -103,15 +90,22 @@ pub trait Distance: Send + Sync + Sized + Clone + fmt::Debug + 'static {
     fn create_split<'a, R: Rng>(
         children: &'a ImmutableSubsetLeafs<Self>,
         rng: &mut R,
-    ) -> heed::Result<Cow<'a, UnalignedVector>>;
+    ) -> heed::Result<Cow<'a, UnalignedVector<Self::VectorFormat>>>;
 
     fn margin(p: &Leaf<Self>, q: &Leaf<Self>) -> f32 {
         Self::margin_no_header(&p.vector, &q.vector)
     }
 
-    fn margin_no_header(p: &UnalignedVector, q: &UnalignedVector) -> f32;
+    fn margin_no_header(
+        p: &UnalignedVector<Self::VectorFormat>,
+        q: &UnalignedVector<Self::VectorFormat>,
+    ) -> f32;
 
-    fn side<R: Rng>(normal_plane: &UnalignedVector, node: &Leaf<Self>, rng: &mut R) -> Side {
+    fn side<R: Rng>(
+        normal_plane: &UnalignedVector<Self::VectorFormat>,
+        node: &Leaf<Self>,
+        rng: &mut R,
+    ) -> Side {
         let dot = Self::margin_no_header(&node.vector, normal_plane);
         if dot > 0.0 {
             Side::Right

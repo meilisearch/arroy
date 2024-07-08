@@ -1,7 +1,7 @@
 use std::arch::x86_64::*;
 use std::ptr::read_unaligned;
 
-use crate::node::UnalignedF32Slice;
+use crate::unaligned_vector::UnalignedVector;
 
 #[target_feature(enable = "avx")]
 #[target_feature(enable = "fma")]
