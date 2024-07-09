@@ -57,7 +57,7 @@ impl<D: Distance> Writer<D> {
                 match node {
                     Node::Leaf(Leaf { header: _, vector }) => {
                         let vector = vector.to_vec();
-                        let vector = ND::craft_owned_unaligned_vector_from_f32(vector);
+                        let vector = UnalignedVector::from_vec(vector);
                         let new_leaf = Node::Leaf(Leaf { header: ND::new_header(&vector), vector });
                         unsafe {
                             // safety: We do not keep a reference to the current value, we own it.

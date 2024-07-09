@@ -59,7 +59,7 @@ impl Distance for Manhattan {
             node_p.vector.iter().zip(node_q.vector.iter()).map(|(p, q)| p - q).collect();
         let mut normal = Leaf {
             header: NodeHeaderManhattan { bias: 0.0 },
-            vector: Self::craft_owned_unaligned_vector_from_f32(vector),
+            vector: UnalignedVector::from_vec(vector),
         };
         Self::normalize(&mut normal);
 

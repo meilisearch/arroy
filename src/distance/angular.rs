@@ -71,7 +71,7 @@ impl Distance for Angular {
         let [node_p, node_q] = two_means(rng, children, true)?;
         let vector: Vec<f32> =
             node_p.vector.iter().zip(node_q.vector.iter()).map(|(p, q)| p - q).collect();
-        let unaligned_vector = Self::craft_owned_unaligned_vector_from_f32(vector);
+        let unaligned_vector = UnalignedVector::from_vec(vector);
         let mut normal = Leaf { header: NodeHeaderAngular { norm: 0.0 }, vector: unaligned_vector };
         Self::normalize(&mut normal);
 

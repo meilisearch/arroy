@@ -34,12 +34,6 @@ pub trait Distance: Send + Sync + Sized + Clone + fmt::Debug + 'static {
 
     fn name() -> &'static str;
 
-    fn craft_owned_unaligned_vector_from_f32(
-        vector: Vec<f32>,
-    ) -> Cow<'static, UnalignedVector<Self::VectorFormat>> {
-        UnalignedVector::from_vec(vector)
-    }
-
     fn new_header(vector: &UnalignedVector<Self::VectorFormat>) -> Self::Header;
 
     /// Returns a non-normalized distance.
@@ -71,7 +65,7 @@ pub trait Distance: Send + Sync + Sized + Clone + fmt::Debug + 'static {
         let norm = Self::norm(node);
         if norm > 0.0 {
             let vec: Vec<_> = node.vector.iter().map(|x| x / norm).collect();
-            node.vector = Self::craft_owned_unaligned_vector_from_f32(vec);
+            node.vector = UnalignedVector::from_vec(vec);
         }
     }
 
@@ -84,7 +78,7 @@ pub trait Distance: Send + Sync + Sized + Clone + fmt::Debug + 'static {
             .zip(new_node.vector.iter())
             .map(|(x, n)| (x * c + n / norm) / (c + 1.0))
             .collect();
-        mean.vector = Self::craft_owned_unaligned_vector_from_f32(vec);
+        mean.vector = UnalignedVector::from_vec(vec);
     }
 
     fn create_split<'a, R: Rng>(
