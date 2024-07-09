@@ -75,5 +75,7 @@ impl Distance for BinaryQuantizedEuclidean {
 }
 
 fn dot_product(u: &UnalignedVector<BinaryQuantized>, v: &UnalignedVector<BinaryQuantized>) -> f32 {
+    // /!\ If the number of dimensions is not a multiple of the `Word` size, we'll xor 0 bits at the end, which will generate a lot of 1s.
+    //     This may or may not impact relevancy since the 1s will be added to every vector.
     u.as_bytes().iter().zip(v.as_bytes()).map(|(u, v)| (u ^ v).count_ones()).sum::<u32>() as f32
 }
