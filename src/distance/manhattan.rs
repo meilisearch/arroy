@@ -26,13 +26,13 @@ pub struct NodeHeaderManhattan {
 
 impl Distance for Manhattan {
     type Header = NodeHeaderManhattan;
-    type VectorFormat = f32;
+    type VectorCodec = f32;
 
     fn name() -> &'static str {
         "manhattan"
     }
 
-    fn new_header(_vector: &UnalignedVector<Self::VectorFormat>) -> Self::Header {
+    fn new_header(_vector: &UnalignedVector<Self::VectorCodec>) -> Self::Header {
         NodeHeaderManhattan { bias: 0.0 }
     }
 
@@ -44,7 +44,7 @@ impl Distance for Manhattan {
         d.max(0.0)
     }
 
-    fn norm_no_header(v: &UnalignedVector<Self::VectorFormat>) -> f32 {
+    fn norm_no_header(v: &UnalignedVector<Self::VectorCodec>) -> f32 {
         dot_product(v, v).sqrt()
     }
 
@@ -53,7 +53,7 @@ impl Distance for Manhattan {
     fn create_split<'a, R: Rng>(
         children: &'a ImmutableSubsetLeafs<Self>,
         rng: &mut R,
-    ) -> heed::Result<Cow<'a, UnalignedVector<Self::VectorFormat>>> {
+    ) -> heed::Result<Cow<'a, UnalignedVector<Self::VectorCodec>>> {
         let [node_p, node_q] = two_means(rng, children, false)?;
         let vector: Vec<_> =
             node_p.vector.iter().zip(node_q.vector.iter()).map(|(p, q)| p - q).collect();
@@ -79,8 +79,8 @@ impl Distance for Manhattan {
     }
 
     fn margin_no_header(
-        p: &UnalignedVector<Self::VectorFormat>,
-        q: &UnalignedVector<Self::VectorFormat>,
+        p: &UnalignedVector<Self::VectorCodec>,
+        q: &UnalignedVector<Self::VectorCodec>,
     ) -> f32 {
         dot_product(p, q)
     }

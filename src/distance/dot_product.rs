@@ -30,13 +30,13 @@ pub struct NodeHeaderDotProduct {
 
 impl Distance for DotProduct {
     type Header = NodeHeaderDotProduct;
-    type VectorFormat = f32;
+    type VectorCodec = f32;
 
     fn name() -> &'static str {
         "dot-product"
     }
 
-    fn new_header(_vector: &UnalignedVector<Self::VectorFormat>) -> Self::Header {
+    fn new_header(_vector: &UnalignedVector<Self::VectorCodec>) -> Self::Header {
         // We compute the norm when we preprocess the vector, before generating the tree nodes.
         NodeHeaderDotProduct { extra_dim: 0.0, norm: 0.0 }
     }
@@ -66,7 +66,7 @@ impl Distance for DotProduct {
         (dot + leaf.header.extra_dim * leaf.header.extra_dim).sqrt()
     }
 
-    fn norm_no_header(v: &UnalignedVector<Self::VectorFormat>) -> f32 {
+    fn norm_no_header(v: &UnalignedVector<Self::VectorCodec>) -> f32 {
         dot_product(v, v).sqrt()
     }
 
@@ -90,7 +90,7 @@ impl Distance for DotProduct {
     fn create_split<'a, R: Rng>(
         children: &'a ImmutableSubsetLeafs<Self>,
         rng: &mut R,
-    ) -> heed::Result<Cow<'a, UnalignedVector<Self::VectorFormat>>> {
+    ) -> heed::Result<Cow<'a, UnalignedVector<Self::VectorCodec>>> {
         let [node_p, node_q] = two_means(rng, children, true)?;
         let vector: Vec<f32> =
             node_p.vector.iter().zip(node_q.vector.iter()).map(|(p, q)| p - q).collect();
@@ -109,8 +109,8 @@ impl Distance for DotProduct {
     }
 
     fn margin_no_header(
-        p: &UnalignedVector<Self::VectorFormat>,
-        q: &UnalignedVector<Self::VectorFormat>,
+        p: &UnalignedVector<Self::VectorCodec>,
+        q: &UnalignedVector<Self::VectorCodec>,
     ) -> f32 {
         dot_product(p, q)
     }

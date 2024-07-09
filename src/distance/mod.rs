@@ -30,11 +30,11 @@ mod manhattan;
 pub trait Distance: Send + Sync + Sized + Clone + fmt::Debug + 'static {
     /// A header structure with informations related to the
     type Header: Pod + Zeroable + fmt::Debug;
-    type VectorFormat: UnalignedVectorCodec;
+    type VectorCodec: UnalignedVectorCodec;
 
     fn name() -> &'static str;
 
-    fn new_header(vector: &UnalignedVector<Self::VectorFormat>) -> Self::Header;
+    fn new_header(vector: &UnalignedVector<Self::VectorCodec>) -> Self::Header;
 
     /// Returns a non-normalized distance.
     fn built_distance(p: &Leaf<Self>, q: &Leaf<Self>) -> f32;
@@ -59,7 +59,7 @@ pub trait Distance: Send + Sync + Sized + Clone + fmt::Debug + 'static {
         Self::norm_no_header(&leaf.vector)
     }
 
-    fn norm_no_header(v: &UnalignedVector<Self::VectorFormat>) -> f32;
+    fn norm_no_header(v: &UnalignedVector<Self::VectorCodec>) -> f32;
 
     fn normalize(node: &mut Leaf<Self>) {
         let norm = Self::norm(node);
@@ -84,19 +84,19 @@ pub trait Distance: Send + Sync + Sized + Clone + fmt::Debug + 'static {
     fn create_split<'a, R: Rng>(
         children: &'a ImmutableSubsetLeafs<Self>,
         rng: &mut R,
-    ) -> heed::Result<Cow<'a, UnalignedVector<Self::VectorFormat>>>;
+    ) -> heed::Result<Cow<'a, UnalignedVector<Self::VectorCodec>>>;
 
     fn margin(p: &Leaf<Self>, q: &Leaf<Self>) -> f32 {
         Self::margin_no_header(&p.vector, &q.vector)
     }
 
     fn margin_no_header(
-        p: &UnalignedVector<Self::VectorFormat>,
-        q: &UnalignedVector<Self::VectorFormat>,
+        p: &UnalignedVector<Self::VectorCodec>,
+        q: &UnalignedVector<Self::VectorCodec>,
     ) -> f32;
 
     fn side<R: Rng>(
-        normal_plane: &UnalignedVector<Self::VectorFormat>,
+        normal_plane: &UnalignedVector<Self::VectorCodec>,
         node: &Leaf<Self>,
         rng: &mut R,
     ) -> Side {

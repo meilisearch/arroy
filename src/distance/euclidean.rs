@@ -27,13 +27,13 @@ pub struct NodeHeaderEuclidean {
 
 impl Distance for Euclidean {
     type Header = NodeHeaderEuclidean;
-    type VectorFormat = f32;
+    type VectorCodec = f32;
 
     fn name() -> &'static str {
         "euclidean"
     }
 
-    fn new_header(_vector: &UnalignedVector<Self::VectorFormat>) -> Self::Header {
+    fn new_header(_vector: &UnalignedVector<Self::VectorCodec>) -> Self::Header {
         NodeHeaderEuclidean { bias: 0.0 }
     }
 
@@ -41,7 +41,7 @@ impl Distance for Euclidean {
         euclidean_distance(&p.vector, &q.vector)
     }
 
-    fn norm_no_header(v: &UnalignedVector<Self::VectorFormat>) -> f32 {
+    fn norm_no_header(v: &UnalignedVector<Self::VectorCodec>) -> f32 {
         dot_product(v, v).sqrt()
     }
 
@@ -50,7 +50,7 @@ impl Distance for Euclidean {
     fn create_split<'a, R: Rng>(
         children: &'a ImmutableSubsetLeafs<Self>,
         rng: &mut R,
-    ) -> heed::Result<Cow<'a, UnalignedVector<Self::VectorFormat>>> {
+    ) -> heed::Result<Cow<'a, UnalignedVector<Self::VectorCodec>>> {
         let [node_p, node_q] = two_means(rng, children, false)?;
         let vector: Vec<_> =
             node_p.vector.iter().zip(node_q.vector.iter()).map(|(p, q)| p - q).collect();
@@ -76,8 +76,8 @@ impl Distance for Euclidean {
     }
 
     fn margin_no_header(
-        p: &UnalignedVector<Self::VectorFormat>,
-        q: &UnalignedVector<Self::VectorFormat>,
+        p: &UnalignedVector<Self::VectorCodec>,
+        q: &UnalignedVector<Self::VectorCodec>,
     ) -> f32 {
         dot_product(p, q)
     }
