@@ -132,8 +132,8 @@ mod tests {
                 56., 57., 58., 59., 60., 61.,
             ];
 
-            let v1 = UnalignedF32Slice::from_slice(&v1[..]);
-            let v2 = UnalignedF32Slice::from_slice(&v2[..]);
+            let v1 = UnalignedVector::from_slice(&v1[..]);
+            let v2 = UnalignedVector::from_slice(&v2[..]);
 
             let euclid_simd = unsafe { euclid_similarity_avx(v1, v2) };
             let euclid = euclidean_distance_non_optimized(v1, v2);
