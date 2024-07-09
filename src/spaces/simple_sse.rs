@@ -133,12 +133,12 @@ mod tests {
             let v1 = UnalignedVector::from_slice(&v1[..]);
             let v2 = UnalignedVector::from_slice(&v2[..]);
 
-            let euclid_simd = unsafe { euclid_similarity_sse(v1, v2) };
-            let euclid = euclidean_distance_non_optimized(v1, v2);
+            let euclid_simd = unsafe { euclid_similarity_sse(&v1, &v2) };
+            let euclid = euclidean_distance_non_optimized(&v1, &v2);
             assert_eq!(euclid_simd, euclid);
 
-            let dot_simd = unsafe { dot_similarity_sse(v1, v2) };
-            let dot = dot_product_non_optimized(v1, v2);
+            let dot_simd = unsafe { dot_similarity_sse(&v1, &v2) };
+            let dot = dot_product_non_optimized(&v1, &v2);
             assert_eq!(dot_simd, dot);
 
             // let cosine_simd = unsafe { cosine_preprocess_sse(v1.clone()) };
