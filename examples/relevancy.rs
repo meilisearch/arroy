@@ -12,15 +12,18 @@ use rand::rngs::StdRng;
 use rand::{Rng, SeedableRng};
 
 const TWENTY_HUNDRED_MIB: usize = 2 * 1024 * 1024 * 1024;
-
 const NUMBER_VECTORS: usize = 4_000;
+const OVERSAMPLING: usize = 3;
 
 fn main() {
     let dimensions_tested = [256, 512, 1024, 1536, 3072];
     let recall_tested = [1, 10, 50, 100];
+    let color: Vec<_> = (0..=100).step_by(10).map(|i| Recall(i as f32 / 100.0)).collect();
 
-    println!("Testing the following dimensions: @{dimensions_tested:?}");
+    println!("Testing the following dimensions: {dimensions_tested:?}");
     println!("Testing the following recall: @{recall_tested:?}");
+    println!("Oversampling of: x{OVERSAMPLING}");
+    println!("With color code: {color:?}");
     println!("Starting...");
     println!();
 
@@ -115,7 +118,11 @@ fn measure_distance<ArroyDistance: Distance, PerfectDistance: Distance>(
         number_fetched,
     );
 
-    let arroy = reader.nns_by_item(&wtxn, querying.0, number_fetched, None, None).unwrap().unwrap();
+    let mut arroy = reader
+        .nns_by_item(&wtxn, querying.0, number_fetched * OVERSAMPLING, None, None)
+        .unwrap()
+        .unwrap();
+    arroy.truncate(number_fetched);
 
     let mut correctly_retrieved = 0;
     for ret in arroy {
