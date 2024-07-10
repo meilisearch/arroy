@@ -44,7 +44,7 @@ pub trait Distance: Send + Sync + Sized + Clone + fmt::Debug + 'static {
     }
 
     /// Normalizes the distance returned by the distance method.
-    fn normalized_distance(d: f32) -> f32 {
+    fn normalized_distance(d: f32, _dimensions: usize) -> f32 {
         d.sqrt()
     }
 

@@ -37,11 +37,17 @@ impl Distance for BinaryQuantizedEuclidean {
     }
 
     fn built_distance(p: &Leaf<Self>, q: &Leaf<Self>) -> f32 {
-        dot_product(&p.vector, &q.vector)
+        squared_euclidean_distance(&p.vector, &q.vector)
+    }
+
+    /// Normalizes the distance returned by the distance method.
+    fn normalized_distance(d: f32, dimensions: usize) -> f32 {
+        d / dimensions as f32
     }
 
     fn norm_no_header(v: &UnalignedVector<Self::VectorCodec>) -> f32 {
-        dot_product(v, v).sqrt()
+        let ones = v.as_bytes().iter().map(|b| b.count_ones()).sum::<u32>() as f32;
+        ones.sqrt()
     }
 
     fn init(_node: &mut Leaf<Self>) {}
@@ -75,6 +81,15 @@ impl Distance for BinaryQuantizedEuclidean {
 }
 
 fn dot_product(u: &UnalignedVector<BinaryQuantized>, v: &UnalignedVector<BinaryQuantized>) -> f32 {
+    // /!\ If the number of dimensions is not a multiple of the `Word` size, we'll xor 0 bits at the end, which will generate a lot of 1s.
+    //     This may or may not impact relevancy since the 1s will be added to every vector.
+    u.as_bytes().iter().zip(v.as_bytes()).map(|(u, v)| (u | v).count_ones()).sum::<u32>() as f32
+}
+
+fn squared_euclidean_distance(
+    u: &UnalignedVector<BinaryQuantized>,
+    v: &UnalignedVector<BinaryQuantized>,
+) -> f32 {
     // /!\ If the number of dimensions is not a multiple of the `Word` size, we'll xor 0 bits at the end, which will generate a lot of 1s.
     //     This may or may not impact relevancy since the 1s will be added to every vector.
     u.as_bytes().iter().zip(v.as_bytes()).map(|(u, v)| (u ^ v).count_ones()).sum::<u32>() as f32

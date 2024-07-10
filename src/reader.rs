@@ -276,7 +276,7 @@ impl<'t, D: Distance> Reader<'t, D> {
             if output.len() == capacity {
                 break;
             }
-            output.push((item, D::normalized_distance(dist)));
+            output.push((item, D::normalized_distance(dist, self.dimensions)));
         }
 
         Ok(output)

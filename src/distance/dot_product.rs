@@ -70,7 +70,7 @@ impl Distance for DotProduct {
         dot_product(v, v).sqrt()
     }
 
-    fn normalized_distance(d: f32) -> f32 {
+    fn normalized_distance(d: f32, _dimension: usize) -> f32 {
         -d
     }
 

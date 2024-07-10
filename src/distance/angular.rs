@@ -52,7 +52,7 @@ impl Distance for Angular {
         }
     }
 
-    fn normalized_distance(d: f32) -> f32 {
+    fn normalized_distance(d: f32, _dimensions: usize) -> f32 {
         d
     }
 

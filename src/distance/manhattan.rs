@@ -40,7 +40,7 @@ impl Distance for Manhattan {
         p.vector.iter().zip(q.vector.iter()).map(|(p, q)| (p - q).abs()).sum()
     }
 
-    fn normalized_distance(d: f32) -> f32 {
+    fn normalized_distance(d: f32, _dimension: usize) -> f32 {
         d.max(0.0)
     }
 
