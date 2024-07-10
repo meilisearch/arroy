@@ -105,8 +105,8 @@ pub mod internals {
     use rand::Rng;
 
     pub use crate::distance::{
-        NodeHeaderAngular, NodeHeaderBinaryQuantizedEuclidean, NodeHeaderDotProduct,
-        NodeHeaderEuclidean, NodeHeaderManhattan,
+        NodeHeaderAngular, NodeHeaderBinaryQuantizedEuclidean, NodeHeaderBinaryQuantizedManhattan,
+        NodeHeaderDotProduct, NodeHeaderEuclidean, NodeHeaderManhattan,
     };
     pub use crate::key::KeyCodec;
     pub use crate::node::{Leaf, NodeCodec};
@@ -136,7 +136,8 @@ pub mod internals {
 /// The set of distances implementing the [`Distance`] and supported by arroy.
 pub mod distances {
     pub use crate::distance::{
-        Angular, BinaryQuantizedEuclidean, DotProduct, Euclidean, Manhattan,
+        Angular, BinaryQuantizedEuclidean, BinaryQuantizedManhattan, DotProduct, Euclidean,
+        Manhattan,
     };
 }
 

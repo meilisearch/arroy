@@ -1,6 +1,8 @@
 use rand::seq::SliceRandom;
 
-use arroy::distances::{Angular, BinaryQuantizedEuclidean, DotProduct, Euclidean, Manhattan};
+use arroy::distances::{
+    Angular, BinaryQuantizedEuclidean, BinaryQuantizedManhattan, DotProduct, Euclidean, Manhattan,
+};
 use arroy::internals::{self, Leaf, NodeCodec, UnalignedVector};
 use arroy::{Database, Distance, ItemId, Result, Writer};
 use heed::{EnvOpenOptions, RwTxn};
@@ -9,12 +11,12 @@ use rand::{Rng, SeedableRng};
 
 const TWENTY_HUNDRED_MIB: usize = 2 * 1024 * 1024 * 1024;
 
-const NUMBER_VECTORS: usize = 4_000;
+const NUMBER_VECTORS: usize = 10_000;
 // The openAI dimensions
-const VECTOR_DIMENSIONS: usize = 256;
+// const VECTOR_DIMENSIONS: usize = 256;
 // const VECTOR_DIMENSIONS: usize = 512;
 // const VECTOR_DIMENSIONS: usize = 1024;
-// const VECTOR_DIMENSIONS: usize = 1536;
+const VECTOR_DIMENSIONS: usize = 1536;
 // const VECTOR_DIMENSIONS: usize = 3072;
 
 fn main() {
@@ -26,6 +28,10 @@ fn main() {
         (
             BinaryQuantizedEuclidean::name(),
             &measure_distance::<BinaryQuantizedEuclidean, Euclidean> as &dyn Fn(usize),
+        ),
+        (
+            BinaryQuantizedManhattan::name(),
+            &measure_distance::<BinaryQuantizedManhattan, Manhattan> as &dyn Fn(usize),
         ),
     ] {
         println!("{distance_name}");
