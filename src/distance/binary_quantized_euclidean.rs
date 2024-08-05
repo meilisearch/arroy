@@ -3,7 +3,7 @@ use std::borrow::Cow;
 use bytemuck::{Pod, Zeroable};
 use rand::Rng;
 
-use super::two_means;
+use super::{two_means_binary_quantized as two_means, Euclidean};
 use crate::distance::Distance;
 use crate::node::Leaf;
 use crate::parallel::ImmutableSubsetLeafs;
@@ -46,8 +46,7 @@ impl Distance for BinaryQuantizedEuclidean {
     }
 
     fn norm_no_header(v: &UnalignedVector<Self::VectorCodec>) -> f32 {
-        let ones = v.as_bytes().iter().map(|b| b.count_ones()).sum::<u32>() as f32;
-        ones.sqrt()
+        dot_product(v, v).sqrt()
     }
 
     fn init(_node: &mut Leaf<Self>) {}
@@ -56,7 +55,7 @@ impl Distance for BinaryQuantizedEuclidean {
         children: &'a ImmutableSubsetLeafs<Self>,
         rng: &mut R,
     ) -> heed::Result<Cow<'a, UnalignedVector<Self::VectorCodec>>> {
-        let [node_p, node_q] = two_means(rng, children, false)?;
+        let [node_p, node_q] = two_means::<Self, Euclidean, R>(rng, children, false)?;
         let vector: Vec<f32> =
             node_p.vector.iter().zip(node_q.vector.iter()).map(|(p, q)| p - q).collect();
         let mut normal = Leaf {
@@ -80,10 +79,35 @@ impl Distance for BinaryQuantizedEuclidean {
     }
 }
 
+fn bits(mut word: u8) -> [f32; 8] {
+    let mut ret = [0.0; 8];
+    for i in 0..8 {
+        let bit = word & 1;
+        word >>= 1;
+        if bit == 0 {
+            ret[i] = -1.0;
+        } else {
+            ret[i] = 1.0;
+        }
+    }
+
+    ret
+}
+
 fn dot_product(u: &UnalignedVector<BinaryQuantized>, v: &UnalignedVector<BinaryQuantized>) -> f32 {
     // /!\ If the number of dimensions is not a multiple of the `Word` size, we'll xor 0 bits at the end, which will generate a lot of 1s.
     //     This may or may not impact relevancy since the 1s will be added to every vector.
-    u.as_bytes().iter().zip(v.as_bytes()).map(|(u, v)| (u | v).count_ones()).sum::<u32>() as f32
+    // u.as_bytes().iter().zip(v.as_bytes()).map(|(u, v)| (u | v).count_ones()).sum::<u32>() as f32
+
+    u.as_bytes()
+        .iter()
+        .zip(v.as_bytes())
+        .flat_map(|(u, v)| {
+            let u = bits(*u);
+            let v = bits(*v);
+            u.into_iter().zip(v).map(|(u, v)| u * v)
+        })
+        .sum::<f32>()
 }
 
 fn squared_euclidean_distance(
@@ -92,5 +116,15 @@ fn squared_euclidean_distance(
 ) -> f32 {
     // /!\ If the number of dimensions is not a multiple of the `Word` size, we'll xor 0 bits at the end, which will generate a lot of 1s.
     //     This may or may not impact relevancy since the 1s will be added to every vector.
-    u.as_bytes().iter().zip(v.as_bytes()).map(|(u, v)| (u ^ v).count_ones()).sum::<u32>() as f32
+    // u.as_bytes().iter().zip(v.as_bytes()).map(|(u, v)| (u ^ v).count_ones()).sum::<u32>() as f32
+
+    u.as_bytes()
+        .iter()
+        .zip(v.as_bytes())
+        .flat_map(|(u, v)| {
+            let u = bits(*u);
+            let v = bits(*v);
+            u.into_iter().zip(v).map(|(u, v)| (u - v) * (u - v))
+        })
+        .sum::<f32>()
 }

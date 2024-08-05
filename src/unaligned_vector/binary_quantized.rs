@@ -77,7 +77,12 @@ impl Iterator for BinaryQuantizedIterator<'_> {
         self.current_element >>= 1;
         self.current_iteration += 1;
 
-        Some(bit as f32)
+        if bit == 0 {
+            Some(-1.0)
+        } else {
+            Some(1.0)
+        }
+        // Some(bit as f32)
     }
 
     fn size_hint(&self) -> (usize, Option<usize>) {

@@ -54,11 +54,10 @@ impl Distance for Euclidean {
         let [node_p, node_q] = two_means(rng, children, false)?;
         let vector: Vec<_> =
             node_p.vector.iter().zip(node_q.vector.iter()).map(|(p, q)| p - q).collect();
-        let mut normal = Leaf {
+        let mut normal: Leaf<'static, Self> = Leaf {
             header: NodeHeaderEuclidean { bias: 0.0 },
             vector: UnalignedVector::from_vec(vector),
         };
-        Self::normalize(&mut normal);
 
         normal.header.bias = normal
             .vector

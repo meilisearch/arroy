@@ -3,7 +3,8 @@ use std::fmt;
 use rand::seq::SliceRandom;
 
 use arroy::distances::{
-    Angular, BinaryQuantizedEuclidean, BinaryQuantizedManhattan, DotProduct, Euclidean, Manhattan,
+    Angular, BinaryQuantizedAngular, BinaryQuantizedEuclidean, BinaryQuantizedManhattan,
+    DotProduct, Euclidean, Manhattan,
 };
 use arroy::internals::{self, Leaf, NodeCodec, UnalignedVector};
 use arroy::{Database, Distance, ItemId, Result, Writer};
@@ -28,18 +29,19 @@ fn main() {
     println!();
 
     for (distance_name, func) in &[
+        (
+            BinaryQuantizedAngular::name(),
+            &measure_distance::<BinaryQuantizedAngular, Angular> as &dyn Fn(usize, usize) -> f32,
+        ),
         (Angular::name(), &measure_distance::<Angular, Angular> as &dyn Fn(usize, usize) -> f32),
         (
-            Euclidean::name(),
-            &measure_distance::<Euclidean, Euclidean> as &dyn Fn(usize, usize) -> f32,
+            BinaryQuantizedManhattan::name(),
+            &measure_distance::<BinaryQuantizedManhattan, Manhattan>
+                as &dyn Fn(usize, usize) -> f32,
         ),
         (
             Manhattan::name(),
             &measure_distance::<Manhattan, Manhattan> as &dyn Fn(usize, usize) -> f32,
-        ),
-        (
-            DotProduct::name(),
-            &measure_distance::<DotProduct, DotProduct> as &dyn Fn(usize, usize) -> f32,
         ),
         (
             BinaryQuantizedEuclidean::name(),
@@ -47,9 +49,12 @@ fn main() {
                 as &dyn Fn(usize, usize) -> f32,
         ),
         (
-            BinaryQuantizedManhattan::name(),
-            &measure_distance::<BinaryQuantizedManhattan, Manhattan>
-                as &dyn Fn(usize, usize) -> f32,
+            Euclidean::name(),
+            &measure_distance::<Euclidean, Euclidean> as &dyn Fn(usize, usize) -> f32,
+        ),
+        (
+            DotProduct::name(),
+            &measure_distance::<DotProduct, DotProduct> as &dyn Fn(usize, usize) -> f32,
         ),
     ] {
         let now = std::time::Instant::now();
@@ -110,29 +115,31 @@ fn measure_distance<ArroyDistance: Distance, PerfectDistance: Distance>(
 
     let reader = arroy::Reader::open(&wtxn, 0, database).unwrap();
 
-    let querying = points.choose(&mut rng).unwrap();
-
-    let relevant = partial_sort_by::<PerfectDistance>(
-        points.iter().map(|(i, v)| (*i, v.as_slice())),
-        &querying.1,
-        number_fetched,
-    );
-
-    let mut arroy = reader
-        .nns_by_item(&wtxn, querying.0, number_fetched * OVERSAMPLING, None, None)
-        .unwrap()
-        .unwrap();
-    arroy.truncate(number_fetched);
-
     let mut correctly_retrieved = 0;
-    for ret in arroy {
-        if relevant.iter().any(|(id, _, _)| *id == ret.0) {
-            correctly_retrieved += 1;
+    for _ in 0..100 {
+        let querying = points.choose(&mut rng).unwrap();
+
+        let relevant = partial_sort_by::<PerfectDistance>(
+            points.iter().map(|(i, v)| (*i, v.as_slice())),
+            &querying.1,
+            number_fetched,
+        );
+
+        let mut arroy = reader
+            .nns_by_item(&wtxn, querying.0, number_fetched * OVERSAMPLING, None, None)
+            .unwrap()
+            .unwrap();
+        arroy.truncate(number_fetched);
+
+        for ret in arroy {
+            if relevant.iter().any(|(id, _, _)| *id == ret.0) {
+                correctly_retrieved += 1;
+            }
         }
     }
 
     // println!("recall@{number_fetched}: {}", correctly_retrieved as f32 / relevant.len() as f32);
-    correctly_retrieved as f32 / relevant.len() as f32
+    correctly_retrieved as f32 / (number_fetched as f32 * 100.0)
 }
 
 fn partial_sort_by<'a, D: Distance>(

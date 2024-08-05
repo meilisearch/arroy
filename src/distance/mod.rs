@@ -2,6 +2,7 @@ use std::borrow::Cow;
 use std::fmt;
 
 pub use angular::{Angular, NodeHeaderAngular};
+pub use binary_quantized_angular::{BinaryQuantizedAngular, NodeHeaderBinaryQuantizedAngular};
 pub use binary_quantized_euclidean::{
     BinaryQuantizedEuclidean, NodeHeaderBinaryQuantizedEuclidean,
 };
@@ -22,11 +23,17 @@ use crate::unaligned_vector::{UnalignedVector, UnalignedVectorCodec};
 use crate::NodeCodec;
 
 mod angular;
+mod binary_quantized_angular;
 mod binary_quantized_euclidean;
 mod binary_quantized_manhattan;
 mod dot_product;
 mod euclidean;
 mod manhattan;
+
+fn new_leaf<D: Distance>(vec: Vec<f32>) -> Leaf<'static, D> {
+    let vector = UnalignedVector::from_vec(vec);
+    Leaf { header: D::new_header(&vector), vector }
+}
 
 /// A trait used by arroy to compute the distances,
 /// compute the split planes, and normalize user vectors.
@@ -137,8 +144,7 @@ fn two_means<D: Distance, R: Rng>(
     const ITERATION_STEPS: usize = 200;
 
     let [leaf_p, leaf_q] = leafs.choose_two(rng)?.unwrap();
-    let mut leaf_p = leaf_p.into_owned();
-    let mut leaf_q = leaf_q.into_owned();
+    let (mut leaf_p, mut leaf_q) = (leaf_p.into_owned(), leaf_q.into_owned());
 
     if cosine {
         D::normalize(&mut leaf_p);
@@ -170,4 +176,63 @@ fn two_means<D: Distance, R: Rng>(
     }
 
     Ok([leaf_p, leaf_q])
+}
+
+pub fn two_means_binary_quantized<D: Distance, NonBqDist: Distance, R: Rng>(
+    rng: &mut R,
+    leafs: &ImmutableSubsetLeafs<D>,
+    cosine: bool,
+) -> heed::Result<[Leaf<'static, D>; 2]> {
+    // This algorithm is a huge heuristic. Empirically it works really well, but I
+    // can't motivate it well. The basic idea is to keep two centroids and assign
+    // points to either one of them. We weight each centroid by the number of points
+    // assigned to it, so to balance it.
+
+    const ITERATION_STEPS: usize = 200;
+
+    let [leaf_p, leaf_q] = leafs.choose_two(rng)?.unwrap();
+    let mut leaf_p: Leaf<'static, NonBqDist> = new_leaf(leaf_p.vector.iter().collect());
+    let mut leaf_q: Leaf<'static, NonBqDist> = new_leaf(leaf_q.vector.iter().collect());
+
+    if cosine {
+        NonBqDist::normalize(&mut leaf_p);
+        NonBqDist::normalize(&mut leaf_q);
+    }
+
+    NonBqDist::init(&mut leaf_p);
+    NonBqDist::init(&mut leaf_q);
+
+    let mut ic = 1.0;
+    let mut jc = 1.0;
+    for _ in 0..ITERATION_STEPS {
+        let node_k = leafs.choose(rng)?.unwrap();
+        let node_k: Leaf<'static, NonBqDist> = new_leaf(node_k.vector.iter().collect());
+        let di = ic * NonBqDist::non_built_distance(&leaf_p, &node_k);
+        let dj = jc * NonBqDist::non_built_distance(&leaf_q, &node_k);
+        let norm = if cosine { NonBqDist::norm(&node_k) } else { 1.0 };
+        if norm.is_nan() || norm <= 0.0 {
+            continue;
+        }
+        if di < dj {
+            // update_mean(&mut leaf_p, node_k.vector.iter(), norm, ic);
+            Distance::update_mean(&mut leaf_p, &node_k, norm, ic);
+            Distance::init(&mut leaf_p);
+            ic += 1.0;
+        } else if dj < di {
+            // update_mean(&mut leaf_q, node_k.vector.iter(), norm, jc);
+            Distance::update_mean(&mut leaf_q, &node_k, norm, jc);
+            Distance::init(&mut leaf_q);
+            jc += 1.0;
+        }
+    }
+
+    let leaf_p = new_leaf(leaf_p.vector.iter().collect());
+    let leaf_q = new_leaf(leaf_q.vector.iter().collect());
+    Ok([leaf_p, leaf_q])
+}
+
+fn update_mean(mean: &mut Vec<f32>, new_node: impl Iterator<Item = f32>, norm: f32, c: f32) {
+    let vec: Vec<_> =
+        mean.iter().zip(new_node).map(|(x, n)| (x * c + n / norm) / (c + 1.0)).collect();
+    *mean = vec;
 }
