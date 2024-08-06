@@ -182,7 +182,7 @@ pub fn two_means_binary_quantized<D: Distance, NonBqDist: Distance, R: Rng>(
     rng: &mut R,
     leafs: &ImmutableSubsetLeafs<D>,
     cosine: bool,
-) -> heed::Result<[Leaf<'static, D>; 2]> {
+) -> heed::Result<[Leaf<'static, NonBqDist>; 2]> {
     // This algorithm is a huge heuristic. Empirically it works really well, but I
     // can't motivate it well. The basic idea is to keep two centroids and assign
     // points to either one of them. We weight each centroid by the number of points
@@ -214,25 +214,15 @@ pub fn two_means_binary_quantized<D: Distance, NonBqDist: Distance, R: Rng>(
             continue;
         }
         if di < dj {
-            // update_mean(&mut leaf_p, node_k.vector.iter(), norm, ic);
             Distance::update_mean(&mut leaf_p, &node_k, norm, ic);
             Distance::init(&mut leaf_p);
             ic += 1.0;
         } else if dj < di {
-            // update_mean(&mut leaf_q, node_k.vector.iter(), norm, jc);
             Distance::update_mean(&mut leaf_q, &node_k, norm, jc);
             Distance::init(&mut leaf_q);
             jc += 1.0;
         }
     }
 
-    let leaf_p = new_leaf(leaf_p.vector.iter().collect());
-    let leaf_q = new_leaf(leaf_q.vector.iter().collect());
     Ok([leaf_p, leaf_q])
-}
-
-fn update_mean(mean: &mut Vec<f32>, new_node: impl Iterator<Item = f32>, norm: f32, c: f32) {
-    let vec: Vec<_> =
-        mean.iter().zip(new_node).map(|(x, n)| (x * c + n / norm) / (c + 1.0)).collect();
-    *mean = vec;
 }
