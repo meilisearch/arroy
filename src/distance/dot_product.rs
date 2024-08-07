@@ -31,6 +31,7 @@ pub struct NodeHeaderDotProduct {
 impl Distance for DotProduct {
     type Header = NodeHeaderDotProduct;
     type VectorCodec = f32;
+    type ExactDistanceTrait = Self;
 
     fn name() -> &'static str {
         "dot-product"

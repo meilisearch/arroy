@@ -26,6 +26,7 @@ pub struct NodeHeaderBinaryQuantizedManhattan {
 impl Distance for BinaryQuantizedManhattan {
     type Header = NodeHeaderBinaryQuantizedManhattan;
     type VectorCodec = unaligned_vector::BinaryQuantized;
+    type ExactDistanceTrait = Manhattan;
 
     fn name() -> &'static str {
         "binary quantized manhattan"
@@ -54,7 +55,8 @@ impl Distance for BinaryQuantizedManhattan {
     fn create_split<'a, R: Rng>(
         children: &'a ImmutableSubsetLeafs<Self>,
         rng: &mut R,
-    ) -> heed::Result<Cow<'a, UnalignedVector<Self::VectorCodec>>> {
+    ) -> heed::Result<Cow<'a, UnalignedVector<<Self::ExactDistanceTrait as Distance>::VectorCodec>>>
+    {
         let [node_p, node_q] = two_means::<Self, Manhattan, R>(rng, children, false)?;
         let vector: Vec<f32> =
             node_p.vector.iter().zip(node_q.vector.iter()).map(|(p, q)| p - q).collect();

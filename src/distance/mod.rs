@@ -42,6 +42,8 @@ pub trait Distance: Send + Sync + Sized + Clone + fmt::Debug + 'static {
     /// A header structure with informations related to the
     type Header: Pod + Zeroable + fmt::Debug;
     type VectorCodec: UnalignedVectorCodec;
+    /// The trait used to compute the split nodes and internal distance in arroy
+    type ExactDistanceTrait: Distance;
 
     fn name() -> &'static str;
 
@@ -95,7 +97,7 @@ pub trait Distance: Send + Sync + Sized + Clone + fmt::Debug + 'static {
     fn create_split<'a, R: Rng>(
         children: &'a ImmutableSubsetLeafs<Self>,
         rng: &mut R,
-    ) -> heed::Result<Cow<'a, UnalignedVector<Self::VectorCodec>>>;
+    ) -> heed::Result<Cow<'a, UnalignedVector<<Self::ExactDistanceTrait as Distance>::VectorCodec>>>;
 
     fn margin(p: &Leaf<Self>, q: &Leaf<Self>) -> f32 {
         Self::margin_no_header(&p.vector, &q.vector)
@@ -107,11 +109,13 @@ pub trait Distance: Send + Sync + Sized + Clone + fmt::Debug + 'static {
     ) -> f32;
 
     fn side<R: Rng>(
-        normal_plane: &UnalignedVector<Self::VectorCodec>,
+        normal_plane: &UnalignedVector<<Self::ExactDistanceTrait as Distance>::VectorCodec>,
         node: &Leaf<Self>,
         rng: &mut R,
     ) -> Side {
-        let dot = Self::margin_no_header(&node.vector, normal_plane);
+        let node = node.vector.iter().collect();
+        let node = UnalignedVector::from_vec(node);
+        let dot = Self::ExactDistanceTrait::margin_no_header(&node, normal_plane);
         if dot > 0.0 {
             Side::Right
         } else if dot < 0.0 {

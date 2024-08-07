@@ -20,12 +20,13 @@ pub enum Angular {}
 #[repr(C)]
 #[derive(Pod, Zeroable, Debug, Clone, Copy)]
 pub struct NodeHeaderAngular {
-    norm: f32,
+    pub(super) norm: f32,
 }
 
 impl Distance for Angular {
     type Header = NodeHeaderAngular;
     type VectorCodec = f32;
+    type ExactDistanceTrait = Angular;
 
     fn name() -> &'static str {
         "angular"

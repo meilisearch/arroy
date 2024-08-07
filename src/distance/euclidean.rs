@@ -28,6 +28,7 @@ pub struct NodeHeaderEuclidean {
 impl Distance for Euclidean {
     type Header = NodeHeaderEuclidean;
     type VectorCodec = f32;
+    type ExactDistanceTrait = Self;
 
     fn name() -> &'static str {
         "euclidean"
