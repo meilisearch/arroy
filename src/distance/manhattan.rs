@@ -27,6 +27,7 @@ pub struct NodeHeaderManhattan {
 impl Distance for Manhattan {
     type Header = NodeHeaderManhattan;
     type VectorCodec = f32;
+    type ExactDistanceTrait = Self;
 
     fn name() -> &'static str {
         "manhattan"

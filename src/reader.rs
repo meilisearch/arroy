@@ -215,6 +215,11 @@ impl<'t, D: Distance> Reader<'t, D> {
         if self.items.is_empty() {
             return Ok(Vec::new());
         }
+        let exact_query_vector = query_leaf.vector.iter().collect();
+        let exact_query_vector =
+            UnalignedVector::<<D::ExactDistanceTrait as Distance>::VectorCodec>::from_vec(
+                exact_query_vector,
+            );
         // Since the datastructure describes a kind of btree, the capacity is something in the order of:
         // The number of root nodes + log2 of the total number of vectors.
         let mut queue =
@@ -246,7 +251,8 @@ impl<'t, D: Distance> Reader<'t, D> {
                     }
                 }
                 Node::SplitPlaneNormal(SplitPlaneNormal { normal, left, right }) => {
-                    let margin = D::margin_no_header(&normal, &query_leaf.vector);
+                    let margin =
+                        <D::ExactDistanceTrait>::margin_no_header(&normal, &exact_query_vector);
                     queue.push((OrderedFloat(D::pq_distance(dist, margin, Side::Left)), left));
                     queue.push((OrderedFloat(D::pq_distance(dist, margin, Side::Right)), right));
                 }

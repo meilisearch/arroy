@@ -115,7 +115,7 @@ impl fmt::Debug for ItemIds<'_> {
 pub struct SplitPlaneNormal<'a, D: Distance> {
     pub left: NodeId,
     pub right: NodeId,
-    pub normal: Cow<'a, UnalignedVector<D::VectorCodec>>,
+    pub normal: Cow<'a, UnalignedVector<<D::ExactDistanceTrait as Distance>::VectorCodec>>,
 }
 
 impl<D: Distance> fmt::Debug for SplitPlaneNormal<'_, D> {
@@ -178,11 +178,17 @@ impl<'a, D: Distance> BytesDecode<'a> for NodeCodec<D> {
             [SPLIT_PLANE_NORMAL_TAG, bytes @ ..] => {
                 let (left, bytes) = NodeId::from_bytes(bytes);
                 let (right, bytes) = NodeId::from_bytes(bytes);
-                Ok(Node::SplitPlaneNormal(SplitPlaneNormal {
-                    normal: UnalignedVector::<D::VectorCodec>::from_bytes(bytes)?,
-                    left,
-                    right,
-                }))
+                Ok(
+                    Node::SplitPlaneNormal(
+                        SplitPlaneNormal {
+                            normal: UnalignedVector::<
+                                <D::ExactDistanceTrait as Distance>::VectorCodec,
+                            >::from_bytes(bytes)?,
+                            left,
+                            right,
+                        },
+                    ),
+                )
             }
             [DESCENDANTS_TAG, bytes @ ..] => Ok(Node::Descendants(Descendants {
                 descendants: Cow::Owned(RoaringBitmap::deserialize_from(bytes)?),
