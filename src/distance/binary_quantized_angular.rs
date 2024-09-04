@@ -3,7 +3,7 @@ use std::borrow::Cow;
 use bytemuck::{Pod, Zeroable};
 use rand::Rng;
 
-use super::{two_means_binary_quantized as two_means, Angular, NodeHeaderAngular};
+use super::{two_means_binary_quantized as two_means, Angular};
 use crate::distance::Distance;
 use crate::node::Leaf;
 use crate::parallel::ImmutableSubsetLeafs;
@@ -23,6 +23,8 @@ pub struct NodeHeaderBinaryQuantizedAngular {
 }
 
 impl Distance for BinaryQuantizedAngular {
+    const DEFAULT_OVERSAMPLING: usize = 3;
+
     type Header = NodeHeaderBinaryQuantizedAngular;
     type VectorCodec = unaligned_vector::BinaryQuantized;
 

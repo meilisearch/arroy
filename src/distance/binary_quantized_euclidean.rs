@@ -25,6 +25,8 @@ pub struct NodeHeaderBinaryQuantizedEuclidean {
 }
 
 impl Distance for BinaryQuantizedEuclidean {
+    const DEFAULT_OVERSAMPLING: usize = 3;
+
     type Header = NodeHeaderBinaryQuantizedEuclidean;
     type VectorCodec = unaligned_vector::BinaryQuantized;
 

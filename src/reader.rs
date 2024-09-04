@@ -173,10 +173,13 @@ impl<'t, D: Distance> Reader<'t, D> {
         item: ItemId,
         count: usize,
         search_k: Option<NonZeroUsize>,
+        oversampling: Option<NonZeroUsize>,
         candidates: Option<&RoaringBitmap>,
     ) -> Result<Option<Vec<(ItemId, f32)>>> {
         match item_leaf(self.database, self.index, rtxn, item)? {
-            Some(leaf) => self.nns_by_leaf(rtxn, &leaf, count, search_k, candidates).map(Some),
+            Some(leaf) => {
+                self.nns_by_leaf(rtxn, &leaf, count, search_k, oversampling, candidates).map(Some)
+            }
             None => Ok(None),
         }
     }
@@ -190,6 +193,7 @@ impl<'t, D: Distance> Reader<'t, D> {
         vector: &[f32],
         count: usize,
         search_k: Option<NonZeroUsize>,
+        oversampling: Option<NonZeroUsize>,
         candidates: Option<&RoaringBitmap>,
     ) -> Result<Vec<(ItemId, f32)>> {
         if vector.len() != self.dimensions {
@@ -201,7 +205,7 @@ impl<'t, D: Distance> Reader<'t, D> {
 
         let vector = UnalignedVector::from_slice(vector);
         let leaf = Leaf { header: D::new_header(&vector), vector };
-        self.nns_by_leaf(rtxn, &leaf, count, search_k, candidates)
+        self.nns_by_leaf(rtxn, &leaf, count, search_k, oversampling, candidates)
     }
 
     fn nns_by_leaf(
@@ -210,6 +214,7 @@ impl<'t, D: Distance> Reader<'t, D> {
         query_leaf: &Leaf<D>,
         count: usize,
         search_k: Option<NonZeroUsize>,
+        oversampling: Option<NonZeroUsize>,
         candidates: Option<&RoaringBitmap>,
     ) -> Result<Vec<(ItemId, f32)>> {
         if self.items.is_empty() {
@@ -220,6 +225,10 @@ impl<'t, D: Distance> Reader<'t, D> {
         let mut queue =
             BinaryHeap::with_capacity(self.roots.len() + self.items.len().ilog2() as usize);
         let search_k = search_k.map_or(count * self.roots.len(), NonZeroUsize::get);
+        let search_k = oversampling
+            .map_or(search_k.saturating_mul(D::DEFAULT_OVERSAMPLING), |oversampling| {
+                search_k.saturating_mul(oversampling.get())
+            });
 
         // Insert all the root nodes and associate them to the highest distance.
         queue.extend(repeat(OrderedFloat(f32::INFINITY)).zip(self.roots.iter().map(NodeId::tree)));

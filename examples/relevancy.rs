@@ -126,7 +126,7 @@ fn measure_distance<ArroyDistance: Distance, PerfectDistance: Distance>(
         );
 
         let mut arroy = reader
-            .nns_by_item(&wtxn, querying.0, number_fetched * OVERSAMPLING, None, None)
+            .nns_by_item(&wtxn, querying.0, number_fetched * OVERSAMPLING, None, None, None)
             .unwrap()
             .unwrap();
         arroy.truncate(number_fetched);
