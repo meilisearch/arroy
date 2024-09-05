@@ -7,6 +7,7 @@ use super::{two_means_binary_quantized as two_means, Manhattan};
 use crate::distance::Distance;
 use crate::node::Leaf;
 use crate::parallel::ImmutableSubsetLeafs;
+use crate::spaces::simple::dot_product_binary_quantized;
 use crate::unaligned_vector::{self, BinaryQuantized, UnalignedVector};
 
 /// A taxicab geometry or a Manhattan geometry is a geometry whose usual distance function
@@ -38,7 +39,7 @@ impl Distance for BinaryQuantizedManhattan {
     }
 
     fn built_distance(p: &Leaf<Self>, q: &Leaf<Self>) -> f32 {
-        manhattan_distance(&p.vector, &q.vector)
+        manhattan_distance_binary_quantized(&p.vector, &q.vector)
     }
 
     /// Normalizes the distance returned by the distance method.
@@ -47,7 +48,11 @@ impl Distance for BinaryQuantizedManhattan {
     }
 
     fn norm_no_header(v: &UnalignedVector<Self::VectorCodec>) -> f32 {
-        let ones = v.as_bytes().iter().flat_map(|b| bits(*b)).sum::<f32>();
+        let ones = v
+            .as_bytes()
+            .iter()
+            .map(|b| b.count_ones() as i32 - b.count_zeros() as i32)
+            .sum::<i32>() as f32;
         ones.sqrt()
     }
 
@@ -70,61 +75,34 @@ impl Distance for BinaryQuantizedManhattan {
     }
 
     fn margin(p: &Leaf<Self>, q: &Leaf<Self>) -> f32 {
-        p.header.bias + dot_product(&p.vector, &q.vector)
+        p.header.bias + dot_product_binary_quantized(&p.vector, &q.vector)
     }
 
     fn margin_no_header(
         p: &UnalignedVector<Self::VectorCodec>,
         q: &UnalignedVector<Self::VectorCodec>,
     ) -> f32 {
-        dot_product(p, q)
+        dot_product_binary_quantized(p, q)
     }
 }
 
-fn bits(mut word: u8) -> [f32; 8] {
-    let mut ret = [0.0; 8];
-    for i in 0..8 {
-        let bit = word & 1;
-        word >>= 1;
-        if bit == 0 {
-            ret[i] = -1.0;
-        } else {
-            ret[i] = 1.0;
-        }
-    }
-
-    ret
-}
-
-fn dot_product(u: &UnalignedVector<BinaryQuantized>, v: &UnalignedVector<BinaryQuantized>) -> f32 {
-    // /!\ If the number of dimensions is not a multiple of the `Word` size, we'll xor 0 bits at the end, which will generate a lot of 1s.
-    //     This may or may not impact relevancy since the 1s will be added to every vector.
-    // u.as_bytes().iter().zip(v.as_bytes()).map(|(u, v)| (u | v).count_ones()).sum::<u32>() as f32
-
-    u.as_bytes()
-        .iter()
-        .zip(v.as_bytes())
-        .flat_map(|(u, v)| {
-            let u = bits(*u);
-            let v = bits(*v);
-            u.into_iter().zip(v).map(|(u, v)| u * v)
-        })
-        .sum::<f32>()
-}
-
-fn manhattan_distance(
+/// For the binary quantized manhattan distance:
+/// ```rust
+/// p.vector.iter().zip(q.vector.iter()).map(|(p, q)| (p - q).abs()).sum()
+/// ```
+/// 1. We need to subtract two scalars and take the absolute value:
+/// -1 - -1 =  0 | abs => 0
+/// -1 -  1 = -2 | abs => 2
+///  1 - -1 =  2 | abs => 2
+///  1 -  1 =  0 | abs => 0
+///
+/// It's very similar to the euclidean distance.
+/// => It's a xor, we counts the ones and multiplicate the result by 2 at the end.
+fn manhattan_distance_binary_quantized(
     u: &UnalignedVector<BinaryQuantized>,
     v: &UnalignedVector<BinaryQuantized>,
 ) -> f32 {
-    // u.as_bytes().iter().zip(v.as_bytes()).map(|(u, v)| (u ^ v).count_ones()).sum::<u32>() as f32
-
-    u.as_bytes()
-        .iter()
-        .zip(v.as_bytes())
-        .flat_map(|(u, v)| {
-            let u = bits(*u);
-            let v = bits(*v);
-            u.into_iter().zip(v).map(|(u, v)| (u - v).abs())
-        })
-        .sum::<f32>()
+    let ret =
+        u.as_bytes().iter().zip(v.as_bytes()).map(|(u, v)| (u ^ v).count_ones()).sum::<u32>() * 2;
+    ret as f32
 }

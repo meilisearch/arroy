@@ -7,6 +7,7 @@ use super::{two_means_binary_quantized as two_means, Euclidean};
 use crate::distance::Distance;
 use crate::node::Leaf;
 use crate::parallel::ImmutableSubsetLeafs;
+use crate::spaces::simple::dot_product_binary_quantized;
 use crate::unaligned_vector::{self, BinaryQuantized, UnalignedVector};
 
 /// The Euclidean distance between two points in Euclidean space
@@ -39,7 +40,7 @@ impl Distance for BinaryQuantizedEuclidean {
     }
 
     fn built_distance(p: &Leaf<Self>, q: &Leaf<Self>) -> f32 {
-        squared_euclidean_distance(&p.vector, &q.vector)
+        squared_euclidean_distance_binary_quantized(&p.vector, &q.vector)
     }
 
     /// Normalizes the distance returned by the distance method.
@@ -48,7 +49,7 @@ impl Distance for BinaryQuantizedEuclidean {
     }
 
     fn norm_no_header(v: &UnalignedVector<Self::VectorCodec>) -> f32 {
-        dot_product(v, v).sqrt()
+        dot_product_binary_quantized(v, v).sqrt()
     }
 
     fn init(_node: &mut Leaf<Self>) {}
@@ -70,63 +71,40 @@ impl Distance for BinaryQuantizedEuclidean {
     }
 
     fn margin(p: &Leaf<Self>, q: &Leaf<Self>) -> f32 {
-        p.header.bias + dot_product(&p.vector, &q.vector)
+        p.header.bias + dot_product_binary_quantized(&p.vector, &q.vector)
     }
 
     fn margin_no_header(
         p: &UnalignedVector<Self::VectorCodec>,
         q: &UnalignedVector<Self::VectorCodec>,
     ) -> f32 {
-        dot_product(p, q)
+        dot_product_binary_quantized(p, q)
     }
 }
 
-fn bits(mut word: u8) -> [f32; 8] {
-    let mut ret = [0.0; 8];
-    for i in 0..8 {
-        let bit = word & 1;
-        word >>= 1;
-        if bit == 0 {
-            ret[i] = -1.0;
-        } else {
-            ret[i] = 1.0;
-        }
-    }
-
-    ret
-}
-
-fn dot_product(u: &UnalignedVector<BinaryQuantized>, v: &UnalignedVector<BinaryQuantized>) -> f32 {
-    // /!\ If the number of dimensions is not a multiple of the `Word` size, we'll xor 0 bits at the end, which will generate a lot of 1s.
-    //     This may or may not impact relevancy since the 1s will be added to every vector.
-    // u.as_bytes().iter().zip(v.as_bytes()).map(|(u, v)| (u | v).count_ones()).sum::<u32>() as f32
-
-    u.as_bytes()
-        .iter()
-        .zip(v.as_bytes())
-        .flat_map(|(u, v)| {
-            let u = bits(*u);
-            let v = bits(*v);
-            u.into_iter().zip(v).map(|(u, v)| u * v)
-        })
-        .sum::<f32>()
-}
-
-fn squared_euclidean_distance(
+/// For the binary quantized squared euclidean distance:
+/// 1. We need to do the following operation: `(u - v)^2`, in our case the only allowed values are -1 and 1:
+/// -1 - -1 =  0 | ^2 => 0
+/// -1 -  1 = -2 | ^2 => 4
+///  1 - -1 =  2 | ^2 => 4
+///  1 -  1 =  0 | ^2 => 0
+///
+/// If we replace the -1 by the binary quantized 0, and the 1 stays 1s:
+/// 0 * 0 = 0
+/// 0 * 1 = 1
+/// 1 * 0 = 1
+/// 1 * 1 = 0
+///
+/// The result must be multiplicated by 4. But that can be done at the very end.
+///
+/// 2. Then we need to do the sum of the results:
+///  Since we cannot go into the negative, it's safe to hold everything in a `u32` and simply counts the 1s.
+///  At the very end, before converting the value to a `f32` we can multiplies everything by 4.
+fn squared_euclidean_distance_binary_quantized(
     u: &UnalignedVector<BinaryQuantized>,
     v: &UnalignedVector<BinaryQuantized>,
 ) -> f32 {
-    // /!\ If the number of dimensions is not a multiple of the `Word` size, we'll xor 0 bits at the end, which will generate a lot of 1s.
-    //     This may or may not impact relevancy since the 1s will be added to every vector.
-    // u.as_bytes().iter().zip(v.as_bytes()).map(|(u, v)| (u ^ v).count_ones()).sum::<u32>() as f32
-
-    u.as_bytes()
-        .iter()
-        .zip(v.as_bytes())
-        .flat_map(|(u, v)| {
-            let u = bits(*u);
-            let v = bits(*v);
-            u.into_iter().zip(v).map(|(u, v)| (u - v) * (u - v))
-        })
-        .sum::<f32>()
+    let ret =
+        u.as_bytes().iter().zip(v.as_bytes()).map(|(u, v)| (u ^ v).count_ones()).sum::<u32>() * 4;
+    ret as f32
 }

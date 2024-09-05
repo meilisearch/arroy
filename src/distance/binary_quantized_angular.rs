@@ -7,7 +7,8 @@ use super::{two_means_binary_quantized as two_means, Angular};
 use crate::distance::Distance;
 use crate::node::Leaf;
 use crate::parallel::ImmutableSubsetLeafs;
-use crate::unaligned_vector::{self, BinaryQuantized, UnalignedVector};
+use crate::spaces::simple::dot_product_binary_quantized;
+use crate::unaligned_vector::{BinaryQuantized, UnalignedVector};
 
 /// The Cosine similarity is a measure of similarity between two
 /// non-zero vectors defined in an inner product space. Cosine similarity
@@ -26,7 +27,7 @@ impl Distance for BinaryQuantizedAngular {
     const DEFAULT_OVERSAMPLING: usize = 3;
 
     type Header = NodeHeaderBinaryQuantizedAngular;
-    type VectorCodec = unaligned_vector::BinaryQuantized;
+    type VectorCodec = BinaryQuantized;
 
     fn name() -> &'static str {
         "binary quantized angular"
@@ -39,7 +40,7 @@ impl Distance for BinaryQuantizedAngular {
     fn built_distance(p: &Leaf<Self>, q: &Leaf<Self>) -> f32 {
         let pn = p.header.norm;
         let qn = q.header.norm;
-        let pq = dot_product(&p.vector, &q.vector);
+        let pq = dot_product_binary_quantized(&p.vector, &q.vector);
         let pnqn = pn * qn;
         if pnqn != 0.0 {
             let cos = pq / pnqn;
@@ -59,11 +60,11 @@ impl Distance for BinaryQuantizedAngular {
     }
 
     fn norm_no_header(v: &UnalignedVector<Self::VectorCodec>) -> f32 {
-        dot_product(v, v).sqrt()
+        dot_product_binary_quantized(v, v).sqrt()
     }
 
     fn init(node: &mut Leaf<Self>) {
-        node.header.norm = dot_product(&node.vector, &node.vector).sqrt();
+        node.header.norm = dot_product_binary_quantized(&node.vector, &node.vector).sqrt();
     }
 
     fn create_split<'a, R: Rng>(
@@ -87,57 +88,6 @@ impl Distance for BinaryQuantizedAngular {
         p: &UnalignedVector<Self::VectorCodec>,
         q: &UnalignedVector<Self::VectorCodec>,
     ) -> f32 {
-        dot_product(p, q)
+        dot_product_binary_quantized(p, q)
     }
-}
-
-fn bits(mut word: u8) -> [f32; 8] {
-    let mut ret = [0.0; 8];
-    for i in 0..8 {
-        let bit = word & 1;
-        word >>= 1;
-        if bit == 0 {
-            ret[i] = -1.0;
-            // ret[i] = 0.0;
-        } else {
-            ret[i] = 1.0;
-        }
-    }
-
-    ret
-}
-
-fn dot_product(u: &UnalignedVector<BinaryQuantized>, v: &UnalignedVector<BinaryQuantized>) -> f32 {
-    // /!\ If the number of dimensions is not a multiple of the `Word` size, we'll xor 0 bits at the end, which will generate a lot of 1s.
-    //     This may or may not impact relevancy since the 1s will be added to every vector.
-    // u.as_bytes().iter().zip(v.as_bytes()).map(|(u, v)| (u | v).count_ones()).sum::<u32>() as f32
-
-    u.as_bytes()
-        .iter()
-        .zip(v.as_bytes())
-        .flat_map(|(u, v)| {
-            let u = bits(*u);
-            let v = bits(*v);
-            u.into_iter().zip(v).map(|(u, v)| u * v)
-        })
-        .sum::<f32>()
-}
-
-fn squared_euclidean_distance(
-    u: &UnalignedVector<BinaryQuantized>,
-    v: &UnalignedVector<BinaryQuantized>,
-) -> f32 {
-    // /!\ If the number of dimensions is not a multiple of the `Word` size, we'll xor 0 bits at the end, which will generate a lot of 1s.
-    //     This may or may not impact relevancy since the 1s will be added to every vector.
-    // u.as_bytes().iter().zip(v.as_bytes()).map(|(u, v)| (u ^ v).count_ones()).sum::<u32>() as f32
-
-    u.as_bytes()
-        .iter()
-        .zip(v.as_bytes())
-        .flat_map(|(u, v)| {
-            let u = bits(*u);
-            let v = bits(*v);
-            u.into_iter().zip(v).map(|(u, v)| (u - v) * (u - v))
-        })
-        .sum::<f32>()
 }
