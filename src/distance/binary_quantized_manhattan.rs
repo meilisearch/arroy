@@ -87,7 +87,7 @@ impl Distance for BinaryQuantizedManhattan {
 }
 
 /// For the binary quantized manhattan distance:
-/// ```rust
+/// ```text
 /// p.vector.iter().zip(q.vector.iter()).map(|(p, q)| (p - q).abs()).sum()
 /// ```
 /// 1. We need to subtract two scalars and take the absolute value:

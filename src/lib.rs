@@ -60,7 +60,7 @@
 //!
 //! // Similar searching can be achieved by requesting the nearest neighbors of a given item.
 //! let item_id = 0;
-//! let arroy_results = reader.nns_by_item(&rtxn, item_id, n_results, search_k, None)?.unwrap();
+//! let arroy_results = reader.nns_by_item(&rtxn, item_id, n_results, search_k, None, None)?.unwrap();
 //! # Ok(()) }
 //! ```
 
