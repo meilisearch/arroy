@@ -58,6 +58,7 @@ impl Distance for Euclidean {
             header: NodeHeaderEuclidean { bias: 0.0 },
             vector: UnalignedVector::from_vec(vector),
         };
+        Self::normalize(&mut normal);
 
         normal.header.bias = normal
             .vector
