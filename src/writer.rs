@@ -555,7 +555,7 @@ impl<D: Distance> Writer<D> {
                         let mut left_ids = RoaringBitmap::new();
                         let mut right_ids = RoaringBitmap::new();
 
-                        if normal.iter().all(|d| d == 0.0) {
+                        if normal.is_zero() {
                             randomly_split_children(rng, to_insert, &mut left_ids, &mut right_ids);
                         } else {
                             for leaf in to_insert {

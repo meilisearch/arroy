@@ -32,6 +32,9 @@ pub trait UnalignedVectorCodec: std::borrow::ToOwned + Sized {
 
     /// Returns the len of the vector in terms of elements.
     fn len(vec: &UnalignedVector<Self>) -> usize;
+
+    /// Returns true if all the elements in the vector are equal to 0.
+    fn is_zero(vec: &UnalignedVector<Self>) -> bool;
 }
 
 /// A wrapper struct that is used to read unaligned vectors directly from memory.
@@ -73,6 +76,11 @@ impl<Codec: UnalignedVectorCodec> UnalignedVector<Codec> {
     /// The f32 are copied in memory and are therefore, aligned.
     pub fn iter(&self) -> impl ExactSizeIterator<Item = f32> + '_ {
         Codec::iter(self)
+    }
+
+    /// Returns true if all the elements in the vector are equal to 0.
+    pub fn is_zero(&self) -> bool {
+        Codec::is_zero(self)
     }
 
     /// Returns an allocated and aligned `Vec<f32>`.
