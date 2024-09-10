@@ -336,11 +336,12 @@ impl<D: Distance> Writer<D> {
         log::debug!("Getting a reference to your {} items...", n_items);
 
         let used_node_ids = self.used_tree_node(wtxn)?;
+        let nb_tree_nodes = used_node_ids.len();
 
         let concurrent_node_ids = ConcurrentNodeIds::new(used_node_ids);
         let frozzen_reader = FrozzenReader {
-            leafs: &ImmutableLeafs::new(wtxn, self.database, self.index)?,
-            trees: &ImmutableTrees::new(wtxn, self.database, self.index)?,
+            leafs: &ImmutableLeafs::new(wtxn, self.database, self.index, item_indices.len())?,
+            trees: &ImmutableTrees::new(wtxn, self.database, self.index, nb_tree_nodes)?,
             // The globally incrementing node ids that are shared between threads.
             concurrent_node_ids: &concurrent_node_ids,
         };

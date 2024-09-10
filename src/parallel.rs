@@ -8,7 +8,7 @@ use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering};
 use heed::types::Bytes;
 use heed::{BytesDecode, BytesEncode, RoTxn};
 use memmap2::Mmap;
-use nohash::IntMap;
+use nohash::{BuildNoHashHasher, IntMap};
 use rand::seq::index;
 use rand::Rng;
 use roaring::RoaringBitmap;
@@ -189,8 +189,14 @@ pub struct ImmutableLeafs<'t, D> {
 impl<'t, D: Distance> ImmutableLeafs<'t, D> {
     /// Creates the structure by fetching all the leaf pointers
     /// and keeping the transaction making the pointers valid.
-    pub fn new(rtxn: &'t RoTxn, database: Database<D>, index: u16) -> heed::Result<Self> {
-        let mut leafs = IntMap::default();
+    pub fn new(
+        rtxn: &'t RoTxn,
+        database: Database<D>,
+        index: u16,
+        nb_leafs: u64,
+    ) -> heed::Result<Self> {
+        let mut leafs =
+            IntMap::with_capacity_and_hasher(nb_leafs as usize, BuildNoHashHasher::default());
         let mut constant_length = None;
 
         let iter = database
@@ -285,15 +291,21 @@ impl<'t, D: Distance> ImmutableSubsetLeafs<'t, D> {
 /// in the mmapped file and the transaction is kept here and therefore
 /// no longer touches the database.
 pub struct ImmutableTrees<'t, D> {
-    leafs: IntMap<ItemId, (usize, *const u8)>,
+    trees: IntMap<ItemId, (usize, *const u8)>,
     _marker: marker::PhantomData<(&'t (), D)>,
 }
 
 impl<'t, D: Distance> ImmutableTrees<'t, D> {
     /// Creates the structure by fetching all the root pointers
     /// and keeping the transaction making the pointers valid.
-    pub fn new(rtxn: &'t RoTxn, database: Database<D>, index: u16) -> heed::Result<Self> {
-        let mut leafs = IntMap::default();
+    pub fn new(
+        rtxn: &'t RoTxn,
+        database: Database<D>,
+        index: u16,
+        nb_trees: u64,
+    ) -> heed::Result<Self> {
+        let mut trees =
+            IntMap::with_capacity_and_hasher(nb_trees as usize, BuildNoHashHasher::default());
 
         let iter = database
             .remap_types::<PrefixCodec, Bytes>()
@@ -303,15 +315,15 @@ impl<'t, D: Distance> ImmutableTrees<'t, D> {
         for result in iter {
             let (key, bytes) = result?;
             let tree_id = key.node.unwrap_tree();
-            leafs.insert(tree_id, (bytes.len(), bytes.as_ptr()));
+            trees.insert(tree_id, (bytes.len(), bytes.as_ptr()));
         }
 
-        Ok(ImmutableTrees { leafs, _marker: marker::PhantomData })
+        Ok(ImmutableTrees { trees, _marker: marker::PhantomData })
     }
 
     /// Returns the tree node identified by the given ID.
     pub fn get(&self, item_id: ItemId) -> heed::Result<Option<Node<'t, D>>> {
-        let (ptr, len) = match self.leafs.get(&item_id) {
+        let (ptr, len) = match self.trees.get(&item_id) {
             Some((len, ptr)) => (*ptr, *len),
             None => return Ok(None),
         };
