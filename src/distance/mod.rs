@@ -189,6 +189,9 @@ pub fn two_means_binary_quantized<D: Distance, NonBqDist: Distance, R: Rng>(
     // can't motivate it well. The basic idea is to keep two centroids and assign
     // points to either one of them. We weight each centroid by the number of points
     // assigned to it, so to balance it.
+    // Even though the points we're working on are binary quantized, for the centroid
+    // to move, we need to store them as f32. This requires us to convert the binary quantized
+    // vector to f32 vectors a lot, but the recall suffers too much if we don't do it.
 
     const ITERATION_STEPS: usize = 200;
 

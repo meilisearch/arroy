@@ -14,10 +14,12 @@ use crate::unaligned_vector::{self, BinaryQuantized, UnalignedVector};
 /// is the length of the line segment between them.
 ///
 /// `d(p, q) = sqrt((p - q)²)`
+/// /!\ This distance function is binary quantized, which means it loses all its precision
+///     and their scalar values are converted to `-1` or `1`.
 #[derive(Debug, Clone)]
 pub enum BinaryQuantizedEuclidean {}
 
-/// The header of BinaryQuantizedEuclidean leaf nodes.
+/// The header of `BinaryQuantizedEuclidean` leaf nodes.
 #[repr(C)]
 #[derive(Pod, Zeroable, Debug, Clone, Copy)]
 pub struct NodeHeaderBinaryQuantizedEuclidean {
@@ -83,22 +85,26 @@ impl Distance for BinaryQuantizedEuclidean {
 }
 
 /// For the binary quantized squared euclidean distance:
-/// 1. We need to do the following operation: `(u - v)^2`, in our case the only allowed values are -1 and 1:
+/// 1. We need to do the following operation: `(u - v)^2`, in our case the only allowed values are `-1` and `1`:
+/// ```text
 /// -1 - -1 =  0 | ^2 => 0
 /// -1 -  1 = -2 | ^2 => 4
 ///  1 - -1 =  2 | ^2 => 4
 ///  1 -  1 =  0 | ^2 => 0
+/// ```
 ///
-/// If we replace the -1 by the binary quantized 0, and the 1 stays 1s:
+/// If we replace the `-1` by the binary quantized `0`, and the `1` stays `1`s:
+/// ```text
 /// 0 * 0 = 0
 /// 0 * 1 = 1
 /// 1 * 0 = 1
 /// 1 * 1 = 0
+/// ```
 ///
-/// The result must be multiplicated by 4. But that can be done at the very end.
+/// The result must be multiplicated by `4`. But that can be done at the very end.
 ///
 /// 2. Then we need to do the sum of the results:
-///  Since we cannot go into the negative, it's safe to hold everything in a `u32` and simply counts the 1s.
+///  Since we cannot go into the negative, it's safe to hold everything in a `u32` and simply counts the `1`s.
 ///  At the very end, before converting the value to a `f32` we can multiplies everything by 4.
 fn squared_euclidean_distance_binary_quantized(
     u: &UnalignedVector<BinaryQuantized>,

@@ -13,6 +13,8 @@ use crate::unaligned_vector::{self, BinaryQuantized, UnalignedVector};
 /// A taxicab geometry or a Manhattan geometry is a geometry whose usual distance function
 /// or metric of Euclidean geometry is replaced by a new metric in which the distance between
 /// two points is the sum of the absolute differences of their Cartesian coordinates.
+/// /!\ This distance function is binary quantized, which means it loses all its precision
+///     and their scalar values are converted to `-1` or `1`.
 #[derive(Debug, Clone)]
 pub enum BinaryQuantizedManhattan {}
 
@@ -91,13 +93,15 @@ impl Distance for BinaryQuantizedManhattan {
 /// p.vector.iter().zip(q.vector.iter()).map(|(p, q)| (p - q).abs()).sum()
 /// ```
 /// 1. We need to subtract two scalars and take the absolute value:
+/// ```text
 /// -1 - -1 =  0 | abs => 0
 /// -1 -  1 = -2 | abs => 2
 ///  1 - -1 =  2 | abs => 2
 ///  1 -  1 =  0 | abs => 0
+/// ```
 ///
 /// It's very similar to the euclidean distance.
-/// => It's a xor, we counts the ones and multiplicate the result by 2 at the end.
+/// => It's a xor, we counts the `1`s and multiplicate the result by `2` at the end.
 fn manhattan_distance_binary_quantized(
     u: &UnalignedVector<BinaryQuantized>,
     v: &UnalignedVector<BinaryQuantized>,

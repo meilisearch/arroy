@@ -13,10 +13,12 @@ use crate::unaligned_vector::{BinaryQuantized, UnalignedVector};
 /// The Cosine similarity is a measure of similarity between two
 /// non-zero vectors defined in an inner product space. Cosine similarity
 /// is the cosine of the angle between the vectors.
+/// /!\ This distance function is binary quantized, which means it loses all its precision
+///     and their scalar values are converted to `-1` or `1`.
 #[derive(Debug, Clone)]
 pub enum BinaryQuantizedAngular {}
 
-/// The header of BinaryQuantizedAngular leaf nodes.
+/// The header of `BinaryQuantizedAngular` leaf nodes.
 #[repr(C)]
 #[derive(Pod, Zeroable, Debug, Clone, Copy)]
 pub struct NodeHeaderBinaryQuantizedAngular {
