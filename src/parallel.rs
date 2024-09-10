@@ -8,6 +8,7 @@ use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering};
 use heed::types::Bytes;
 use heed::{BytesDecode, BytesEncode, RoTxn};
 use memmap2::Mmap;
+use nohash::IntMap;
 use rand::seq::index;
 use rand::Rng;
 use roaring::RoaringBitmap;
@@ -180,9 +181,8 @@ impl ConcurrentNodeIds {
 /// in the mmapped file and the transaction is kept here and therefore
 /// no longer touches the database.
 pub struct ImmutableLeafs<'t, D> {
-    leaf_ids: RoaringBitmap,
+    leafs: IntMap<ItemId, *const u8>,
     constant_length: Option<usize>,
-    offsets: Vec<*const u8>,
     _marker: marker::PhantomData<(&'t (), D)>,
 }
 
@@ -190,9 +190,8 @@ impl<'t, D: Distance> ImmutableLeafs<'t, D> {
     /// Creates the structure by fetching all the leaf pointers
     /// and keeping the transaction making the pointers valid.
     pub fn new(rtxn: &'t RoTxn, database: Database<D>, index: u16) -> heed::Result<Self> {
-        let mut leaf_ids = RoaringBitmap::new();
+        let mut leafs = IntMap::default();
         let mut constant_length = None;
-        let mut offsets = Vec::new();
 
         let iter = database
             .remap_types::<PrefixCodec, Bytes>()
@@ -203,11 +202,10 @@ impl<'t, D: Distance> ImmutableLeafs<'t, D> {
             let (key, bytes) = result?;
             let item_id = key.node.unwrap_item();
             assert_eq!(*constant_length.get_or_insert(bytes.len()), bytes.len());
-            assert!(leaf_ids.push(item_id));
-            offsets.push(bytes.as_ptr());
+            leafs.insert(item_id, bytes.as_ptr());
         }
 
-        Ok(ImmutableLeafs { leaf_ids, constant_length, offsets, _marker: marker::PhantomData })
+        Ok(ImmutableLeafs { leafs, constant_length, _marker: marker::PhantomData })
     }
 
     /// Returns the leafs identified by the given ID.
@@ -216,12 +214,7 @@ impl<'t, D: Distance> ImmutableLeafs<'t, D> {
             Some(len) => len,
             None => return Ok(None),
         };
-        let ptr = match self
-            .leaf_ids
-            .rank(item_id)
-            .checked_sub(1)
-            .and_then(|offset| self.offsets.get(offset as usize))
-        {
+        let ptr = match self.leafs.get(&item_id) {
             Some(ptr) => *ptr,
             None => return Ok(None),
         };
@@ -292,9 +285,7 @@ impl<'t, D: Distance> ImmutableSubsetLeafs<'t, D> {
 /// in the mmapped file and the transaction is kept here and therefore
 /// no longer touches the database.
 pub struct ImmutableTrees<'t, D> {
-    tree_ids: RoaringBitmap,
-    offsets: Vec<*const u8>,
-    lengths: Vec<usize>,
+    leafs: IntMap<ItemId, (usize, *const u8)>,
     _marker: marker::PhantomData<(&'t (), D)>,
 }
 
@@ -302,9 +293,7 @@ impl<'t, D: Distance> ImmutableTrees<'t, D> {
     /// Creates the structure by fetching all the root pointers
     /// and keeping the transaction making the pointers valid.
     pub fn new(rtxn: &'t RoTxn, database: Database<D>, index: u16) -> heed::Result<Self> {
-        let mut tree_ids = RoaringBitmap::new();
-        let mut offsets = Vec::new();
-        let mut lengths = Vec::new();
+        let mut leafs = IntMap::default();
 
         let iter = database
             .remap_types::<PrefixCodec, Bytes>()
@@ -314,20 +303,16 @@ impl<'t, D: Distance> ImmutableTrees<'t, D> {
         for result in iter {
             let (key, bytes) = result?;
             let tree_id = key.node.unwrap_tree();
-            assert!(tree_ids.push(tree_id));
-            offsets.push(bytes.as_ptr());
-            lengths.push(bytes.len());
+            leafs.insert(tree_id, (bytes.len(), bytes.as_ptr()));
         }
 
-        Ok(ImmutableTrees { tree_ids, lengths, offsets, _marker: marker::PhantomData })
+        Ok(ImmutableTrees { leafs, _marker: marker::PhantomData })
     }
 
     /// Returns the tree node identified by the given ID.
     pub fn get(&self, item_id: ItemId) -> heed::Result<Option<Node<'t, D>>> {
-        let (ptr, len) = match self.tree_ids.rank(item_id).checked_sub(1).and_then(|offset| {
-            self.offsets.get(offset as usize).zip(self.lengths.get(offset as usize))
-        }) {
-            Some((ptr, len)) => (*ptr, *len),
+        let (ptr, len) = match self.leafs.get(&item_id) {
+            Some((len, ptr)) => (*ptr, *len),
             None => return Ok(None),
         };
 

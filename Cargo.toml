@@ -22,6 +22,7 @@ rayon = "1.10.0"
 roaring = "0.10.5"
 tempfile = "3.10.1"
 thiserror = "1.0.61"
+nohash = "0.2.0"
 
 [dev-dependencies]
 anyhow = "1.0.86"
