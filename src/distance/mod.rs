@@ -196,8 +196,8 @@ pub fn two_means_binary_quantized<D: Distance, NonBqDist: Distance, R: Rng>(
     const ITERATION_STEPS: usize = 200;
 
     let [leaf_p, leaf_q] = leafs.choose_two(rng)?.unwrap();
-    let mut leaf_p: Leaf<'static, NonBqDist> = new_leaf(leaf_p.vector.iter().collect());
-    let mut leaf_q: Leaf<'static, NonBqDist> = new_leaf(leaf_q.vector.iter().collect());
+    let mut leaf_p: Leaf<'static, NonBqDist> = new_leaf(leaf_p.vector.to_vec());
+    let mut leaf_q: Leaf<'static, NonBqDist> = new_leaf(leaf_q.vector.to_vec());
 
     if cosine {
         NonBqDist::normalize(&mut leaf_p);
@@ -211,7 +211,7 @@ pub fn two_means_binary_quantized<D: Distance, NonBqDist: Distance, R: Rng>(
     let mut jc = 1.0;
     for _ in 0..ITERATION_STEPS {
         let node_k = leafs.choose(rng)?.unwrap();
-        let node_k: Leaf<'static, NonBqDist> = new_leaf(node_k.vector.iter().collect());
+        let node_k: Leaf<'static, NonBqDist> = new_leaf(node_k.vector.to_vec());
         let di = ic * NonBqDist::non_built_distance(&leaf_p, &node_k);
         let dj = jc * NonBqDist::non_built_distance(&leaf_q, &node_k);
         let norm = if cosine { NonBqDist::norm(&node_k) } else { 1.0 };

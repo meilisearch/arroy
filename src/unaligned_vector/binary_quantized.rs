@@ -4,6 +4,8 @@ use std::{
     slice::ChunksExact,
 };
 
+use ordered_float::Float;
+
 use super::{SizeMismatch, UnalignedVector, UnalignedVectorCodec};
 
 /// The type of the words used to quantize a vector
@@ -35,6 +37,10 @@ impl UnalignedVectorCodec for BinaryQuantized {
         Cow::Owned(Self::from_slice(&vec).into_owned())
     }
 
+    fn to_vec(vec: &UnalignedVector<Self>) -> Vec<f32> {
+        unsafe { to_vec_simd(vec) }
+    }
+
     fn iter(vec: &UnalignedVector<Self>) -> impl ExactSizeIterator<Item = f32> + '_ {
         BinaryQuantizedIterator {
             current_element: 0,
@@ -57,8 +63,10 @@ unsafe fn from_slice_simd(slice: &[f32]) -> Vec<u8> {
     use core::arch::aarch64::*;
 
     let iterations = slice.len() / 8;
+    let reminder = slice.len() % 8;
+    let mut ret = Vec::with_capacity(iterations + (reminder != 0) as usize);
+
     let ptr = slice.as_ptr();
-    let mut ret = Vec::with_capacity(iterations);
 
     for i in 0..iterations {
         unsafe {
@@ -94,7 +102,55 @@ unsafe fn from_slice_simd(slice: &[f32]) -> Vec<u8> {
         }
     }
 
+    let mut rem: QuantizedWord = 0;
+    for r in slice[slice.len() - reminder..].iter().rev() {
+        rem <<= 1;
+        let r = r.is_sign_positive();
+        rem |= r as QuantizedWord;
+    }
+    ret.extend(rem.to_ne_bytes());
+
     ret
+}
+
+unsafe fn to_vec_simd(vec: &UnalignedVector<BinaryQuantized>) -> Vec<f32> {
+    use core::arch::aarch64::*;
+
+    let mut output: Vec<f32> = Vec::with_capacity(vec.len());
+    let bytes = vec.as_bytes();
+    let ptr = bytes.as_ptr();
+
+    for i in 0..bytes.len() {
+        unsafe {
+            let lane = vld1_dup_u8(ptr.add(i));
+            let mask = [
+                0b_0000_0001,
+                0b_0000_0010,
+                0b_0000_0100,
+                0b_0000_1000,
+                0b_0001_0000,
+                0b_0010_0000,
+                0b_0100_0000,
+                0b_1000_0000,
+            ];
+            let lane = vand_u8(lane, vld1_u8(mask.as_ptr()));
+            let lane = vceqz_u8(lane);
+            let lane = vreinterpret_s8_u8(lane);
+            let lane = vmul_s8(lane, vdup_n_s8(2));
+            let lane = vadd_s8(lane, vdup_n_s8(1));
+
+            output.push(vget_lane_s8(lane, 0_i32) as f32);
+            output.push(vget_lane_s8(lane, 1_i32) as f32);
+            output.push(vget_lane_s8(lane, 2_i32) as f32);
+            output.push(vget_lane_s8(lane, 3_i32) as f32);
+            output.push(vget_lane_s8(lane, 4_i32) as f32);
+            output.push(vget_lane_s8(lane, 5_i32) as f32);
+            output.push(vget_lane_s8(lane, 6_i32) as f32);
+            output.push(vget_lane_s8(lane, 7_i32) as f32);
+        }
+    }
+
+    output
 }
 
 pub struct BinaryQuantizedIterator<'a> {

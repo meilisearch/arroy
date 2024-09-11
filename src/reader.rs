@@ -131,8 +131,11 @@ impl<'t, D: Distance> Reader<'t, D> {
 
     /// Returns the vector for item `i` that was previously added.
     pub fn item_vector(&self, rtxn: &'t RoTxn, item: ItemId) -> Result<Option<Vec<f32>>> {
-        Ok(item_leaf(self.database, self.index, rtxn, item)?
-            .map(|leaf| leaf.vector.iter().take(self.dimensions).collect()))
+        Ok(item_leaf(self.database, self.index, rtxn, item)?.map(|leaf| {
+            let mut vec = leaf.vector.to_vec();
+            vec.truncate(self.dimensions());
+            vec
+        }))
     }
 
     /// Returns `true` if the index is empty.

@@ -26,6 +26,8 @@ pub trait UnalignedVectorCodec: std::borrow::ToOwned + Sized {
     /// The slice is already known to be of the right length.
     fn from_vec(vec: Vec<f32>) -> Cow<'static, UnalignedVector<Self>>;
 
+    fn to_vec(vec: &UnalignedVector<Self>) -> Vec<f32>;
+
     /// Returns an iterator of f32 that are read from the vector.
     /// The f32 are copied in memory and are therefore, aligned.
     fn iter(vec: &UnalignedVector<Self>) -> impl ExactSizeIterator<Item = f32> + '_;
@@ -85,10 +87,7 @@ impl<Codec: UnalignedVectorCodec> UnalignedVector<Codec> {
 
     /// Returns an allocated and aligned `Vec<f32>`.
     pub fn to_vec(&self) -> Vec<f32> {
-        let iter = self.iter();
-        let mut ret = Vec::with_capacity(iter.len());
-        ret.extend(iter);
-        ret
+        Codec::to_vec(self)
     }
 
     /// Returns the len of the vector in terms of elements.

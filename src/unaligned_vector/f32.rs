@@ -3,7 +3,7 @@ use std::{
     mem::{size_of, transmute},
 };
 
-use bytemuck::cast_slice;
+use bytemuck::{cast_slice, checked::cast_slice_mut};
 use byteorder::{ByteOrder, NativeEndian};
 
 use super::{SizeMismatch, UnalignedVector, UnalignedVectorCodec};
@@ -31,6 +31,13 @@ impl UnalignedVectorCodec for f32 {
     fn from_vec(vec: Vec<f32>) -> Cow<'static, UnalignedVector<Self>> {
         let bytes = vec.into_iter().flat_map(|f| f.to_ne_bytes()).collect();
         Cow::Owned(bytes)
+    }
+
+    fn to_vec(vec: &UnalignedVector<Self>) -> Vec<f32> {
+        let iter = vec.iter();
+        let mut ret = Vec::with_capacity(iter.len());
+        ret.extend(iter);
+        ret
     }
 
     /// Returns an iterator of f32 that are read from the slice.
