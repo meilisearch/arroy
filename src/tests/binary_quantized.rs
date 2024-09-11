@@ -23,7 +23,7 @@ fn write_and_retrieve_binary_quantized_vector() {
     insta::assert_debug_snapshot!(vec, @r###"
     [
         -1.0,
-        -1.,
+        -1.0,
         1.0,
         1.0,
         1.0,
