@@ -75,7 +75,7 @@ fn unaligned_binary_quantized_large() {
     let unaligned = UnalignedVector::<BinaryQuantized>::from_slice(&original);
     let s = unaligned.as_bytes().iter().map(|byte| format!("{byte:08b}\n")).collect::<String>();
     assert_snapshot!(s, @r###"
-    10010110
+    10010111
     01101001
     11001011
     10110100
@@ -88,6 +88,10 @@ fn unaligned_binary_quantized_large() {
     01001100
     01011011
     00000110
+    00000000
+    00000000
+    00000000
+    00000000
     00000000
     00000000
     00000000

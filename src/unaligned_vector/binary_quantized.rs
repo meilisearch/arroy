@@ -9,7 +9,7 @@ use ordered_float::Float;
 use super::{SizeMismatch, UnalignedVector, UnalignedVectorCodec};
 
 /// The type of the words used to quantize a vector
-type QuantizedWord = usize;
+type QuantizedWord = u64;
 /// The size of the words used to quantize a vector
 const QUANTIZED_WORD_SIZE: usize = QuantizedWord::BITS as usize;
 
@@ -18,7 +18,8 @@ pub enum BinaryQuantized {}
 
 impl UnalignedVectorCodec for BinaryQuantized {
     fn from_bytes(bytes: &[u8]) -> Result<Cow<UnalignedVector<Self>>, SizeMismatch> {
-        let rem = bytes.len() % size_of::<QuantizedWord>();
+        // let rem = bytes.len() % size_of::<QuantizedWord>();
+        let rem = 0;
         if rem == 0 {
             // safety: `UnalignedVector` is transparent
             Ok(Cow::Borrowed(unsafe { transmute(bytes) }))
@@ -60,6 +61,7 @@ impl UnalignedVectorCodec for BinaryQuantized {
 }
 
 unsafe fn from_slice_simd(slice: &[f32]) -> Vec<u8> {
+    println!("from slice called with {slice:?}");
     use core::arch::aarch64::*;
 
     let iterations = slice.len() / 8;
@@ -110,43 +112,37 @@ unsafe fn from_slice_simd(slice: &[f32]) -> Vec<u8> {
     }
     ret.extend(rem.to_ne_bytes());
 
+    println!("from slice returns {ret:?}");
     ret
 }
 
 unsafe fn to_vec_simd(vec: &UnalignedVector<BinaryQuantized>) -> Vec<f32> {
     use core::arch::aarch64::*;
 
-    let mut output: Vec<f32> = Vec::with_capacity(vec.len());
+    let mut output: Vec<f32> = vec![0.0; vec.len()];
+    let output_ptr = output.as_mut_ptr();
     let bytes = vec.as_bytes();
-    let ptr = bytes.as_ptr();
 
-    for i in 0..bytes.len() {
-        unsafe {
-            let lane = vld1_dup_u8(ptr.add(i));
-            let mask = [
-                0b_0000_0001,
-                0b_0000_0010,
-                0b_0000_0100,
-                0b_0000_1000,
-                0b_0001_0000,
-                0b_0010_0000,
-                0b_0100_0000,
-                0b_1000_0000,
-            ];
-            let lane = vand_u8(lane, vld1_u8(mask.as_ptr()));
-            let lane = vceqz_u8(lane);
-            let lane = vreinterpret_s8_u8(lane);
-            let lane = vmul_s8(lane, vdup_n_s8(2));
-            let lane = vadd_s8(lane, vdup_n_s8(1));
+    for (current_byte, base) in bytes.iter().enumerate() {
+        let base = *base as u32;
+        let low_mask = [0b_0000_0001, 0b_0000_0010, 0b_0000_0100, 0b_0000_1000];
+        let high_mask = [0b_0001_0000, 0b_0010_0000, 0b_0100_0000, 0b_1000_0000];
 
-            output.push(vget_lane_s8(lane, 0_i32) as f32);
-            output.push(vget_lane_s8(lane, 1_i32) as f32);
-            output.push(vget_lane_s8(lane, 2_i32) as f32);
-            output.push(vget_lane_s8(lane, 3_i32) as f32);
-            output.push(vget_lane_s8(lane, 4_i32) as f32);
-            output.push(vget_lane_s8(lane, 5_i32) as f32);
-            output.push(vget_lane_s8(lane, 6_i32) as f32);
-            output.push(vget_lane_s8(lane, 7_i32) as f32);
+        for (i, mask) in [low_mask, high_mask].iter().enumerate() {
+            unsafe {
+                let lane = vld1q_dup_u32(&base as *const u32);
+                let lane = vandq_u32(lane, vld1q_u32(mask.as_ptr()));
+                let lane = vceqzq_u32(lane);
+                // Make the exponent right (either 1 or -1)
+                //             sign exponent mantissa
+                let mask: u32 = 0b0_01111111_00000000000000000000000;
+                let lane = vorrq_u32(lane, vld1q_dup_u32(&mask as *const u32));
+                //             sign exponent mantissa
+                let mask: u32 = 0b1_01111111_00000000000000000000000;
+                let lane = vandq_u32(lane, vld1q_dup_u32(&mask as *const u32));
+                let lane = vreinterpretq_f32_u32(lane);
+                vst1q_f32(output_ptr.add(current_byte * 8 + i * 4), lane);
+            }
         }
     }
 
