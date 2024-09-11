@@ -26,15 +26,7 @@ impl UnalignedVectorCodec for BinaryQuantized {
     }
 
     fn from_slice(slice: &[f32]) -> Cow<'static, UnalignedVector<Self>> {
-        let mut output: Vec<u8> = Vec::with_capacity(slice.len() / QUANTIZED_WORD_SIZE);
-        for chunk in slice.chunks(QUANTIZED_WORD_SIZE) {
-            let mut word: QuantizedWord = 0;
-            for scalar in chunk.iter().rev() {
-                word <<= 1;
-                word += scalar.is_sign_positive() as QuantizedWord;
-            }
-            output.extend_from_slice(&word.to_ne_bytes());
-        }
+        let output = unsafe { from_slice_simd(slice) };
 
         Cow::Owned(output)
     }
@@ -61,6 +53,50 @@ impl UnalignedVectorCodec for BinaryQuantized {
     }
 }
 
+unsafe fn from_slice_simd(slice: &[f32]) -> Vec<u8> {
+    use core::arch::aarch64::*;
+
+    let iterations = slice.len() / 8;
+    let ptr = slice.as_ptr();
+    let mut ret = Vec::with_capacity(iterations);
+
+    for i in 0..iterations {
+        unsafe {
+            let lane = vld1q_f32(ptr.add(i * 8));
+            let lane = vcltzq_f32(lane);
+            let lane = vmvnq_u32(lane);
+            let mask: Vec<u32> = vec![
+                0b_00000000_00000000_00000000_00000001,
+                0b_00000000_00000000_00000000_00000010,
+                0b_00000000_00000000_00000000_00000100,
+                0b_00000000_00000000_00000000_00001000,
+            ];
+            let mask = vld1q_u32(mask.as_ptr());
+            let lane = vandq_u32(lane, mask);
+
+            let left = vaddvq_u32(lane) as u8;
+
+            let lane = vld1q_f32(ptr.add(i * 8 + 4));
+            let lane = vcltzq_f32(lane);
+            let lane = vmvnq_u32(lane);
+            let mask: Vec<u32> = vec![
+                0b_00000000_00000000_00000000_00010000,
+                0b_00000000_00000000_00000000_00100000,
+                0b_00000000_00000000_00000000_01000000,
+                0b_00000000_00000000_00000000_10000000,
+            ];
+            let mask = vld1q_u32(mask.as_ptr());
+            let lane = vandq_u32(lane, mask);
+
+            let right = vaddvq_u32(lane) as u8;
+
+            ret.push(left | right);
+        }
+    }
+
+    ret
+}
+
 pub struct BinaryQuantizedIterator<'a> {
     current_element: usize,
     current_iteration: usize,
@@ -81,12 +117,7 @@ impl Iterator for BinaryQuantizedIterator<'_> {
         self.current_element >>= 1;
         self.current_iteration += 1;
 
-        if bit == 0 {
-            Some(-1.0)
-        } else {
-            Some(1.0)
-        }
-        // Some(bit as f32)
+        Some(bit as f32 * 2.0 - 1.0)
     }
 
     fn size_hint(&self) -> (usize, Option<usize>) {
