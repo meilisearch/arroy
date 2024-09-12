@@ -4,8 +4,6 @@ use std::{
     slice::ChunksExact,
 };
 
-use ordered_float::Float;
-
 use super::{SizeMismatch, UnalignedVector, UnalignedVectorCodec};
 
 /// The type of the words used to quantize a vector
@@ -63,7 +61,8 @@ unsafe fn from_slice_simd(slice: &[f32]) -> Vec<u8> {
     use core::arch::aarch64::*;
 
     let iterations = slice.len() / 8;
-    let mut ret = Vec::with_capacity(iterations);
+    let plus = if iterations % 8 == 0 { 0 } else { 8 - iterations };
+    let mut ret = vec![0; iterations + plus];
 
     let ptr = slice.as_ptr();
 
@@ -97,19 +96,23 @@ unsafe fn from_slice_simd(slice: &[f32]) -> Vec<u8> {
 
             let right = vaddvq_u32(lane) as u8;
 
-            ret.push(left | right);
+            ret[i] = left | right;
         }
     }
 
+    // Since we're iterating on bytes two by two.
+    // If we had a number of dimensions not dividible by 8 we may be
+    // missing some bits in the last byte.
     let reminder = slice.len() % 8;
-    let mut rem: u8 = 0;
-    for r in slice[slice.len() - reminder - 1..].iter().rev() {
-        rem <<= 1;
-        let r = r.is_sign_positive();
-        rem |= r as u8;
+    if reminder != 0 {
+        let mut rem: u8 = 0;
+        for r in slice[slice.len() - reminder..].iter().rev() {
+            rem <<= 1;
+            let r = r.is_sign_positive();
+            rem |= r as u8;
+        }
+        ret[iterations] = rem;
     }
-    ret.push(rem);
-    ret.extend(std::iter::repeat(0).take(8 - (ret.len() % 8)));
 
     ret
 }
@@ -188,11 +191,77 @@ impl ExactSizeIterator for BinaryQuantizedIterator<'_> {
 
 #[cfg(test)]
 mod test {
-    use insta::assert_debug_snapshot;
+    use std::borrow::Cow;
 
-    use crate::internals::UnalignedVectorCodec;
+    use insta::{assert_debug_snapshot, assert_snapshot};
 
-    use super::BinaryQuantized;
+    use crate::internals::{UnalignedVector, UnalignedVectorCodec};
+
+    use super::{BinaryQuantized, QuantizedWord, QUANTIZED_WORD_SIZE};
+
+    fn original_from_slice(slice: &[f32]) -> Cow<'static, UnalignedVector<BinaryQuantized>> {
+        let mut output: Vec<u8> = Vec::with_capacity(slice.len() / QUANTIZED_WORD_SIZE);
+        for chunk in slice.chunks(QUANTIZED_WORD_SIZE) {
+            let mut word: QuantizedWord = 0;
+            for scalar in chunk.iter().rev() {
+                word <<= 1;
+                word += scalar.is_sign_positive() as QuantizedWord;
+            }
+            output.extend_from_slice(&word.to_ne_bytes());
+        }
+
+        Cow::Owned(output)
+    }
+
+    #[test]
+    fn test_from_slice() {
+        let original = [0.1, 0.2, -0.3, 0.4, -0.5, 0.6, -0.7, 0.8, -0.9];
+        let vector = BinaryQuantized::from_slice(&original);
+
+        let internal = vector.as_bytes().iter().map(|b| format!("{b:08b}\n")).collect::<String>();
+        assert_snapshot!(internal, @r###"
+        10101011
+        00000000
+        00000000
+        00000000
+        00000000
+        00000000
+        00000000
+        00000000
+        "###);
+
+        let iter_vec: Vec<_> = BinaryQuantized::iter(&vector).take(original.len()).collect();
+        assert_debug_snapshot!(iter_vec, @r###"
+        [
+            1.0,
+            1.0,
+            -1.0,
+            1.0,
+            -1.0,
+            1.0,
+            -1.0,
+            1.0,
+            -1.0,
+        ]
+        "###);
+        let mut vec_vec: Vec<_> = BinaryQuantized::to_vec(&vector);
+        vec_vec.truncate(original.len());
+        assert_debug_snapshot!(vec_vec, @r###"
+        [
+            1.0,
+            1.0,
+            -1.0,
+            1.0,
+            -1.0,
+            1.0,
+            -1.0,
+            1.0,
+            -1.0,
+        ]
+        "###);
+
+        assert_eq!(vec_vec, iter_vec);
+    }
 
     #[test]
     fn truc() {
@@ -236,15 +305,25 @@ mod test {
 
     proptest! {
         #[test]
-        fn prop_truc(
-            original in vec(-50f32..=50.2, 80)
+        fn prop_truc_1(
+            original in vec(-50f32..=50.2, 10..512)
         ){
-        let vector = BinaryQuantized::from_slice(&original);
-        let iter_vec: Vec<_> = BinaryQuantized::iter(&vector).take(original.len()).collect();
-        let mut vec_vec: Vec<_> = BinaryQuantized::to_vec(&vector);
-        vec_vec.truncate(original.len());
+            let vector = BinaryQuantized::from_slice(&original);
+            let iter_vec: Vec<_> = BinaryQuantized::iter(&vector).take(original.len()).collect();
+            let mut vec_vec: Vec<_> = BinaryQuantized::to_vec(&vector);
+            vec_vec.truncate(original.len());
 
-        assert_eq!(vec_vec, iter_vec);
-    }
+            assert_eq!(vec_vec, iter_vec);
+        }
+
+        #[test]
+        fn prop_truc_2(
+            original in vec(-50f32..=50.2, 29..65)
+        ){
+            let vector1 = BinaryQuantized::from_slice(&original);
+            let vector2 = original_from_slice(&original);
+
+            assert_eq!(vector1.as_bytes(), vector2.as_bytes());
+        }
     }
 }
