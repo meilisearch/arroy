@@ -693,8 +693,8 @@ impl<D: Distance> Writer<D> {
         }
 
         let children = ImmutableSubsetLeafs::from_item_ids(reader.leafs, item_indices);
-        let mut children_left = RoaringBitmap::new();
-        let mut children_right = RoaringBitmap::new();
+        let mut children_left = Vec::with_capacity(children.len() as usize);
+        let mut children_right = Vec::with_capacity(children.len() as usize);
         let mut remaining_attempts = 3;
 
         let mut normal = loop {
@@ -710,7 +710,7 @@ impl<D: Distance> Writer<D> {
                 };
             }
 
-            if split_imbalance(children_left.len(), children_right.len()) < 0.95
+            if split_imbalance(children_left.len() as u64, children_right.len() as u64) < 0.95
                 || remaining_attempts == 0
             {
                 break normal;
@@ -721,10 +721,20 @@ impl<D: Distance> Writer<D> {
 
         // If we didn't find a hyperplane, just randomize sides as a last option
         // and set the split plane to zero as a dummy plane.
-        if split_imbalance(children_left.len(), children_right.len()) > 0.99 {
-            randomly_split_children(rng, item_indices, &mut children_left, &mut children_right);
-            UnalignedVector::reset(&mut normal);
-        }
+        let (children_left, children_right) =
+            if split_imbalance(children_left.len() as u64, children_right.len() as u64) > 0.99 {
+                let mut children_left = RoaringBitmap::new();
+                let mut children_right = RoaringBitmap::new();
+                randomly_split_children(rng, item_indices, &mut children_left, &mut children_right);
+                UnalignedVector::reset(&mut normal);
+
+                (children_left, children_right)
+            } else {
+                (
+                    RoaringBitmap::from_sorted_iter(children_left).unwrap(),
+                    RoaringBitmap::from_sorted_iter(children_right).unwrap(),
+                )
+            };
 
         let normal = SplitPlaneNormal {
             normal,

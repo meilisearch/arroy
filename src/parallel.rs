@@ -256,6 +256,10 @@ impl<'t, D: Distance> ImmutableSubsetLeafs<'t, D> {
         }
     }
 
+    pub fn len(&self) -> u64 {
+        self.subset.len()
+    }
+
     /// Randomly selects two leafs verified to be different.
     pub fn choose_two<R: Rng>(&self, rng: &mut R) -> heed::Result<Option<[Leaf<'t, D>; 2]>> {
         let indexes = index::sample(rng, self.subset.len() as usize, 2);
