@@ -60,13 +60,18 @@ impl UnalignedVectorCodec for BinaryQuantized {
 unsafe fn from_slice_simd(slice: &[f32]) -> Vec<u8> {
     use core::arch::aarch64::*;
 
-    let iterations = slice.len() / 8;
-    let plus = if iterations % 8 == 0 { 0 } else { 8 - iterations };
-    let mut ret = vec![0; iterations + plus];
+    let iterations = slice.len() / size_of::<QuantizedWord>();
+    // The size of the returned vector must be a multiple of a word
+    let padding = if iterations % size_of::<QuantizedWord>() == 0 {
+        0
+    } else {
+        size_of::<QuantizedWord>() - iterations
+    };
+    let mut ret = vec![0; iterations + padding];
 
     let ptr = slice.as_ptr();
 
-    for i in 0..iterations {
+    for (i, val) in ret.iter_mut().enumerate() {
         unsafe {
             let lane = vld1q_f32(ptr.add(i * 8));
             let lane = vcltzq_f32(lane);
@@ -96,14 +101,14 @@ unsafe fn from_slice_simd(slice: &[f32]) -> Vec<u8> {
 
             let right = vaddvq_u32(lane) as u8;
 
-            ret[i] = left | right;
+            *val = left | right;
         }
     }
 
     // Since we're iterating on bytes two by two.
     // If we had a number of dimensions not dividible by 8 we may be
     // missing some bits in the last byte.
-    let reminder = slice.len() % 8;
+    let reminder = slice.len() % size_of::<QuantizedWord>();
     if reminder != 0 {
         let mut rem: u8 = 0;
         for r in slice[slice.len() - reminder..].iter().rev() {
