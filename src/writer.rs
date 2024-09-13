@@ -2,6 +2,8 @@ use std::any::TypeId;
 use std::borrow::Cow;
 use std::mem;
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
 
 use heed::types::{Bytes, DecodeIgnore};
 use heed::{MdbError, PutFlags, RoTxn, RwTxn};
@@ -36,13 +38,15 @@ pub struct Writer<D: Distance> {
     dimensions: usize,
     /// The folder in which tempfile will write its temporary files.
     tmpdir: Option<PathBuf>,
+    /// An optional boolean flag to cancel the tree building process.
+    cancelled: Option<Arc<AtomicBool>>,
 }
 
 impl<D: Distance> Writer<D> {
     /// Creates a new writer from a database, index and dimensions.
     pub fn new(database: Database<D>, index: u16, dimensions: usize) -> Writer<D> {
         let database: Database<D> = database.remap_data_type();
-        Writer { database, index, dimensions, tmpdir: None }
+        Writer { database, index, dimensions, tmpdir: None, cancelled: None }
     }
 
     /// Returns a writer after having deleted the tree nodes and rewrote all the items
@@ -83,6 +87,12 @@ impl<D: Distance> Writer<D> {
     /// use the default [`tempfile::tempfile`] function which uses the OS temporary directory.
     pub fn set_tmpdir(&mut self, path: impl Into<PathBuf>) {
         self.tmpdir = Some(path.into());
+    }
+
+    /// Returns a canceller for the tree building process that can be used later and transferred between threads.
+    pub fn tree_build_canceller(&mut self) -> TreeBuildCanceller {
+        let must_stop = self.cancelled.get_or_insert_with(|| Arc::new(AtomicBool::new(false)));
+        TreeBuildCanceller { must_stop: must_stop.clone() }
     }
 
     /// Returns an `Option`al vector previous stored in this database.
@@ -803,6 +813,20 @@ impl<D: Distance> Writer<D> {
         }
 
         Ok(indices)
+    }
+}
+
+/// A canceller for the tree building process that can be used to stop the operation early.
+#[derive(Debug, Clone)]
+pub struct TreeBuildCanceller {
+    /// The flag that, when set to true, triggers the engine to stop early.
+    must_stop: Arc<AtomicBool>,
+}
+
+impl TreeBuildCanceller {
+    /// Cancels the tree building process as early as possible.
+    pub fn cancel(&self) {
+        self.must_stop.store(true, Ordering::SeqCst);
     }
 }
 

@@ -97,7 +97,7 @@ use node::{Node, NodeCodec};
 use node_id::{NodeId, NodeMode};
 pub use reader::Reader;
 pub use stats::{Stats, TreeStats};
-pub use writer::Writer;
+pub use writer::{TreeBuildCanceller, Writer};
 
 /// The set of types used by the [`Distance`] trait.
 pub mod internals {
