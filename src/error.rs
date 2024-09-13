@@ -1,6 +1,8 @@
 use std::io;
 
-use crate::{key::Key, node_id::NodeMode, ItemId};
+use crate::key::Key;
+use crate::node_id::NodeMode;
+use crate::ItemId;
 
 /// The different set of errors that arroy can encounter.
 #[derive(Debug, thiserror::Error)]
@@ -61,6 +63,9 @@ pub enum Error {
         /// The item ID queried
         item: ItemId,
     },
+
+    #[error("The corresponding build process has been cancelled")]
+    BuildCancelled,
 }
 
 impl Error {

@@ -39,7 +39,7 @@ pub struct Writer<D: Distance> {
     /// The folder in which tempfile will write its temporary files.
     tmpdir: Option<PathBuf>,
     /// An optional boolean flag to cancel the tree building process.
-    cancelled: Option<Arc<AtomicBool>>,
+    cancelled: Option<TreeBuildCanceller>,
 }
 
 impl<D: Distance> Writer<D> {
@@ -77,8 +77,8 @@ impl<D: Distance> Writer<D> {
             }
         }
 
-        let Writer { database, index, dimensions, tmpdir } = self;
-        Ok(Writer { database: database.remap_data_type(), index, dimensions, tmpdir })
+        let Writer { database, index, dimensions, tmpdir, cancelled } = self;
+        Ok(Writer { database: database.remap_data_type(), index, dimensions, tmpdir, cancelled })
     }
 
     /// Specifies the folder in which arroy will write temporary files when building the tree.
@@ -91,8 +91,11 @@ impl<D: Distance> Writer<D> {
 
     /// Returns a canceller for the tree building process that can be used later and transferred between threads.
     pub fn tree_build_canceller(&mut self) -> TreeBuildCanceller {
-        let must_stop = self.cancelled.get_or_insert_with(|| Arc::new(AtomicBool::new(false)));
-        TreeBuildCanceller { must_stop: must_stop.clone() }
+        self.cancelled
+            .get_or_insert_with(|| TreeBuildCanceller {
+                must_stop: Arc::new(AtomicBool::new(false)),
+            })
+            .clone()
     }
 
     /// Returns an `Option`al vector previous stored in this database.
@@ -387,6 +390,10 @@ impl<D: Distance> Writer<D> {
 
         log::debug!("started updating the tree nodes of {} trees...", tmp_nodes.len());
         for (i, tmp_node) in nodes_to_write.iter().enumerate() {
+            if self.cancelled.as_ref().map_or(false, |tbc| tbc.is_cancelled()) {
+                return Err(Error::BuildCancelled);
+            }
+
             log::debug!(
                 "started deleting the {} tree nodes of the {i}nth trees...",
                 tmp_node.len()
@@ -434,6 +441,9 @@ impl<D: Distance> Writer<D> {
             &Key::metadata(self.index),
             &metadata,
         ) {
+            Ok(_) if self.cancelled.as_ref().map_or(false, |tbc| tbc.is_cancelled()) => {
+                Err(Error::BuildCancelled)
+            }
             Ok(_) => Ok(()),
             Err(e) => Err(e.into()),
         }
@@ -452,6 +462,10 @@ impl<D: Distance> Writer<D> {
         repeatn(rng.next_u64(), metadata.roots.len())
             .zip(roots)
             .map(|(seed, root)| {
+                if self.cancelled.as_ref().map_or(false, |tbc| tbc.is_cancelled()) {
+                    return Err(Error::BuildCancelled);
+                }
+
                 log::debug!("started updating tree {root:X}...");
                 let mut rng = R::seed_from_u64(seed.wrapping_add(root as u64));
                 let mut tmp_nodes: TmpNodes<NodeCodec<D>> = match self.tmpdir.as_ref() {
@@ -657,6 +671,10 @@ impl<D: Distance> Writer<D> {
                 None => concurrent_node_ids.used() < n_items,
             })
             .map(|(i, seed)| {
+                if self.cancelled.as_ref().map_or(false, |tbc| tbc.is_cancelled()) {
+                    return Err(Error::BuildCancelled);
+                }
+
                 log::debug!("started generating tree {i:X}...");
                 let mut rng = R::seed_from_u64(seed.wrapping_add(i as u64));
                 let mut tmp_nodes = match self.tmpdir.as_ref() {
@@ -776,6 +794,9 @@ impl<D: Distance> Writer<D> {
             log::debug!("Deleting {} trees", to_delete.len());
 
             for tree in to_delete {
+                if self.cancelled.as_ref().map_or(false, |tbc| tbc.is_cancelled()) {
+                    return Err(Error::BuildCancelled);
+                }
                 self.delete_tree(wtxn, NodeId::tree(tree))?;
             }
         }
@@ -820,6 +841,8 @@ impl<D: Distance> Writer<D> {
 #[derive(Debug, Clone)]
 pub struct TreeBuildCanceller {
     /// The flag that, when set to true, triggers the engine to stop early.
+    // TODO replace this with a Weak and keep an Arc in the Writer.
+    //      or maybe even a ref that can be shared.
     must_stop: Arc<AtomicBool>,
 }
 
@@ -827,6 +850,11 @@ impl TreeBuildCanceller {
     /// Cancels the tree building process as early as possible.
     pub fn cancel(&self) {
         self.must_stop.store(true, Ordering::SeqCst);
+    }
+
+    /// Wether the corresponding build process has been canceled.
+    fn is_cancelled(&self) -> bool {
+        self.must_stop.load(Ordering::SeqCst)
     }
 }
 
