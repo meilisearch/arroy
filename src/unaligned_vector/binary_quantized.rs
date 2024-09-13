@@ -1,8 +1,6 @@
-use std::{
-    borrow::Cow,
-    mem::{size_of, transmute},
-    slice::ChunksExact,
-};
+use std::borrow::Cow;
+use std::mem::{size_of, transmute};
+use std::slice::ChunksExact;
 
 use super::{SizeMismatch, UnalignedVector, UnalignedVectorCodec};
 
@@ -57,6 +55,7 @@ impl UnalignedVectorCodec for BinaryQuantized {
     }
 }
 
+#[cfg(any(target_arch = "aarch64", target_arch = "arm64ec"))]
 unsafe fn from_slice_simd(slice: &[f32]) -> Vec<u8> {
     use core::arch::aarch64::*;
 
@@ -122,6 +121,30 @@ unsafe fn from_slice_simd(slice: &[f32]) -> Vec<u8> {
     ret
 }
 
+#[cfg(not(any(target_arch = "aarch64", target_arch = "arm64ec")))]
+unsafe fn from_slice_simd(slice: &[f32]) -> Vec<u8> {
+    // fn convert(m: __m128i) -> [u32; 4] {
+    //     unsafe { std::mem::transmute(m) }
+    // }
+
+    // fn display(name: &str, m: __m128i) {
+    //     let [a, b, c, d] = convert(m);
+    //     eprintln!("{name}: {a:#b} {b:#b} {c:#b} {d:#b}");
+    // }
+
+    let mut output = Vec::with_capacity(slice.len() / QUANTIZED_WORD_SIZE);
+    for chunk in slice.chunks(QUANTIZED_WORD_SIZE) {
+        let mut word: QuantizedWord = 0;
+        for scalar in chunk.iter().rev() {
+            word <<= 1;
+            word += scalar.is_sign_positive() as QuantizedWord;
+        }
+        output.extend_from_slice(&word.to_ne_bytes());
+    }
+    output
+}
+
+#[cfg(any(target_arch = "aarch64", target_arch = "arm64ec"))]
 unsafe fn to_vec_simd(vec: &UnalignedVector<BinaryQuantized>) -> Vec<f32> {
     use core::arch::aarch64::*;
 
@@ -148,6 +171,36 @@ unsafe fn to_vec_simd(vec: &UnalignedVector<BinaryQuantized>) -> Vec<f32> {
                 let lane = vandq_u32(lane, vld1q_dup_u32(&mask as *const u32));
                 let lane = vreinterpretq_f32_u32(lane);
                 vst1q_f32(output_ptr.add(current_byte * 8 + i * 4), lane);
+            }
+        }
+    }
+
+    output
+}
+
+#[cfg(not(any(target_arch = "aarch64", target_arch = "arm64ec")))]
+unsafe fn to_vec_simd(vec: &UnalignedVector<BinaryQuantized>) -> Vec<f32> {
+    use core::arch::x86_64::*;
+
+    let mut output: Vec<f32> = vec![0.0; vec.len()];
+    let output_ptr = output.as_mut_ptr();
+    let bytes = vec.as_bytes();
+    let low_mask = [0b_0000_0001, 0b_0000_0010, 0b_0000_0100, 0b_0000_1000];
+    let high_mask = [0b_0001_0000, 0b_0010_0000, 0b_0100_0000, 0b_1000_0000];
+    let ones = unsafe { _mm_set1_ps(1.0) };
+    let minus = unsafe { _mm_set1_ps(-1.0) };
+
+    for (current_byte, base) in bytes.iter().enumerate() {
+        unsafe {
+            let base = _mm_set1_epi32(*base as i32);
+            for (i, mask) in [low_mask, high_mask].iter().enumerate() {
+                let mask = _mm_set_epi32(mask[3], mask[2], mask[1], mask[0]);
+                let mask = _mm_and_si128(base, mask);
+                // 0xffffffff if equal to zero and 0x00000000 otherwise
+                let mask = _mm_cmpeq_epi32(mask, _mm_setzero_si128());
+                let lane = _mm_blendv_ps(ones, minus, _mm_castsi128_ps(mask));
+                let offset = output_ptr.add(current_byte * 8 + i * 4);
+                _mm_store_ps(offset, lane);
             }
         }
     }
@@ -200,9 +253,8 @@ mod test {
 
     use insta::{assert_debug_snapshot, assert_snapshot};
 
-    use crate::internals::{UnalignedVector, UnalignedVectorCodec};
-
     use super::{BinaryQuantized, QuantizedWord, QUANTIZED_WORD_SIZE};
+    use crate::internals::{UnalignedVector, UnalignedVectorCodec};
 
     fn original_from_slice(slice: &[f32]) -> Cow<'static, UnalignedVector<BinaryQuantized>> {
         let mut output: Vec<u8> = Vec::with_capacity(slice.len() / QUANTIZED_WORD_SIZE);
@@ -269,7 +321,7 @@ mod test {
     }
 
     #[test]
-    fn truc() {
+    fn super_truc() {
         let original = [0.1, 0.2, -0.3, 0.4, -0.5, 0.6, -0.7, 0.8, -0.9];
         let vector = BinaryQuantized::from_slice(&original);
         let iter_vec: Vec<_> = BinaryQuantized::iter(&vector).take(original.len()).collect();
@@ -283,7 +335,7 @@ mod test {
             1.0,
             -1.0,
             1.0,
-            1.0,
+            -1.0,
         ]
         "###);
         let mut vec_vec: Vec<_> = BinaryQuantized::to_vec(&vector);
@@ -298,7 +350,7 @@ mod test {
             1.0,
             -1.0,
             1.0,
-            1.0,
+            -1.0,
         ]
         "###);
 
