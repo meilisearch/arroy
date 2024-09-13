@@ -208,6 +208,46 @@ unsafe fn to_vec_simd(vec: &UnalignedVector<BinaryQuantized>) -> Vec<f32> {
     output
 }
 
+// Dedicated to mm256 (AVX). Doesn't provide any real perf gain.
+// #[cfg(not(any(target_arch = "aarch64", target_arch = "arm64ec")))]
+// unsafe fn to_vec_simd(vec: &UnalignedVector<BinaryQuantized>) -> Vec<f32> {
+//     use core::arch::x86_64::*;
+
+//     let mut output: Vec<f32> = vec![0.0; vec.len()];
+//     let output_ptr = output.as_mut_ptr();
+//     let bytes = vec.as_bytes();
+//     let mask = [
+//         0b_0000_0001,
+//         0b_0000_0010,
+//         0b_0000_0100,
+//         0b_0000_1000,
+//         0b_0001_0000,
+//         0b_0010_0000,
+//         0b_0100_0000,
+//         0b_1000_0000,
+//     ];
+//     let ones = unsafe { _mm256_set1_ps(1.0) };
+//     let minus = unsafe { _mm256_set1_ps(-1.0) };
+
+//     for (current_byte, base) in bytes.iter().enumerate() {
+//         unsafe {
+//             let base = _mm256_set1_epi32(*base as i32);
+//             let mask = _mm256_set_epi32(
+//                 mask[7], mask[6], mask[5], mask[4], mask[3], mask[2], mask[1], mask[0],
+//             );
+//             let mask = _mm256_and_si256(base, mask);
+//             // 0xffffffff if equal to zero and 0x00000000 otherwise
+//             let mask = _mm256_cmpeq_epi32(mask, _mm256_setzero_si256());
+//             let lane = _mm256_blendv_ps(ones, minus, _mm256_castsi256_ps(mask));
+//             let offset = output_ptr.add(current_byte * 8);
+//             // I don't understand why this is not aligned and I cannot use _mm256_store_ps
+//             _mm256_storeu_ps(offset, lane);
+//         }
+//     }
+
+//     output
+// }
+
 pub struct BinaryQuantizedIterator<'a> {
     current_element: QuantizedWord,
     current_iteration: usize,
