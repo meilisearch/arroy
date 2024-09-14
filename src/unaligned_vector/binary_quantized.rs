@@ -17,7 +17,7 @@ impl UnalignedVectorCodec for BinaryQuantized {
         let rem = bytes.len() % size_of::<QuantizedWord>();
         if rem == 0 {
             // safety: `UnalignedVector` is transparent
-            Ok(Cow::Borrowed(unsafe { transmute(bytes) }))
+            Ok(Cow::Borrowed(unsafe { transmute::<&[u8], &UnalignedVector<Self>>(bytes) }))
         } else {
             Err(SizeMismatch { vector_codec: "binary quantized", rem })
         }
@@ -66,8 +66,8 @@ unsafe fn from_slice_simd(slice: &[f32]) -> Vec<u8> {
     } else {
         size_of::<QuantizedWord>() - iterations
     };
-    let mut ret = vec![0; iterations + padding];
 
+    let mut ret = vec![0; iterations + padding];
     let ptr = slice.as_ptr();
 
     for (i, val) in ret.iter_mut().enumerate() {
@@ -151,26 +151,23 @@ unsafe fn to_vec_simd(vec: &UnalignedVector<BinaryQuantized>) -> Vec<f32> {
     let mut output: Vec<f32> = vec![0.0; vec.len()];
     let output_ptr = output.as_mut_ptr();
     let bytes = vec.as_bytes();
+    let low_mask = [0b_0000_0001, 0b_0000_0010, 0b_0000_0100, 0b_0000_1000];
+    let high_mask = [0b_0001_0000, 0b_0010_0000, 0b_0100_0000, 0b_1000_0000];
+    let ones = unsafe { vld1q_dup_f32(&1.0) };
+    let minus = unsafe { vld1q_dup_f32(&-1.0) };
 
     for (current_byte, base) in bytes.iter().enumerate() {
-        let base = *base as u32;
-        let low_mask = [0b_0000_0001, 0b_0000_0010, 0b_0000_0100, 0b_0000_1000];
-        let high_mask = [0b_0001_0000, 0b_0010_0000, 0b_0100_0000, 0b_1000_0000];
-
-        for (i, mask) in [low_mask, high_mask].iter().enumerate() {
-            unsafe {
-                let lane = vld1q_dup_u32(&base as *const u32);
-                let lane = vandq_u32(lane, vld1q_u32(mask.as_ptr()));
-                let lane = vceqzq_u32(lane);
-                // Make the exponent right (either 1 or -1)
-                //             sign exponent mantissa
-                let mask: u32 = 0b0_01111111_00000000000000000000000;
-                let lane = vorrq_u32(lane, vld1q_dup_u32(&mask as *const u32));
-                //             sign exponent mantissa
-                let mask: u32 = 0b1_01111111_00000000000000000000000;
-                let lane = vandq_u32(lane, vld1q_dup_u32(&mask as *const u32));
-                let lane = vreinterpretq_f32_u32(lane);
-                vst1q_f32(output_ptr.add(current_byte * 8 + i * 4), lane);
+        unsafe {
+            let base = *base as u32;
+            let base = vld1q_dup_u32(&base);
+            for (i, mask) in [low_mask, high_mask].iter().enumerate() {
+                let mask = vld1q_u32(mask.as_ptr());
+                let mask = vandq_u32(base, mask);
+                // 0xffffffff if equal to zero and 0x00000000 otherwise
+                let mask = vceqzq_u32(mask);
+                let lane = vbslq_f32(mask, minus, ones);
+                let offset = output_ptr.add(current_byte * 8 + i * 4);
+                vst1q_f32(offset, lane);
             }
         }
     }
