@@ -71,7 +71,7 @@ impl UnalignedVectorCodec for BinaryQuantized {
     }
 }
 
-fn from_slice_non_optimized(slice: &[f32]) -> Vec<u8> {
+pub(super) fn from_slice_non_optimized(slice: &[f32]) -> Vec<u8> {
     let mut output = Vec::with_capacity(slice.len() / QUANTIZED_WORD_SIZE);
     for chunk in slice.chunks(QUANTIZED_WORD_SIZE) {
         let mut word: QuantizedWord = 0;
@@ -154,7 +154,7 @@ unsafe fn from_slice_neon(slice: &[f32]) -> Vec<u8> {
     ret
 }
 
-fn to_vec_non_optimized(vec: &UnalignedVector<BinaryQuantized>) -> Vec<f32> {
+pub(super) fn to_vec_non_optimized(vec: &UnalignedVector<BinaryQuantized>) -> Vec<f32> {
     vec.iter().collect()
 }
 
@@ -295,126 +295,5 @@ impl ExactSizeIterator for BinaryQuantizedIterator<'_> {
         let (lower, upper) = self.size_hint();
         debug_assert_eq!(upper, Some(lower));
         lower
-    }
-}
-
-#[cfg(test)]
-mod test {
-    use insta::{assert_debug_snapshot, assert_snapshot};
-
-    use super::*;
-    use crate::internals::UnalignedVectorCodec;
-
-    #[test]
-    fn test_from_slice() {
-        let original = [0.1, 0.2, -0.3, 0.4, -0.5, 0.6, -0.7, 0.8, -0.9];
-        let vector = BinaryQuantized::from_slice(&original);
-
-        let internal = vector.as_bytes().iter().map(|b| format!("{b:08b}\n")).collect::<String>();
-        assert_snapshot!(internal, @r###"
-        10101011
-        00000000
-        00000000
-        00000000
-        00000000
-        00000000
-        00000000
-        00000000
-        "###);
-
-        let iter_vec: Vec<_> = BinaryQuantized::iter(&vector).take(original.len()).collect();
-        assert_debug_snapshot!(iter_vec, @r###"
-        [
-            1.0,
-            1.0,
-            -1.0,
-            1.0,
-            -1.0,
-            1.0,
-            -1.0,
-            1.0,
-            -1.0,
-        ]
-        "###);
-        let mut vec_vec: Vec<_> = BinaryQuantized::to_vec(&vector);
-        vec_vec.truncate(original.len());
-        assert_debug_snapshot!(vec_vec, @r###"
-        [
-            1.0,
-            1.0,
-            -1.0,
-            1.0,
-            -1.0,
-            1.0,
-            -1.0,
-            1.0,
-            -1.0,
-        ]
-        "###);
-
-        assert_eq!(vec_vec, iter_vec);
-    }
-
-    #[test]
-    fn super_truc() {
-        let original = [0.1, 0.2, -0.3, 0.4, -0.5, 0.6, -0.7, 0.8, -0.9];
-        let vector = BinaryQuantized::from_slice(&original);
-        let iter_vec: Vec<_> = BinaryQuantized::iter(&vector).take(original.len()).collect();
-        assert_debug_snapshot!(iter_vec, @r###"
-        [
-            1.0,
-            1.0,
-            -1.0,
-            1.0,
-            -1.0,
-            1.0,
-            -1.0,
-            1.0,
-            -1.0,
-        ]
-        "###);
-        let mut vec_vec: Vec<_> = BinaryQuantized::to_vec(&vector);
-        vec_vec.truncate(original.len());
-        assert_debug_snapshot!(vec_vec, @r###"
-        [
-            1.0,
-            1.0,
-            -1.0,
-            1.0,
-            -1.0,
-            1.0,
-            -1.0,
-            1.0,
-            -1.0,
-        ]
-        "###);
-
-        assert_eq!(vec_vec, iter_vec);
-    }
-
-    use proptest::collection::vec;
-    use proptest::prelude::*;
-
-    proptest! {
-        #[test]
-        fn prop_truc_1(
-            original in vec(-50f32..=50.2, 0..512)
-        ){
-            let vector = BinaryQuantized::from_slice(&original);
-            let iter_vec: Vec<_> = to_vec_non_optimized(&vector);
-            let vec_vec: Vec<_> = BinaryQuantized::to_vec(&vector);
-
-            assert_eq!(vec_vec, iter_vec);
-        }
-
-        #[test]
-        fn prop_truc_2(
-            original in vec(-50f32..=50.2, 0..516)
-        ){
-            let vector1 = BinaryQuantized::from_slice(&original);
-            let vector2 = from_slice_non_optimized(&original);
-
-            assert_eq!(vector1.as_bytes(), &vector2);
-        }
     }
 }

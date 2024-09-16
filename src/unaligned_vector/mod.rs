@@ -12,6 +12,9 @@ use bytemuck::pod_collect_to_vec;
 mod binary_quantized;
 mod f32;
 
+#[cfg(test)]
+mod binary_quantized_test;
+
 /// Determine the way the vectors should be read and written from the database
 pub trait UnalignedVectorCodec: std::borrow::ToOwned + Sized {
     /// Creates an unaligned vector from a slice of bytes.
