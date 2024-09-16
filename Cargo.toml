@@ -23,7 +23,6 @@ roaring = "0.10.5"
 tempfile = "3.10.1"
 thiserror = "1.0.61"
 nohash = "0.2.0"
-proptest = "1.5.0"
 
 [dev-dependencies]
 anyhow = "1.0.86"
@@ -32,6 +31,7 @@ clap = { version = "4.5.7", features = ["derive"] }
 env_logger = "0.11.3"
 insta = "1.39.0"
 instant-distance = "0.6.1"
+proptest = "1.5.0"
 rand = { version = "0.8.5", features = ["std_rng"] }
 tempfile = "3.10.1"
 
