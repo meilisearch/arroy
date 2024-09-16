@@ -61,16 +61,19 @@ unsafe fn from_slice_simd(slice: &[f32]) -> Vec<u8> {
 
     let iterations = slice.len() / size_of::<QuantizedWord>();
     // The size of the returned vector must be a multiple of a word
-    let padding = if iterations % size_of::<QuantizedWord>() == 0 {
-        0
-    } else {
-        size_of::<QuantizedWord>() - iterations
-    };
-
-    let mut ret = vec![0; iterations + padding];
+    let reminder = slice.len() % size_of::<QuantizedWord>();
+    let mut len = iterations;
+    if len % size_of::<QuantizedWord>() != 0 {
+        len += size_of::<QuantizedWord>() - len % size_of::<QuantizedWord>();
+    } else if reminder != 0 {
+        // if we generated a valid number of Word but we're missing a few bits
+        // then we need to add a full Word at the end.
+        len += size_of::<QuantizedWord>();
+    }
+    let mut ret = vec![0; len];
     let ptr = slice.as_ptr();
 
-    for (i, val) in ret.iter_mut().enumerate() {
+    for i in 0..iterations {
         unsafe {
             let lane = vld1q_f32(ptr.add(i * 8));
             let lane = vcltzq_f32(lane);
@@ -100,7 +103,7 @@ unsafe fn from_slice_simd(slice: &[f32]) -> Vec<u8> {
 
             let right = vaddvq_u32(lane) as u8;
 
-            *val = left | right;
+            ret[i] = left | right;
         }
     }
 
@@ -400,7 +403,7 @@ mod test {
     proptest! {
         #[test]
         fn prop_truc_1(
-            original in vec(-50f32..=50.2, 10..512)
+            original in vec(-50f32..=50.2, 0..512)
         ){
             let vector = BinaryQuantized::from_slice(&original);
             let iter_vec: Vec<_> = BinaryQuantized::iter(&vector).take(original.len()).collect();
@@ -412,7 +415,7 @@ mod test {
 
         #[test]
         fn prop_truc_2(
-            original in vec(-50f32..=50.2, 29..65)
+            original in vec(-50f32..=50.2, 0..516)
         ){
             let vector1 = BinaryQuantized::from_slice(&original);
             let vector2 = original_from_slice(&original);
