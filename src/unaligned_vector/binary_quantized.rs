@@ -47,7 +47,7 @@ impl UnalignedVectorCodec for BinaryQuantized {
         #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
         {
             if is_x86_feature_detected!("sse") {
-                return unsafe { to_vec_see(vec) };
+                return unsafe { to_vec_sse(vec) };
             }
         }
         to_vec_non_optimized(vec)
