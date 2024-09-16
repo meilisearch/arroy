@@ -24,9 +24,13 @@ impl UnalignedVectorCodec for BinaryQuantized {
     }
 
     fn from_slice(slice: &[f32]) -> Cow<'static, UnalignedVector<Self>> {
-        let output = unsafe { from_slice_simd(slice) };
-
-        Cow::Owned(output)
+        #[cfg(all(target_arch = "aarch64", target_feature = "neon"))]
+        {
+            if std::arch::is_aarch64_feature_detected!("neon") {
+                return Cow::Owned(unsafe { from_slice_neon(slice) });
+            }
+        }
+        Cow::Owned(from_slice_non_optimized(slice))
     }
 
     fn from_vec(vec: Vec<f32>) -> Cow<'static, UnalignedVector<Self>> {
@@ -34,7 +38,19 @@ impl UnalignedVectorCodec for BinaryQuantized {
     }
 
     fn to_vec(vec: &UnalignedVector<Self>) -> Vec<f32> {
-        unsafe { to_vec_simd(vec) }
+        #[cfg(all(target_arch = "aarch64", target_feature = "neon"))]
+        {
+            if std::arch::is_aarch64_feature_detected!("neon") {
+                return unsafe { to_vec_neon(vec) };
+            }
+        }
+        #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+        {
+            if is_x86_feature_detected!("sse") {
+                return unsafe { to_vec_see(vec) };
+            }
+        }
+        to_vec_non_optimized(vec)
     }
 
     fn iter(vec: &UnalignedVector<Self>) -> impl ExactSizeIterator<Item = f32> + '_ {
@@ -55,8 +71,21 @@ impl UnalignedVectorCodec for BinaryQuantized {
     }
 }
 
+fn from_slice_non_optimized(slice: &[f32]) -> Vec<u8> {
+    let mut output = Vec::with_capacity(slice.len() / QUANTIZED_WORD_SIZE);
+    for chunk in slice.chunks(QUANTIZED_WORD_SIZE) {
+        let mut word: QuantizedWord = 0;
+        for scalar in chunk.iter().rev() {
+            word <<= 1;
+            word += scalar.is_sign_positive() as QuantizedWord;
+        }
+        output.extend_from_slice(&word.to_ne_bytes());
+    }
+    output
+}
+
 #[cfg(any(target_arch = "aarch64", target_arch = "arm64ec"))]
-unsafe fn from_slice_simd(slice: &[f32]) -> Vec<u8> {
+unsafe fn from_slice_neon(slice: &[f32]) -> Vec<u8> {
     use core::arch::aarch64::*;
 
     let iterations = slice.len() / size_of::<QuantizedWord>();
@@ -73,6 +102,7 @@ unsafe fn from_slice_simd(slice: &[f32]) -> Vec<u8> {
     let mut ret = vec![0; len];
     let ptr = slice.as_ptr();
 
+    #[allow(clippy::needless_range_loop)]
     for i in 0..iterations {
         unsafe {
             let lane = vld1q_f32(ptr.add(i * 8));
@@ -124,31 +154,12 @@ unsafe fn from_slice_simd(slice: &[f32]) -> Vec<u8> {
     ret
 }
 
-#[cfg(not(any(target_arch = "aarch64", target_arch = "arm64ec")))]
-unsafe fn from_slice_simd(slice: &[f32]) -> Vec<u8> {
-    // fn convert(m: __m128i) -> [u32; 4] {
-    //     unsafe { std::mem::transmute(m) }
-    // }
-
-    // fn display(name: &str, m: __m128i) {
-    //     let [a, b, c, d] = convert(m);
-    //     eprintln!("{name}: {a:#b} {b:#b} {c:#b} {d:#b}");
-    // }
-
-    let mut output = Vec::with_capacity(slice.len() / QUANTIZED_WORD_SIZE);
-    for chunk in slice.chunks(QUANTIZED_WORD_SIZE) {
-        let mut word: QuantizedWord = 0;
-        for scalar in chunk.iter().rev() {
-            word <<= 1;
-            word += scalar.is_sign_positive() as QuantizedWord;
-        }
-        output.extend_from_slice(&word.to_ne_bytes());
-    }
-    output
+fn to_vec_non_optimized(vec: &UnalignedVector<BinaryQuantized>) -> Vec<f32> {
+    vec.iter().collect()
 }
 
 #[cfg(any(target_arch = "aarch64", target_arch = "arm64ec"))]
-unsafe fn to_vec_simd(vec: &UnalignedVector<BinaryQuantized>) -> Vec<f32> {
+unsafe fn to_vec_neon(vec: &UnalignedVector<BinaryQuantized>) -> Vec<f32> {
     use core::arch::aarch64::*;
 
     let mut output: Vec<f32> = vec![0.0; vec.len()];
@@ -179,7 +190,7 @@ unsafe fn to_vec_simd(vec: &UnalignedVector<BinaryQuantized>) -> Vec<f32> {
 }
 
 #[cfg(not(any(target_arch = "aarch64", target_arch = "arm64ec")))]
-unsafe fn to_vec_simd(vec: &UnalignedVector<BinaryQuantized>) -> Vec<f32> {
+unsafe fn to_vec_sse(vec: &UnalignedVector<BinaryQuantized>) -> Vec<f32> {
     use core::arch::x86_64::*;
 
     let mut output: Vec<f32> = vec![0.0; vec.len()];
@@ -210,7 +221,7 @@ unsafe fn to_vec_simd(vec: &UnalignedVector<BinaryQuantized>) -> Vec<f32> {
 
 // Dedicated to mm256 (AVX). Doesn't provide any real perf gain.
 // #[cfg(not(any(target_arch = "aarch64", target_arch = "arm64ec")))]
-// unsafe fn to_vec_simd(vec: &UnalignedVector<BinaryQuantized>) -> Vec<f32> {
+// unsafe fn to_vec_avx(vec: &UnalignedVector<BinaryQuantized>) -> Vec<f32> {
 //     use core::arch::x86_64::*;
 
 //     let mut output: Vec<f32> = vec![0.0; vec.len()];
@@ -289,26 +300,10 @@ impl ExactSizeIterator for BinaryQuantizedIterator<'_> {
 
 #[cfg(test)]
 mod test {
-    use std::borrow::Cow;
-
     use insta::{assert_debug_snapshot, assert_snapshot};
 
-    use super::{BinaryQuantized, QuantizedWord, QUANTIZED_WORD_SIZE};
-    use crate::internals::{UnalignedVector, UnalignedVectorCodec};
-
-    fn original_from_slice(slice: &[f32]) -> Cow<'static, UnalignedVector<BinaryQuantized>> {
-        let mut output: Vec<u8> = Vec::with_capacity(slice.len() / QUANTIZED_WORD_SIZE);
-        for chunk in slice.chunks(QUANTIZED_WORD_SIZE) {
-            let mut word: QuantizedWord = 0;
-            for scalar in chunk.iter().rev() {
-                word <<= 1;
-                word += scalar.is_sign_positive() as QuantizedWord;
-            }
-            output.extend_from_slice(&word.to_ne_bytes());
-        }
-
-        Cow::Owned(output)
-    }
+    use super::*;
+    use crate::internals::UnalignedVectorCodec;
 
     #[test]
     fn test_from_slice() {
@@ -406,9 +401,8 @@ mod test {
             original in vec(-50f32..=50.2, 0..512)
         ){
             let vector = BinaryQuantized::from_slice(&original);
-            let iter_vec: Vec<_> = BinaryQuantized::iter(&vector).take(original.len()).collect();
-            let mut vec_vec: Vec<_> = BinaryQuantized::to_vec(&vector);
-            vec_vec.truncate(original.len());
+            let iter_vec: Vec<_> = to_vec_non_optimized(&vector);
+            let vec_vec: Vec<_> = BinaryQuantized::to_vec(&vector);
 
             assert_eq!(vec_vec, iter_vec);
         }
@@ -418,9 +412,9 @@ mod test {
             original in vec(-50f32..=50.2, 0..516)
         ){
             let vector1 = BinaryQuantized::from_slice(&original);
-            let vector2 = original_from_slice(&original);
+            let vector2 = from_slice_non_optimized(&original);
 
-            assert_eq!(vector1.as_bytes(), vector2.as_bytes());
+            assert_eq!(vector1.as_bytes(), &vector2);
         }
     }
 }
