@@ -3,7 +3,7 @@ use std::{
     mem::{size_of, transmute},
 };
 
-use bytemuck::{cast_slice, checked::cast_slice_mut};
+use bytemuck::cast_slice;
 use byteorder::{ByteOrder, NativeEndian};
 
 use super::{SizeMismatch, UnalignedVector, UnalignedVectorCodec};
