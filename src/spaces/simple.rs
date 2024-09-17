@@ -84,32 +84,38 @@ pub fn dot_product_non_optimized(u: &UnalignedVector<f32>, v: &UnalignedVector<f
 
 /// For the binary quantized dot product:
 /// 1. We need to multiply two scalars, in our case the only allowed values are -1 and 1:
+/// ```text
 /// -1 * -1 =  1
 /// -1 *  1 = -1
 ///  1 * -1 = -1
 ///  1 *  1 =  1
+/// ```
 ///
 /// This looks like a negative xor already, if we replace the -1 by the binary quantized 0, and the 1 stays 1s:
+/// ```text
 /// ! 0 ^ 0 = 1
 /// ! 0 ^ 1 = 0
 /// ! 1 ^ 0 = 0
 /// ! 1 ^ 1 = 1
+/// ```
 /// Is equivalent to `!(a ^ b)`.
 ///
 /// 2. Then we need to do the sum of the results:
 /// 2.1 First we must do the sum of the operation on the `Word`s
-///  /!\ We must be careful here because `1 - 0` actually translates to `1 - 1 = 0`.
-///  `word.count_ones() - word.count_zeroes()` should do it:
+///     /!\ We must be careful here because `1 - 0` actually translates to `1 - 1 = 0`.
+///     `word.count_ones() - word.count_zeroes()` should do it:
+/// ```text
 ///  00 => -2
 ///  01 => 0
 ///  10 => 0
 ///  11 => 2
+/// ```
 ///  /!\ We must also take care to use signed integer to be able to go into negatives
 ///
 /// 2.2 Finally we must sum the result of all the words
-///  - By taking care of not overflowing: The biggest vectors contains like 5000 dimensions, a i16 could be enough. A i32 should be perfect.
-///  - We can do the sum straight away without any more tricks
-///  - We can cast the result to an f32 as expected
+///     - By taking care of not overflowing: The biggest vectors contains like 5000 dimensions, a i16 could be enough. A i32 should be perfect.
+///     - We can do the sum straight away without any more tricks
+///     - We can cast the result to an f32 as expected
 pub fn dot_product_binary_quantized(
     u: &UnalignedVector<BinaryQuantized>,
     v: &UnalignedVector<BinaryQuantized>,
