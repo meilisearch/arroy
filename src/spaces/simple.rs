@@ -101,9 +101,9 @@ pub fn dot_product_non_optimized(u: &UnalignedVector<f32>, v: &UnalignedVector<f
 /// Is equivalent to `!(a ^ b)`.
 ///
 /// 2. Then we need to do the sum of the results:
-/// 2.1 First we must do the sum of the operation on the `Word`s
-///     /!\ We must be careful here because `1 - 0` actually translates to `1 - 1 = 0`.
-///     `word.count_ones() - word.count_zeroes()` should do it:
+///    2.1 First we must do the sum of the operation on the `Word`s
+///        /!\ We must be careful here because `1 - 0` actually translates to `1 - 1 = 0`.
+///        `word.count_ones() - word.count_zeroes()` should do it:
 /// ```text
 ///  00 => -2
 ///  01 => 0
