@@ -95,17 +95,17 @@ impl Distance for BinaryQuantizedEuclidean {
 ///
 /// If we replace the `-1` by the binary quantized `0`, and the `1` stays `1`s:
 /// ```text
-/// 0 * 0 = 0
-/// 0 * 1 = 1
-/// 1 * 0 = 1
-/// 1 * 1 = 0
+/// 0 ^ 0 = 0
+/// 0 ^ 1 = 1
+/// 1 ^ 0 = 1
+/// 1 ^ 1 = 0
 /// ```
 ///
 /// The result must be multiplicated by `4`. But that can be done at the very end.
 ///
 /// 2. Then we need to do the sum of the results:
-///  Since we cannot go into the negative, it's safe to hold everything in a `u32` and simply counts the `1`s.
-///  At the very end, before converting the value to a `f32` we can multiplies everything by 4.
+///    Since we cannot go into the negative, it's safe to hold everything in a `u32` and simply counts the `1`s.
+///    At the very end, before converting the value to a `f32` we can multiply everything by 4.
 fn squared_euclidean_distance_binary_quantized(
     u: &UnalignedVector<BinaryQuantized>,
     v: &UnalignedVector<BinaryQuantized>,
