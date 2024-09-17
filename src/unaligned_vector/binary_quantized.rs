@@ -1,5 +1,5 @@
 use std::borrow::Cow;
-use std::mem::{size_of, transmute};
+use std::mem::transmute;
 use std::slice::ChunksExact;
 
 use super::{SizeMismatch, UnalignedVector, UnalignedVectorCodec};
@@ -7,14 +7,16 @@ use super::{SizeMismatch, UnalignedVector, UnalignedVectorCodec};
 /// The type of the words used to quantize a vector
 type QuantizedWord = u64;
 /// The size of the words used to quantize a vector
-const QUANTIZED_WORD_SIZE: usize = QuantizedWord::BITS as usize;
+const QUANTIZED_WORD_BITS: usize = QuantizedWord::BITS as usize;
+/// The number of bytes composing a Word
+const QUANTIZED_WORD_BYTES: usize = std::mem::size_of::<QuantizedWord>();
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum BinaryQuantized {}
 
 impl UnalignedVectorCodec for BinaryQuantized {
     fn from_bytes(bytes: &[u8]) -> Result<Cow<UnalignedVector<Self>>, SizeMismatch> {
-        let rem = bytes.len() % size_of::<QuantizedWord>();
+        let rem = bytes.len() % QUANTIZED_WORD_BYTES;
         if rem == 0 {
             // safety: `UnalignedVector` is transparent
             Ok(Cow::Borrowed(unsafe { transmute::<&[u8], &UnalignedVector<Self>>(bytes) }))
@@ -57,13 +59,13 @@ impl UnalignedVectorCodec for BinaryQuantized {
         BinaryQuantizedIterator {
             current_element: 0,
             // Force the pulling of the first word
-            current_iteration: QUANTIZED_WORD_SIZE,
-            iter: vec.vector.chunks_exact(size_of::<QuantizedWord>()),
+            current_iteration: QUANTIZED_WORD_BITS,
+            iter: vec.vector.chunks_exact(QUANTIZED_WORD_BYTES),
         }
     }
 
     fn len(vec: &UnalignedVector<Self>) -> usize {
-        (vec.vector.len() / size_of::<QuantizedWord>()) * QUANTIZED_WORD_SIZE
+        (vec.vector.len() / QUANTIZED_WORD_BYTES) * QUANTIZED_WORD_BITS
     }
 
     fn is_zero(vec: &UnalignedVector<Self>) -> bool {
@@ -72,8 +74,8 @@ impl UnalignedVectorCodec for BinaryQuantized {
 }
 
 pub(super) fn from_slice_non_optimized(slice: &[f32]) -> Vec<u8> {
-    let mut output = Vec::with_capacity(slice.len() / QUANTIZED_WORD_SIZE);
-    for chunk in slice.chunks(QUANTIZED_WORD_SIZE) {
+    let mut output = Vec::with_capacity(slice.len() / QUANTIZED_WORD_BITS);
+    for chunk in slice.chunks(QUANTIZED_WORD_BITS) {
         let mut word: QuantizedWord = 0;
         for scalar in chunk.iter().rev() {
             word <<= 1;
@@ -88,16 +90,16 @@ pub(super) fn from_slice_non_optimized(slice: &[f32]) -> Vec<u8> {
 unsafe fn from_slice_neon(slice: &[f32]) -> Vec<u8> {
     use core::arch::aarch64::*;
 
-    let iterations = slice.len() / size_of::<QuantizedWord>();
+    let iterations = slice.len() / QUANTIZED_WORD_BYTES;
     // The size of the returned vector must be a multiple of a word
-    let remaining = slice.len() % size_of::<QuantizedWord>();
+    let remaining = slice.len() % QUANTIZED_WORD_BYTES;
     let mut len = iterations;
-    if len % size_of::<QuantizedWord>() != 0 {
-        len += size_of::<QuantizedWord>() - len % size_of::<QuantizedWord>();
+    if len % QUANTIZED_WORD_BYTES != 0 {
+        len += QUANTIZED_WORD_BYTES - len % QUANTIZED_WORD_BYTES;
     } else if remaining != 0 {
         // if we generated a valid number of Word but we're missing a few bits
         // then we need to add a full Word at the end.
-        len += size_of::<QuantizedWord>();
+        len += QUANTIZED_WORD_BYTES;
     }
     let mut ret = vec![0; len];
     let ptr = slice.as_ptr();
@@ -263,7 +265,7 @@ impl Iterator for BinaryQuantizedIterator<'_> {
     type Item = f32;
 
     fn next(&mut self) -> Option<Self::Item> {
-        if self.current_iteration >= QUANTIZED_WORD_SIZE {
+        if self.current_iteration >= QUANTIZED_WORD_BITS {
             let bytes = self.iter.next()?;
             self.current_element = QuantizedWord::from_ne_bytes(bytes.try_into().unwrap());
             self.current_iteration = 0;
@@ -278,9 +280,9 @@ impl Iterator for BinaryQuantizedIterator<'_> {
 
     fn size_hint(&self) -> (usize, Option<usize>) {
         let (low, high) = self.iter.size_hint();
-        let rem = QUANTIZED_WORD_SIZE - self.current_iteration;
+        let rem = QUANTIZED_WORD_BITS - self.current_iteration;
 
-        (low * QUANTIZED_WORD_SIZE + rem, high.map(|h| h * QUANTIZED_WORD_SIZE + rem))
+        (low * QUANTIZED_WORD_BITS + rem, high.map(|h| h * QUANTIZED_WORD_BITS + rem))
     }
 }
 
