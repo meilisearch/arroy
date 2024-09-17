@@ -327,7 +327,7 @@ impl<'t, D: Distance> Reader<'t, D> {
                         writeln!(writer, "\t\t{} [label=\"{}\"]", key.node.item, key.node.item,)?
                     }
                     Node::SplitPlaneNormal(SplitPlaneNormal { normal, left, right }) => {
-                        if normal.iter().all(|n| n == 0.) {
+                        if normal.is_zero() {
                             writeln!(writer, "\t\t{} [color=red]", key.node.item)?;
                         }
                         writeln!(
