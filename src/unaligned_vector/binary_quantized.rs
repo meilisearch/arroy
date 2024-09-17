@@ -90,11 +90,11 @@ unsafe fn from_slice_neon(slice: &[f32]) -> Vec<u8> {
 
     let iterations = slice.len() / size_of::<QuantizedWord>();
     // The size of the returned vector must be a multiple of a word
-    let reminder = slice.len() % size_of::<QuantizedWord>();
+    let remaining = slice.len() % size_of::<QuantizedWord>();
     let mut len = iterations;
     if len % size_of::<QuantizedWord>() != 0 {
         len += size_of::<QuantizedWord>() - len % size_of::<QuantizedWord>();
-    } else if reminder != 0 {
+    } else if remaining != 0 {
         // if we generated a valid number of Word but we're missing a few bits
         // then we need to add a full Word at the end.
         len += size_of::<QuantizedWord>();
@@ -102,48 +102,42 @@ unsafe fn from_slice_neon(slice: &[f32]) -> Vec<u8> {
     let mut ret = vec![0; len];
     let ptr = slice.as_ptr();
 
+    let low: [u32; 4] = [
+        0b_00000000_00000000_00000000_00000001,
+        0b_00000000_00000000_00000000_00000010,
+        0b_00000000_00000000_00000000_00000100,
+        0b_00000000_00000000_00000000_00001000,
+    ];
+    let high: [u32; 4] = [
+        0b_00000000_00000000_00000000_00010000,
+        0b_00000000_00000000_00000000_00100000,
+        0b_00000000_00000000_00000000_01000000,
+        0b_00000000_00000000_00000000_10000000,
+    ];
+
     #[allow(clippy::needless_range_loop)]
     for i in 0..iterations {
         unsafe {
-            let lane = vld1q_f32(ptr.add(i * 8));
-            let lane = vcltzq_f32(lane);
-            let lane = vmvnq_u32(lane);
-            let mask: Vec<u32> = vec![
-                0b_00000000_00000000_00000000_00000001,
-                0b_00000000_00000000_00000000_00000010,
-                0b_00000000_00000000_00000000_00000100,
-                0b_00000000_00000000_00000000_00001000,
-            ];
-            let mask = vld1q_u32(mask.as_ptr());
-            let lane = vandq_u32(lane, mask);
+            let mut byte = 0;
+            for (idx, mask) in [low, high].iter().enumerate() {
+                let lane = vld1q_f32(ptr.add(i * 8 + 4 * idx));
+                let lane = vcltzq_f32(lane);
+                let lane = vmvnq_u32(lane);
+                let mask = vld1q_u32(mask.as_ptr());
+                let lane = vandq_u32(lane, mask);
 
-            let left = vaddvq_u32(lane) as u8;
-
-            let lane = vld1q_f32(ptr.add(i * 8 + 4));
-            let lane = vcltzq_f32(lane);
-            let lane = vmvnq_u32(lane);
-            let mask: Vec<u32> = vec![
-                0b_00000000_00000000_00000000_00010000,
-                0b_00000000_00000000_00000000_00100000,
-                0b_00000000_00000000_00000000_01000000,
-                0b_00000000_00000000_00000000_10000000,
-            ];
-            let mask = vld1q_u32(mask.as_ptr());
-            let lane = vandq_u32(lane, mask);
-
-            let right = vaddvq_u32(lane) as u8;
-
-            ret[i] = left | right;
+                byte |= vaddvq_u32(lane) as u8;
+            }
+            *ret.get_unchecked_mut(i) = byte;
         }
     }
 
     // Since we're iterating on bytes two by two.
     // If we had a number of dimensions not dividible by 8 we may be
     // missing some bits in the last byte.
-    let reminder = slice.len() % size_of::<QuantizedWord>();
-    if reminder != 0 {
+    if remaining != 0 {
         let mut rem: u8 = 0;
-        for r in slice[slice.len() - reminder..].iter().rev() {
+        for r in slice[slice.len() - remaining..].iter().rev() {
             rem <<= 1;
             let r = r.is_sign_positive();
             rem |= r as u8;

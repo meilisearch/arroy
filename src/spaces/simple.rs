@@ -83,17 +83,17 @@ pub fn dot_product_non_optimized(u: &UnalignedVector<f32>, v: &UnalignedVector<f
 }
 
 /// For the binary quantized dot product:
-/// 1. We need to multiplicate two scalars, in our case the only allowed values are -1 and 1:
+/// 1. We need to multiply two scalars, in our case the only allowed values are -1 and 1:
 /// -1 * -1 =  1
 /// -1 *  1 = -1
 ///  1 * -1 = -1
 ///  1 *  1 =  1
 ///
 /// This looks like a negative xor already, if we replace the -1 by the binary quantized 0, and the 1 stays 1s:
-/// 0 * 0 = 1
-/// 0 * 1 = 0
-/// 1 * 0 = 0
-/// 1 * 1 = 1
+/// ! 0 ^ 0 = 1
+/// ! 0 ^ 1 = 0
+/// ! 1 ^ 0 = 0
+/// ! 1 ^ 1 = 1
 /// Is equivalent to `!(a ^ b)`.
 ///
 /// 2. Then we need to do the sum of the results:
