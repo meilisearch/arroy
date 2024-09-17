@@ -120,7 +120,8 @@ pub struct SplitPlaneNormal<'a, D: Distance> {
 
 impl<D: Distance> fmt::Debug for SplitPlaneNormal<'_, D> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("SplitPlaneNormal")
+        let name = format!("SplitPlaneNormal<{}>", D::name());
+        f.debug_struct(&name)
             .field("left", &self.left)
             .field("right", &self.right)
             .field("normal", &self.normal)
