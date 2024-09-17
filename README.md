@@ -63,6 +63,12 @@ We do this k times so that we get a forest of trees. k has to be tuned to your n
 
 Dot Product distance (originally contributed by [@psobot](https://github.com/psobot) and [@pkorobov](https://github.com/pkorobov)) reduces the provided vectors from dot (or "inner-product") space to a more query-friendly cosine space using [a method by Bachrach et al., at Microsoft Research, published in 2014](https://www.microsoft.com/en-us/research/wp-content/uploads/2016/02/XboxInnerProduct.pdf).
 
+
+## Benchmarks
+
+The benchmarks are available [in another repository](https://github.com/meilisearch/vector-store-relevancy-benchmark).
+It shows the performances of arroy in terms of recall, disk size usage, search and indexing performances with different parameters compared to other competitors.
+
 ## Source code
 
 It's all written in Rust and based on LMDB without a handful of ugly optimizations for performance and memory usage. You have been warned :)
