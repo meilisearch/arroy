@@ -86,7 +86,7 @@ pub(super) fn from_slice_non_optimized(slice: &[f32]) -> Vec<u8> {
     output
 }
 
-#[cfg(any(target_arch = "aarch64", target_arch = "arm64ec"))]
+#[cfg(all(target_arch = "aarch64", target_feature = "neon"))]
 unsafe fn from_slice_neon(slice: &[f32]) -> Vec<u8> {
     use core::arch::aarch64::*;
 
@@ -117,7 +117,6 @@ unsafe fn from_slice_neon(slice: &[f32]) -> Vec<u8> {
         0b_00000000_00000000_00000000_10000000,
     ];
 
-    #[allow(clippy::needless_range_loop)]
     for i in 0..iterations {
         unsafe {
             let mut byte = 0;
@@ -154,7 +153,7 @@ pub(super) fn to_vec_non_optimized(vec: &UnalignedVector<BinaryQuantized>) -> Ve
     vec.iter().collect()
 }
 
-#[cfg(any(target_arch = "aarch64", target_arch = "arm64ec"))]
+#[cfg(all(target_arch = "aarch64", target_feature = "neon"))]
 unsafe fn to_vec_neon(vec: &UnalignedVector<BinaryQuantized>) -> Vec<f32> {
     use core::arch::aarch64::*;
 
@@ -185,7 +184,7 @@ unsafe fn to_vec_neon(vec: &UnalignedVector<BinaryQuantized>) -> Vec<f32> {
     output
 }
 
-#[cfg(not(any(target_arch = "aarch64", target_arch = "arm64ec")))]
+#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 unsafe fn to_vec_sse(vec: &UnalignedVector<BinaryQuantized>) -> Vec<f32> {
     use core::arch::x86_64::*;
 
