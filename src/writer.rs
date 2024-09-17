@@ -35,15 +35,23 @@ pub struct Writer<D: Distance> {
     database: Database<D>,
     index: u16,
     dimensions: usize,
+    /// The maximum number of items that must fit in a descendant node.
+    /// If not set the number of dimensions becoems the heuristic.
+    max_descendants_size: Option<usize>,
     /// The folder in which tempfile will write its temporary files.
     tmpdir: Option<PathBuf>,
 }
 
 impl<D: Distance> Writer<D> {
     /// Creates a new writer from a database, index and dimensions.
-    pub fn new(database: Database<D>, index: u16, dimensions: usize) -> Writer<D> {
+    pub fn new(
+        database: Database<D>,
+        index: u16,
+        dimensions: usize,
+        max_descendants_size: Option<usize>,
+    ) -> Writer<D> {
         let database: Database<D> = database.remap_data_type();
-        Writer { database, index, dimensions, tmpdir: None }
+        Writer { database, index, dimensions, max_descendants_size, tmpdir: None }
     }
 
     /// Returns a writer after having deleted the tree nodes and rewrote all the items
@@ -73,8 +81,14 @@ impl<D: Distance> Writer<D> {
             }
         }
 
-        let Writer { database, index, dimensions, tmpdir } = self;
-        Ok(Writer { database: database.remap_data_type(), index, dimensions, tmpdir })
+        let Writer { database, index, dimensions, max_descendants_size, tmpdir } = self;
+        Ok(Writer {
+            database: database.remap_data_type(),
+            index,
+            dimensions,
+            max_descendants_size,
+            tmpdir,
+        })
     }
 
     /// Specifies the folder in which arroy will write temporary files when building the tree.
@@ -249,7 +263,7 @@ impl<D: Distance> Writer<D> {
     // we simplify the max descendants (_K) thing by considering
     // that we can fit as much descendants as the number of dimensions
     fn fit_in_descendant(&self, n: u64) -> bool {
-        n <= self.dimensions as u64
+        n <= self.max_descendants_size.unwrap_or(self.dimensions) as u64
     }
 
     /// Generates a forest of `n_trees` trees.
