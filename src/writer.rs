@@ -52,7 +52,11 @@ impl<D: Distance> Writer<D> {
         if TypeId::of::<ND>() != TypeId::of::<D>() {
             clear_tree_nodes(wtxn, self.database, self.index)?;
 
-            let mut cursor = self.database.iter_mut(wtxn)?;
+            let mut cursor = self
+                .database
+                .remap_key_type::<PrefixCodec>()
+                .prefix_iter_mut(wtxn, &Prefix::item(self.index))?
+                .remap_key_type::<KeyCodec>();
             while let Some((item_id, node)) = cursor.next().transpose()? {
                 match node {
                     Node::Leaf(Leaf { header: _, vector }) => {

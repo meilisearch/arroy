@@ -3,7 +3,7 @@ use rand::seq::SliceRandom;
 use rand::Rng;
 
 use super::{create_database, rng};
-use crate::distance::{Angular, DotProduct, Euclidean};
+use crate::distance::{Angular, BinaryQuantizedAngular, DotProduct, Euclidean};
 use crate::{Database, Reader, Writer};
 
 #[test]
@@ -1002,4 +1002,43 @@ fn need_build() {
     let writer = Writer::new(handle.database, 0, 2);
     writer.del_item(&mut wtxn, 0).unwrap();
     assert!(writer.need_build(&wtxn).unwrap(), "because an item has been updated");
+}
+
+#[test]
+fn prepare_changing_distance() {
+    let handle = create_database::<Angular>();
+    let mut rng = rng();
+    let mut wtxn = handle.env.write_txn().unwrap();
+    let writer = Writer::new(handle.database, 0, 2);
+    writer.add_item(&mut wtxn, 0, &[0.0, 0.0]).unwrap();
+    writer.add_item(&mut wtxn, 1, &[1.0, 1.0]).unwrap();
+    writer.add_item(&mut wtxn, 3, &[3.0, 3.0]).unwrap();
+    writer.build(&mut wtxn, &mut rng, None).unwrap();
+    let writer = Writer::new(handle.database, 1, 2);
+    writer.add_item(&mut wtxn, 0, &[0.0, 0.0]).unwrap();
+    writer.add_item(&mut wtxn, 1, &[1.0, 1.0]).unwrap();
+    writer.add_item(&mut wtxn, 3, &[3.0, 3.0]).unwrap();
+    writer.build(&mut wtxn, &mut rng, None).unwrap();
+    let writer = Writer::new(handle.database, 2, 2);
+    writer.add_item(&mut wtxn, 0, &[0.0, 0.0]).unwrap();
+    writer.add_item(&mut wtxn, 1, &[1.0, 1.0]).unwrap();
+    writer.add_item(&mut wtxn, 3, &[3.0, 3.0]).unwrap();
+    writer.build(&mut wtxn, &mut rng, None).unwrap();
+    wtxn.commit().unwrap();
+
+    let mut wtxn = handle.env.write_txn().unwrap();
+    let writer = Writer::new(handle.database, 1, 2);
+
+    let writer = writer.prepare_changing_distance::<BinaryQuantizedAngular>(&mut wtxn).unwrap();
+    assert!(writer.need_build(&wtxn).unwrap(), "after changing the distance");
+
+    writer.build(&mut wtxn, &mut rng, None).unwrap();
+    wtxn.commit().unwrap();
+
+    // TODO: this should not works, see https://github.com/meilisearch/arroy/issues/92
+    let mut wtxn = handle.env.write_txn().unwrap();
+    let writer = Writer::new(handle.database, 1, 2);
+    writer.del_item(&mut wtxn, 0).unwrap();
+    assert!(writer.need_build(&wtxn).unwrap(), "because an item has been updated");
+    writer.build(&mut wtxn, &mut rng, None).unwrap();
 }
