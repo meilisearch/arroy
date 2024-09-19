@@ -1,4 +1,3 @@
-use std::borrow::Cow;
 use std::cmp::Reverse;
 use std::collections::BinaryHeap;
 use std::iter::repeat;
@@ -13,7 +12,8 @@ use roaring::RoaringBitmap;
 use crate::distance::Distance;
 use crate::internals::{KeyCodec, Side};
 use crate::item_iter::ItemIter;
-use crate::node::{Descendants, ItemIds, Leaf, SplitPlaneNormal, UnalignedF32Slice};
+use crate::node::{Descendants, ItemIds, Leaf, SplitPlaneNormal};
+use crate::unaligned_vector::UnalignedVector;
 use crate::{
     Database, Error, ItemId, Key, MetadataCodec, Node, NodeId, Prefix, PrefixCodec, Result, Stats,
     TreeStats,
@@ -102,7 +102,7 @@ impl<'t, D: Distance> Reader<'t, D> {
                 Node::SplitPlaneNormal(SplitPlaneNormal { normal, left, right }) => {
                     let left = recursive_depth(rtxn, database, index, left)?;
                     let right = recursive_depth(rtxn, database, index, right)?;
-                    let is_zero_normal = normal.iter().all(|f| f == 0.0) as usize;
+                    let is_zero_normal = normal.is_zero() as usize;
 
                     Ok(TreeStats {
                         depth: 1 + left.depth.max(right.depth),
@@ -131,7 +131,11 @@ impl<'t, D: Distance> Reader<'t, D> {
 
     /// Returns the vector for item `i` that was previously added.
     pub fn item_vector(&self, rtxn: &'t RoTxn, item: ItemId) -> Result<Option<Vec<f32>>> {
-        Ok(item_leaf(self.database, self.index, rtxn, item)?.map(|leaf| leaf.vector.into_owned()))
+        Ok(item_leaf(self.database, self.index, rtxn, item)?.map(|leaf| {
+            let mut vec = leaf.vector.to_vec();
+            vec.truncate(self.dimensions());
+            vec
+        }))
     }
 
     /// Returns `true` if the index is empty.
@@ -172,10 +176,13 @@ impl<'t, D: Distance> Reader<'t, D> {
         item: ItemId,
         count: usize,
         search_k: Option<NonZeroUsize>,
+        oversampling: Option<NonZeroUsize>,
         candidates: Option<&RoaringBitmap>,
     ) -> Result<Option<Vec<(ItemId, f32)>>> {
         match item_leaf(self.database, self.index, rtxn, item)? {
-            Some(leaf) => self.nns_by_leaf(rtxn, &leaf, count, search_k, candidates).map(Some),
+            Some(leaf) => {
+                self.nns_by_leaf(rtxn, &leaf, count, search_k, oversampling, candidates).map(Some)
+            }
             None => Ok(None),
         }
     }
@@ -189,6 +196,7 @@ impl<'t, D: Distance> Reader<'t, D> {
         vector: &[f32],
         count: usize,
         search_k: Option<NonZeroUsize>,
+        oversampling: Option<NonZeroUsize>,
         candidates: Option<&RoaringBitmap>,
     ) -> Result<Vec<(ItemId, f32)>> {
         if vector.len() != self.dimensions {
@@ -198,9 +206,9 @@ impl<'t, D: Distance> Reader<'t, D> {
             });
         }
 
-        let vector = UnalignedF32Slice::from_slice(vector);
-        let leaf = Leaf { header: D::new_header(vector), vector: Cow::Borrowed(vector) };
-        self.nns_by_leaf(rtxn, &leaf, count, search_k, candidates)
+        let vector = UnalignedVector::from_slice(vector);
+        let leaf = Leaf { header: D::new_header(&vector), vector };
+        self.nns_by_leaf(rtxn, &leaf, count, search_k, oversampling, candidates)
     }
 
     fn nns_by_leaf(
@@ -209,6 +217,7 @@ impl<'t, D: Distance> Reader<'t, D> {
         query_leaf: &Leaf<D>,
         count: usize,
         search_k: Option<NonZeroUsize>,
+        oversampling: Option<NonZeroUsize>,
         candidates: Option<&RoaringBitmap>,
     ) -> Result<Vec<(ItemId, f32)>> {
         if self.items.is_empty() {
@@ -219,6 +228,10 @@ impl<'t, D: Distance> Reader<'t, D> {
         let mut queue =
             BinaryHeap::with_capacity(self.roots.len() + self.items.len().ilog2() as usize);
         let search_k = search_k.map_or(count * self.roots.len(), NonZeroUsize::get);
+        let search_k = oversampling
+            .map_or(search_k.saturating_mul(D::DEFAULT_OVERSAMPLING), |oversampling| {
+                search_k.saturating_mul(oversampling.get())
+            });
 
         // Insert all the root nodes and associate them to the highest distance.
         queue.extend(repeat(OrderedFloat(f32::INFINITY)).zip(self.roots.iter().map(NodeId::tree)));
@@ -275,7 +288,7 @@ impl<'t, D: Distance> Reader<'t, D> {
             if output.len() == capacity {
                 break;
             }
-            output.push((item, D::normalized_distance(dist)));
+            output.push((item, D::normalized_distance(dist, self.dimensions)));
         }
 
         Ok(output)
@@ -314,7 +327,7 @@ impl<'t, D: Distance> Reader<'t, D> {
                         writeln!(writer, "\t\t{} [label=\"{}\"]", key.node.item, key.node.item,)?
                     }
                     Node::SplitPlaneNormal(SplitPlaneNormal { normal, left, right }) => {
-                        if normal.iter().all(|n| n == 0.) {
+                        if normal.is_zero() {
                             writeln!(writer, "\t\t{} [color=red]", key.node.item)?;
                         }
                         writeln!(

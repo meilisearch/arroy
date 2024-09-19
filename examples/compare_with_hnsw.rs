@@ -1,9 +1,8 @@
-use std::borrow::Cow;
 use std::num::NonZeroUsize;
 use std::time::Instant;
 
 use arroy::distances::Euclidean;
-use arroy::internals::{Leaf, UnalignedF32Slice};
+use arroy::internals::{Leaf, UnalignedVector};
 use arroy::{Database, Distance, ItemId, Reader, Result, Writer};
 use heed::{EnvOpenOptions, RwTxn};
 use instant_distance::{Builder, HnswMap, MapItem};
@@ -46,7 +45,8 @@ fn main() -> Result<()> {
     let search_k =
         if is_precise { NonZeroUsize::new(NUMBER_FETCHED * reader.n_trees() * 20) } else { None };
 
-    let arroy_results = reader.nns_by_item(&rtxn, 0, NUMBER_FETCHED, search_k, None)?.unwrap();
+    let arroy_results =
+        reader.nns_by_item(&rtxn, 0, NUMBER_FETCHED, search_k, None, None)?.unwrap();
     eprintln!("took {:.02?} to find into arroy", before.elapsed());
 
     let first = Point(reader.item_vector(&rtxn, 0)?.unwrap());
@@ -94,10 +94,10 @@ struct Point(Vec<f32>);
 
 impl instant_distance::Point for Point {
     fn distance(&self, other: &Self) -> f32 {
-        let this = UnalignedF32Slice::from_slice(&self.0);
-        let other = UnalignedF32Slice::from_slice(&other.0);
-        let p = Leaf { header: Euclidean::new_header(this), vector: Cow::Borrowed(this) };
-        let q = Leaf { header: Euclidean::new_header(other), vector: Cow::Borrowed(other) };
+        let this = UnalignedVector::from_slice(&self.0);
+        let other = UnalignedVector::from_slice(&other.0);
+        let p = Leaf { header: Euclidean::new_header(&this), vector: this };
+        let q = Leaf { header: Euclidean::new_header(&other), vector: other };
         arroy::distances::Euclidean::built_distance(&p, &q).sqrt()
     }
 }

@@ -13,7 +13,7 @@ use roaring::RoaringBitmap;
 use crate::distance::Distance;
 use crate::internals::{KeyCodec, Side};
 use crate::item_iter::ItemIter;
-use crate::node::{Descendants, ItemIds, Leaf, SplitPlaneNormal, UnalignedF32Slice};
+use crate::node::{Descendants, ItemIds, Leaf, SplitPlaneNormal};
 use crate::node_id::NodeMode;
 use crate::parallel::{
     ConcurrentNodeIds, ImmutableLeafs, ImmutableSubsetLeafs, ImmutableTrees, TmpNodes,
@@ -21,6 +21,7 @@ use crate::parallel::{
 };
 use crate::reader::item_leaf;
 use crate::roaring::RoaringBitmapCodec;
+use crate::unaligned_vector::UnalignedVector;
 use crate::{
     Database, Error, ItemId, Key, Metadata, MetadataCodec, Node, NodeCodec, NodeId, Prefix,
     PrefixCodec, Result,
@@ -51,14 +52,17 @@ impl<D: Distance> Writer<D> {
         if TypeId::of::<ND>() != TypeId::of::<D>() {
             clear_tree_nodes(wtxn, self.database, self.index)?;
 
-            let mut cursor = self.database.iter_mut(wtxn)?;
+            let mut cursor = self
+                .database
+                .remap_key_type::<PrefixCodec>()
+                .prefix_iter_mut(wtxn, &Prefix::item(self.index))?
+                .remap_key_type::<KeyCodec>();
             while let Some((item_id, node)) = cursor.next().transpose()? {
                 match node {
                     Node::Leaf(Leaf { header: _, vector }) => {
-                        let new_leaf = Node::Leaf(Leaf {
-                            header: ND::new_header(&vector),
-                            vector: Cow::Owned(vector.into_owned()),
-                        });
+                        let vector = vector.to_vec();
+                        let vector = UnalignedVector::from_vec(vector);
+                        let new_leaf = Node::Leaf(Leaf { header: ND::new_header(&vector), vector });
                         unsafe {
                             // safety: We do not keep a reference to the current value, we own it.
                             cursor.put_current_with_options::<NodeCodec<ND>>(
@@ -87,7 +91,11 @@ impl<D: Distance> Writer<D> {
 
     /// Returns an `Option`al vector previous stored in this database.
     pub fn item_vector(&self, rtxn: &RoTxn, item: ItemId) -> Result<Option<Vec<f32>>> {
-        Ok(item_leaf(self.database, self.index, rtxn, item)?.map(|leaf| leaf.vector.into_owned()))
+        Ok(item_leaf(self.database, self.index, rtxn, item)?.map(|leaf| {
+            let mut vec = leaf.vector.to_vec();
+            vec.truncate(self.dimensions);
+            vec
+        }))
     }
 
     /// Returns `true` if the index is empty.
@@ -138,8 +146,8 @@ impl<D: Distance> Writer<D> {
             });
         }
 
-        let vector = UnalignedF32Slice::from_slice(vector);
-        let leaf = Leaf { header: D::new_header(vector), vector: Cow::Borrowed(vector) };
+        let vector = UnalignedVector::from_slice(vector);
+        let leaf = Leaf { header: D::new_header(&vector), vector };
         self.database.put(wtxn, &Key::item(self.index, item), &Node::Leaf(leaf))?;
         let mut updated = self
             .database
@@ -169,8 +177,8 @@ impl<D: Distance> Writer<D> {
             });
         }
 
-        let vector = UnalignedF32Slice::from_slice(vector);
-        let leaf = Leaf { header: D::new_header(vector), vector: Cow::Borrowed(vector) };
+        let vector = UnalignedVector::from_slice(vector);
+        let leaf = Leaf { header: D::new_header(&vector), vector };
         let key = Key::item(self.index, item);
         match self.database.put_with_flags(wtxn, PutFlags::APPEND, &key, &Node::Leaf(leaf)) {
             Ok(()) => (),
@@ -335,11 +343,12 @@ impl<D: Distance> Writer<D> {
         log::debug!("Getting a reference to your {} items...", n_items);
 
         let used_node_ids = self.used_tree_node(wtxn)?;
+        let nb_tree_nodes = used_node_ids.len();
 
         let concurrent_node_ids = ConcurrentNodeIds::new(used_node_ids);
         let frozzen_reader = FrozzenReader {
-            leafs: &ImmutableLeafs::new(wtxn, self.database, self.index)?,
-            trees: &ImmutableTrees::new(wtxn, self.database, self.index)?,
+            leafs: &ImmutableLeafs::new(wtxn, self.database, self.index, item_indices.len())?,
+            trees: &ImmutableTrees::new(wtxn, self.database, self.index, nb_tree_nodes)?,
             // The globally incrementing node ids that are shared between threads.
             concurrent_node_ids: &concurrent_node_ids,
         };
@@ -554,7 +563,7 @@ impl<D: Distance> Writer<D> {
                         let mut left_ids = RoaringBitmap::new();
                         let mut right_ids = RoaringBitmap::new();
 
-                        if normal.iter().all(|d| d == 0.0) {
+                        if normal.is_zero() {
                             randomly_split_children(rng, to_insert, &mut left_ids, &mut right_ids);
                         } else {
                             for leaf in to_insert {
@@ -688,8 +697,8 @@ impl<D: Distance> Writer<D> {
         }
 
         let children = ImmutableSubsetLeafs::from_item_ids(reader.leafs, item_indices);
-        let mut children_left = RoaringBitmap::new();
-        let mut children_right = RoaringBitmap::new();
+        let mut children_left = Vec::with_capacity(children.len() as usize);
+        let mut children_right = Vec::with_capacity(children.len() as usize);
         let mut remaining_attempts = 3;
 
         let mut normal = loop {
@@ -699,13 +708,13 @@ impl<D: Distance> Writer<D> {
             let normal = D::create_split(&children, rng)?;
             for item_id in item_indices.iter() {
                 let node = children.get(item_id)?.unwrap();
-                match D::side(UnalignedF32Slice::from_slice(&normal), &node, rng) {
+                match D::side(&normal, &node, rng) {
                     Side::Left => children_left.push(item_id),
                     Side::Right => children_right.push(item_id),
                 };
             }
 
-            if split_imbalance(children_left.len(), children_right.len()) < 0.95
+            if split_imbalance(children_left.len() as u64, children_right.len() as u64) < 0.95
                 || remaining_attempts == 0
             {
                 break normal;
@@ -716,13 +725,23 @@ impl<D: Distance> Writer<D> {
 
         // If we didn't find a hyperplane, just randomize sides as a last option
         // and set the split plane to zero as a dummy plane.
-        if split_imbalance(children_left.len(), children_right.len()) > 0.99 {
-            randomly_split_children(rng, item_indices, &mut children_left, &mut children_right);
-            normal.fill(0.0);
-        }
+        let (children_left, children_right) =
+            if split_imbalance(children_left.len() as u64, children_right.len() as u64) > 0.99 {
+                let mut children_left = RoaringBitmap::new();
+                let mut children_right = RoaringBitmap::new();
+                randomly_split_children(rng, item_indices, &mut children_left, &mut children_right);
+                UnalignedVector::reset(&mut normal);
+
+                (children_left, children_right)
+            } else {
+                (
+                    RoaringBitmap::from_sorted_iter(children_left).unwrap(),
+                    RoaringBitmap::from_sorted_iter(children_right).unwrap(),
+                )
+            };
 
         let normal = SplitPlaneNormal {
-            normal: Cow::Owned(normal),
+            normal,
             left: self.make_tree_in_file(reader, rng, &children_left, tmp_nodes)?,
             right: self.make_tree_in_file(reader, rng, &children_right, tmp_nodes)?,
         };

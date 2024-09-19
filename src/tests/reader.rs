@@ -49,7 +49,7 @@ fn open_db_with_wrong_dimension() {
 
     let rtxn = handle.env.read_txn().unwrap();
     let reader = Reader::<Euclidean>::open(&rtxn, 0, handle.database).unwrap();
-    let ret = reader.nns_by_vector(&rtxn, &[1.0, 2.0, 3.0], 5, None, None).unwrap_err();
+    let ret = reader.nns_by_vector(&rtxn, &[1.0, 2.0, 3.0], 5, None, None, None).unwrap_err();
     insta::assert_snapshot!(ret, @"Invalid vector dimensions. Got 3 but expected 2");
 }
 
@@ -88,7 +88,7 @@ fn search_in_db_with_a_single_vector() {
     let rtxn = handle.env.read_txn().unwrap();
     let reader = Reader::<Angular>::open(&rtxn, 0, handle.database).unwrap();
 
-    let ret = reader.nns_by_item(&rtxn, 0, 1, None, None).unwrap();
+    let ret = reader.nns_by_item(&rtxn, 0, 1, None, None, None).unwrap();
     insta::assert_snapshot!(NnsRes(ret), @r###"
     id(0): distance(0)
     "###);
@@ -112,14 +112,14 @@ fn two_dimension_on_a_line() {
     let reader = Reader::<Euclidean>::open(&rtxn, 0, handle.database).unwrap();
 
     // if we can't look into enough nodes we find some random points
-    let ret = reader.nns_by_item(&rtxn, 0, 5, NonZeroUsize::new(1), None).unwrap();
+    let ret = reader.nns_by_item(&rtxn, 0, 5, NonZeroUsize::new(1), None, None).unwrap();
     insta::assert_snapshot!(NnsRes(ret), @r###"
     id(48): distance(48)
     id(92): distance(92)
     "###);
 
     // if we can look into all the node there is no inifinite loop and it works
-    let ret = reader.nns_by_item(&rtxn, 0, 5, NonZeroUsize::new(usize::MAX), None).unwrap();
+    let ret = reader.nns_by_item(&rtxn, 0, 5, NonZeroUsize::new(usize::MAX), None, None).unwrap();
     insta::assert_snapshot!(NnsRes(ret), @r###"
     id(0): distance(0)
     id(1): distance(1)
@@ -128,7 +128,7 @@ fn two_dimension_on_a_line() {
     id(4): distance(4)
     "###);
 
-    let ret = reader.nns_by_item(&rtxn, 0, 5, None, None).unwrap();
+    let ret = reader.nns_by_item(&rtxn, 0, 5, None, None, None).unwrap();
     insta::assert_snapshot!(NnsRes(ret), @r###"
     id(1): distance(1)
     id(2): distance(2)
@@ -158,7 +158,7 @@ fn two_dimension_on_a_column() {
 
     let rtxn = handle.env.read_txn().unwrap();
     let reader = Reader::<Euclidean>::open(&rtxn, 0, handle.database).unwrap();
-    let ret = reader.nns_by_item(&rtxn, 0, 5, None, None).unwrap();
+    let ret = reader.nns_by_item(&rtxn, 0, 5, None, None, None).unwrap();
 
     insta::assert_snapshot!(NnsRes(ret), @r###"
     id(1): distance(1)
@@ -207,14 +207,16 @@ fn filtering() {
     let rtxn = handle.env.read_txn().unwrap();
     let reader = Reader::<Euclidean>::open(&rtxn, 0, handle.database).unwrap();
 
-    let ret = reader.nns_by_item(&rtxn, 0, 5, None, Some(&RoaringBitmap::from_iter(0..2))).unwrap();
+    let ret =
+        reader.nns_by_item(&rtxn, 0, 5, None, None, Some(&RoaringBitmap::from_iter(0..2))).unwrap();
     insta::assert_snapshot!(NnsRes(ret), @r###"
     id(0): distance(0)
     id(1): distance(1)
     "###);
 
-    let ret =
-        reader.nns_by_item(&rtxn, 0, 5, None, Some(&RoaringBitmap::from_iter(98..1000))).unwrap();
+    let ret = reader
+        .nns_by_item(&rtxn, 0, 5, None, None, Some(&RoaringBitmap::from_iter(98..1000)))
+        .unwrap();
     insta::assert_snapshot!(NnsRes(ret), @r###"
     id(98): distance(98)
     id(99): distance(99)
@@ -233,7 +235,7 @@ fn search_in_empty_database() {
 
     let rtxn = handle.env.read_txn().unwrap();
     let reader = Reader::open(&rtxn, 0, handle.database).unwrap();
-    let ret = reader.nns_by_vector(&rtxn, &[0., 0.], 10, None, None).unwrap();
+    let ret = reader.nns_by_vector(&rtxn, &[0., 0.], 10, None, None, None).unwrap();
     insta::assert_debug_snapshot!(ret, @"[]");
 }
 

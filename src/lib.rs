@@ -60,7 +60,7 @@
 //!
 //! // Similar searching can be achieved by requesting the nearest neighbors of a given item.
 //! let item_id = 0;
-//! let arroy_results = reader.nns_by_item(&rtxn, item_id, n_results, search_k, None)?.unwrap();
+//! let arroy_results = reader.nns_by_item(&rtxn, item_id, n_results, search_k, None, None)?.unwrap();
 //! # Ok(()) }
 //! ```
 
@@ -88,6 +88,7 @@ mod writer;
 
 #[cfg(test)]
 mod tests;
+mod unaligned_vector;
 
 pub use distance::Distance;
 pub use error::Error;
@@ -104,10 +105,13 @@ pub mod internals {
     use rand::Rng;
 
     pub use crate::distance::{
-        NodeHeaderAngular, NodeHeaderDotProduct, NodeHeaderEuclidean, NodeHeaderManhattan,
+        NodeHeaderAngular, NodeHeaderBinaryQuantizedAngular, NodeHeaderBinaryQuantizedEuclidean,
+        NodeHeaderBinaryQuantizedManhattan, NodeHeaderDotProduct, NodeHeaderEuclidean,
+        NodeHeaderManhattan,
     };
     pub use crate::key::KeyCodec;
-    pub use crate::node::{Leaf, NodeCodec, UnalignedF32Slice};
+    pub use crate::node::{Leaf, NodeCodec};
+    pub use crate::unaligned_vector::{SizeMismatch, UnalignedVector, UnalignedVectorCodec};
 
     /// A type that is used to decide on
     /// which side of a plane we move an item.
@@ -132,7 +136,10 @@ pub mod internals {
 
 /// The set of distances implementing the [`Distance`] and supported by arroy.
 pub mod distances {
-    pub use crate::distance::{Angular, DotProduct, Euclidean, Manhattan};
+    pub use crate::distance::{
+        Angular, BinaryQuantizedAngular, BinaryQuantizedEuclidean, BinaryQuantizedManhattan,
+        DotProduct, Euclidean, Manhattan,
+    };
 }
 
 /// A custom Result type that is returning an arroy error by default.

@@ -5,9 +5,10 @@ use rand::Rng;
 
 use super::two_means;
 use crate::distance::Distance;
-use crate::node::{Leaf, UnalignedF32Slice};
+use crate::node::Leaf;
 use crate::parallel::ImmutableSubsetLeafs;
 use crate::spaces::simple::dot_product;
+use crate::unaligned_vector::UnalignedVector;
 
 /// A taxicab geometry or a Manhattan geometry is a geometry whose usual distance function
 /// or metric of Euclidean geometry is replaced by a new metric in which the distance between
@@ -25,12 +26,13 @@ pub struct NodeHeaderManhattan {
 
 impl Distance for Manhattan {
     type Header = NodeHeaderManhattan;
+    type VectorCodec = f32;
 
     fn name() -> &'static str {
         "manhattan"
     }
 
-    fn new_header(_vector: &UnalignedF32Slice) -> Self::Header {
+    fn new_header(_vector: &UnalignedVector<Self::VectorCodec>) -> Self::Header {
         NodeHeaderManhattan { bias: 0.0 }
     }
 
@@ -38,20 +40,27 @@ impl Distance for Manhattan {
         p.vector.iter().zip(q.vector.iter()).map(|(p, q)| (p - q).abs()).sum()
     }
 
-    fn normalized_distance(d: f32) -> f32 {
+    fn normalized_distance(d: f32, _dimension: usize) -> f32 {
         d.max(0.0)
+    }
+
+    fn norm_no_header(v: &UnalignedVector<Self::VectorCodec>) -> f32 {
+        dot_product(v, v).sqrt()
     }
 
     fn init(_node: &mut Leaf<Self>) {}
 
-    fn create_split<R: Rng>(
-        children: &ImmutableSubsetLeafs<Self>,
+    fn create_split<'a, R: Rng>(
+        children: &'a ImmutableSubsetLeafs<Self>,
         rng: &mut R,
-    ) -> heed::Result<Vec<f32>> {
+    ) -> heed::Result<Cow<'a, UnalignedVector<Self::VectorCodec>>> {
         let [node_p, node_q] = two_means(rng, children, false)?;
-        let vector = node_p.vector.iter().zip(node_q.vector.iter()).map(|(p, q)| p - q).collect();
-        let mut normal =
-            Leaf { header: NodeHeaderManhattan { bias: 0.0 }, vector: Cow::Owned(vector) };
+        let vector: Vec<_> =
+            node_p.vector.iter().zip(node_q.vector.iter()).map(|(p, q)| p - q).collect();
+        let mut normal = Leaf {
+            header: NodeHeaderManhattan { bias: 0.0 },
+            vector: UnalignedVector::from_vec(vector),
+        };
         Self::normalize(&mut normal);
 
         normal.header.bias = normal
@@ -62,14 +71,17 @@ impl Distance for Manhattan {
             .map(|((n, p), q)| -n * (p + q) / 2.0)
             .sum();
 
-        Ok(normal.vector.into_owned())
+        Ok(normal.vector)
     }
 
     fn margin(p: &Leaf<Self>, q: &Leaf<Self>) -> f32 {
         p.header.bias + dot_product(&p.vector, &q.vector)
     }
 
-    fn margin_no_header(p: &UnalignedF32Slice, q: &UnalignedF32Slice) -> f32 {
+    fn margin_no_header(
+        p: &UnalignedVector<Self::VectorCodec>,
+        q: &UnalignedVector<Self::VectorCodec>,
+    ) -> f32 {
         dot_product(p, q)
     }
 }

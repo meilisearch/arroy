@@ -1,7 +1,7 @@
 use std::arch::x86_64::*;
 use std::ptr::read_unaligned;
 
-use crate::node::UnalignedF32Slice;
+use crate::unaligned_vector::UnalignedVector;
 
 #[target_feature(enable = "avx")]
 #[target_feature(enable = "fma")]
@@ -14,7 +14,10 @@ unsafe fn hsum256_ps_avx(x: __m256) -> f32 {
 
 #[target_feature(enable = "avx")]
 #[target_feature(enable = "fma")]
-pub(crate) unsafe fn euclid_similarity_avx(v1: &UnalignedF32Slice, v2: &UnalignedF32Slice) -> f32 {
+pub(crate) unsafe fn euclid_similarity_avx(
+    v1: &UnalignedVector<f32>,
+    v2: &UnalignedVector<f32>,
+) -> f32 {
     // It is safe to load unaligned floats from a pointer.
     // <https://www.intel.com/content/www/us/en/docs/intrinsics-guide/index.html#text=_mm256_loadu_ps&ig_expand=4134>
 
@@ -63,7 +66,10 @@ pub(crate) unsafe fn euclid_similarity_avx(v1: &UnalignedF32Slice, v2: &Unaligne
 
 #[target_feature(enable = "avx")]
 #[target_feature(enable = "fma")]
-pub(crate) unsafe fn dot_similarity_avx(v1: &UnalignedF32Slice, v2: &UnalignedF32Slice) -> f32 {
+pub(crate) unsafe fn dot_similarity_avx(
+    v1: &UnalignedVector<f32>,
+    v2: &UnalignedVector<f32>,
+) -> f32 {
     // It is safe to load unaligned floats from a pointer.
     // <https://www.intel.com/content/www/us/en/docs/intrinsics-guide/index.html#text=_mm256_loadu_ps&ig_expand=4134>
 
@@ -126,15 +132,15 @@ mod tests {
                 56., 57., 58., 59., 60., 61.,
             ];
 
-            let v1 = UnalignedF32Slice::from_slice(&v1[..]);
-            let v2 = UnalignedF32Slice::from_slice(&v2[..]);
+            let v1 = UnalignedVector::from_slice(&v1[..]);
+            let v2 = UnalignedVector::from_slice(&v2[..]);
 
-            let euclid_simd = unsafe { euclid_similarity_avx(v1, v2) };
-            let euclid = euclidean_distance_non_optimized(v1, v2);
+            let euclid_simd = unsafe { euclid_similarity_avx(&v1, &v2) };
+            let euclid = euclidean_distance_non_optimized(&v1, &v2);
             assert_eq!(euclid_simd, euclid);
 
-            let dot_simd = unsafe { dot_similarity_avx(v1, v2) };
-            let dot = dot_product_non_optimized(v1, v2);
+            let dot_simd = unsafe { dot_similarity_avx(&v1, &v2) };
+            let dot = dot_product_non_optimized(&v1, &v2);
             assert_eq!(dot_simd, dot);
 
             // let cosine_simd = unsafe { cosine_preprocess_avx(v1.clone()) };
