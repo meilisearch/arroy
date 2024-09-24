@@ -115,7 +115,7 @@ impl fmt::Debug for ItemIds<'_> {
 pub struct SplitPlaneNormal<'a, D: Distance> {
     pub left: NodeId,
     pub right: NodeId,
-    pub normal: Cow<'a, UnalignedVector<D::VectorCodec>>,
+    pub normal: Leaf<'a, D>,
 }
 
 impl<D: Distance> fmt::Debug for SplitPlaneNormal<'_, D> {
@@ -153,7 +153,8 @@ impl<'a, D: Distance> BytesEncode<'a> for NodeCodec<D> {
                 bytes.push(SPLIT_PLANE_NORMAL_TAG);
                 bytes.extend_from_slice(&left.to_bytes());
                 bytes.extend_from_slice(&right.to_bytes());
-                bytes.extend_from_slice(normal.as_bytes());
+                bytes.extend_from_slice(bytes_of(&normal.header));
+                bytes.extend_from_slice(normal.vector.as_bytes());
             }
             Node::Descendants(Descendants { descendants }) => {
                 bytes.push(DESCENDANTS_TAG);
@@ -179,8 +180,11 @@ impl<'a, D: Distance> BytesDecode<'a> for NodeCodec<D> {
             [SPLIT_PLANE_NORMAL_TAG, bytes @ ..] => {
                 let (left, bytes) = NodeId::from_bytes(bytes);
                 let (right, bytes) = NodeId::from_bytes(bytes);
+                let (header_bytes, remaining) = bytes.split_at(size_of::<D::Header>());
+                let header = pod_read_unaligned(header_bytes);
+                let vector = UnalignedVector::<D::VectorCodec>::from_bytes(remaining)?;
                 Ok(Node::SplitPlaneNormal(SplitPlaneNormal {
-                    normal: UnalignedVector::<D::VectorCodec>::from_bytes(bytes)?,
+                    normal: Leaf { header, vector },
                     left,
                     right,
                 }))

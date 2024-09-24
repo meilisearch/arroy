@@ -90,7 +90,7 @@ impl Distance for DotProduct {
     fn create_split<'a, R: Rng>(
         children: &'a ImmutableSubsetLeafs<Self>,
         rng: &mut R,
-    ) -> heed::Result<Cow<'a, UnalignedVector<Self::VectorCodec>>> {
+    ) -> heed::Result<Leaf<'static, Self>> {
         let [node_p, node_q] = two_means(rng, children, true)?;
         let vector: Vec<f32> =
             node_p.vector.iter().zip(node_q.vector.iter()).map(|(p, q)| p - q).collect();
@@ -101,7 +101,7 @@ impl Distance for DotProduct {
         normal.header.extra_dim = node_p.header.extra_dim - node_q.header.extra_dim;
         Self::normalize(&mut normal);
 
-        Ok(normal.vector)
+        Ok(normal)
     }
 
     fn margin(p: &Leaf<Self>, q: &Leaf<Self>) -> f32 {
