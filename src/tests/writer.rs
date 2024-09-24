@@ -3,7 +3,7 @@ use rand::seq::SliceRandom;
 use rand::Rng;
 
 use super::{create_database, rng};
-use crate::distance::{Angular, BinaryQuantizedAngular, DotProduct, Euclidean};
+use crate::distance::{BinaryQuantizedCosine, Cosine, DotProduct, Euclidean};
 use crate::{Database, Reader, Writer};
 
 #[test]
@@ -507,7 +507,7 @@ fn delete_one_leaf_in_a_split() {
 
 #[test]
 fn delete_one_item_in_a_single_document_database() {
-    let handle = create_database::<Angular>();
+    let handle = create_database::<Cosine>();
     let mut rng = rng();
     let mut wtxn = handle.env.write_txn().unwrap();
     let writer = Writer::new(handle.database, 0, 2);
@@ -520,9 +520,9 @@ fn delete_one_item_in_a_single_document_database() {
     insta::assert_snapshot!(handle, @r###"
     ==================
     Dumping index 0
-    Item 0: Leaf(Leaf { header: NodeHeaderAngular { norm: 0.0 }, vector: [0.0000, 0.0000] })
+    Item 0: Leaf(Leaf { header: NodeHeaderCosine { norm: 0.0 }, vector: [0.0000, 0.0000] })
     Tree 0: Descendants(Descendants { descendants: [0] })
-    Root: Metadata { dimensions: 2, items: RoaringBitmap<[0]>, roots: [0], distance: "angular" }
+    Root: Metadata { dimensions: 2, items: RoaringBitmap<[0]>, roots: [0], distance: "cosine" }
     "###);
 
     let mut wtxn = handle.env.write_txn().unwrap();
@@ -536,7 +536,7 @@ fn delete_one_item_in_a_single_document_database() {
     insta::assert_snapshot!(handle, @r###"
     ==================
     Dumping index 0
-    Root: Metadata { dimensions: 2, items: RoaringBitmap<[]>, roots: [], distance: "angular" }
+    Root: Metadata { dimensions: 2, items: RoaringBitmap<[]>, roots: [], distance: "cosine" }
     "###);
 }
 
@@ -1006,7 +1006,7 @@ fn need_build() {
 
 #[test]
 fn prepare_changing_distance() {
-    let handle = create_database::<Angular>();
+    let handle = create_database::<Cosine>();
     let mut rng = rng();
     let mut wtxn = handle.env.write_txn().unwrap();
     let writer = Writer::new(handle.database, 0, 2);
@@ -1029,7 +1029,7 @@ fn prepare_changing_distance() {
     let mut wtxn = handle.env.write_txn().unwrap();
     let writer = Writer::new(handle.database, 1, 2);
 
-    let writer = writer.prepare_changing_distance::<BinaryQuantizedAngular>(&mut wtxn).unwrap();
+    let writer = writer.prepare_changing_distance::<BinaryQuantizedCosine>(&mut wtxn).unwrap();
     assert!(writer.need_build(&wtxn).unwrap(), "after changing the distance");
 
     writer.build(&mut wtxn, &mut rng, None).unwrap();

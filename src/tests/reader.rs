@@ -4,7 +4,7 @@ use std::num::NonZeroUsize;
 use roaring::RoaringBitmap;
 
 use super::*;
-use crate::distance::Angular;
+use crate::distance::Cosine;
 use crate::distances::{Euclidean, Manhattan};
 use crate::{ItemId, Reader, Writer};
 
@@ -77,7 +77,7 @@ fn open_db_with_wrong_distance() {
 #[test]
 fn search_in_db_with_a_single_vector() {
     // https://github.com/meilisearch/meilisearch/pull/4296
-    let handle = create_database::<Angular>();
+    let handle = create_database::<Cosine>();
     let mut wtxn = handle.env.write_txn().unwrap();
     let writer = Writer::new(handle.database, 0, 3);
     writer.add_item(&mut wtxn, 0, &[0.00397, 0.553, 0.0]).unwrap();
@@ -86,7 +86,7 @@ fn search_in_db_with_a_single_vector() {
     wtxn.commit().unwrap();
 
     let rtxn = handle.env.read_txn().unwrap();
-    let reader = Reader::<Angular>::open(&rtxn, 0, handle.database).unwrap();
+    let reader = Reader::<Cosine>::open(&rtxn, 0, handle.database).unwrap();
 
     let ret = reader.nns_by_item(&rtxn, 0, 1, None, None, None).unwrap();
     insta::assert_snapshot!(NnsRes(ret), @r###"

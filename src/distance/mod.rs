@@ -1,8 +1,7 @@
 use std::borrow::Cow;
 use std::fmt;
 
-pub use angular::{Angular, NodeHeaderAngular};
-pub use binary_quantized_angular::{BinaryQuantizedAngular, NodeHeaderBinaryQuantizedAngular};
+pub use binary_quantized_cosine::{BinaryQuantizedCosine, NodeHeaderBinaryQuantizedCosine};
 pub use binary_quantized_euclidean::{
     BinaryQuantizedEuclidean, NodeHeaderBinaryQuantizedEuclidean,
 };
@@ -10,6 +9,7 @@ pub use binary_quantized_manhattan::{
     BinaryQuantizedManhattan, NodeHeaderBinaryQuantizedManhattan,
 };
 use bytemuck::{Pod, Zeroable};
+pub use cosine::{Cosine, NodeHeaderCosine};
 pub use dot_product::{DotProduct, NodeHeaderDotProduct};
 pub use euclidean::{Euclidean, NodeHeaderEuclidean};
 use heed::{RwPrefix, RwTxn};
@@ -22,10 +22,10 @@ use crate::parallel::ImmutableSubsetLeafs;
 use crate::unaligned_vector::{UnalignedVector, UnalignedVectorCodec};
 use crate::NodeCodec;
 
-mod angular;
-mod binary_quantized_angular;
+mod binary_quantized_cosine;
 mod binary_quantized_euclidean;
 mod binary_quantized_manhattan;
+mod cosine;
 mod dot_product;
 mod euclidean;
 mod manhattan;
