@@ -10,7 +10,7 @@ use rayon::iter::repeatn;
 use rayon::prelude::*;
 use roaring::RoaringBitmap;
 
-use crate::distance::Distance;
+use crate::distance::{new_leaf, Distance};
 use crate::internals::{KeyCodec, Side};
 use crate::item_iter::ItemIter;
 use crate::node::{Descendants, ItemIds, Leaf, SplitPlaneNormal};
@@ -563,7 +563,7 @@ impl<D: Distance> Writer<D> {
                         let mut left_ids = RoaringBitmap::new();
                         let mut right_ids = RoaringBitmap::new();
 
-                        if normal.is_zero() {
+                        if normal.vector.is_zero() {
                             randomly_split_children(rng, to_insert, &mut left_ids, &mut right_ids);
                         } else {
                             for leaf in to_insert {
@@ -730,7 +730,7 @@ impl<D: Distance> Writer<D> {
                 let mut children_left = RoaringBitmap::new();
                 let mut children_right = RoaringBitmap::new();
                 randomly_split_children(rng, item_indices, &mut children_left, &mut children_right);
-                UnalignedVector::reset(&mut normal);
+                UnalignedVector::reset(&mut normal.vector);
 
                 (children_left, children_right)
             } else {

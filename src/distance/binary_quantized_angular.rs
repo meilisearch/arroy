@@ -1,5 +1,3 @@
-use std::borrow::Cow;
-
 use bytemuck::{Pod, Zeroable};
 use rand::Rng;
 
@@ -72,7 +70,7 @@ impl Distance for BinaryQuantizedAngular {
     fn create_split<'a, R: Rng>(
         children: &'a ImmutableSubsetLeafs<Self>,
         rng: &mut R,
-    ) -> heed::Result<Cow<'a, UnalignedVector<Self::VectorCodec>>> {
+    ) -> heed::Result<Leaf<'static, Self>> {
         let [node_p, node_q] = two_means::<Self, Angular, R>(rng, children, true)?;
         let vector: Vec<f32> =
             node_p.vector.iter().zip(node_q.vector.iter()).map(|(p, q)| p - q).collect();
@@ -83,7 +81,7 @@ impl Distance for BinaryQuantizedAngular {
         };
         Self::normalize(&mut normal);
 
-        Ok(normal.vector)
+        Ok(normal)
     }
 
     fn margin_no_header(

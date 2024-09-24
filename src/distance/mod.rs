@@ -30,7 +30,7 @@ mod dot_product;
 mod euclidean;
 mod manhattan;
 
-fn new_leaf<D: Distance>(vec: Vec<f32>) -> Leaf<'static, D> {
+pub fn new_leaf<D: Distance>(vec: Vec<f32>) -> Leaf<'static, D> {
     let vector = UnalignedVector::from_vec(vec);
     Leaf { header: D::new_header(&vector), vector }
 }
@@ -97,7 +97,7 @@ pub trait Distance: Send + Sync + Sized + Clone + fmt::Debug + 'static {
     fn create_split<'a, R: Rng>(
         children: &'a ImmutableSubsetLeafs<Self>,
         rng: &mut R,
-    ) -> heed::Result<Cow<'a, UnalignedVector<Self::VectorCodec>>>;
+    ) -> heed::Result<Leaf<'static, Self>>;
 
     fn margin(p: &Leaf<Self>, q: &Leaf<Self>) -> f32 {
         Self::margin_no_header(&p.vector, &q.vector)
@@ -108,12 +108,8 @@ pub trait Distance: Send + Sync + Sized + Clone + fmt::Debug + 'static {
         q: &UnalignedVector<Self::VectorCodec>,
     ) -> f32;
 
-    fn side<R: Rng>(
-        normal_plane: &UnalignedVector<Self::VectorCodec>,
-        node: &Leaf<Self>,
-        rng: &mut R,
-    ) -> Side {
-        let dot = Self::margin_no_header(&node.vector, normal_plane);
+    fn side<R: Rng>(normal_plane: &Leaf<Self>, node: &Leaf<Self>, rng: &mut R) -> Side {
+        let dot = Self::margin(normal_plane, node);
         if dot > 0.0 {
             Side::Right
         } else if dot < 0.0 {

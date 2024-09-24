@@ -3,7 +3,7 @@ use std::borrow::Cow;
 use bytemuck::{Pod, Zeroable};
 use rand::Rng;
 
-use super::{two_means_binary_quantized as two_means, Manhattan};
+use super::{two_means_binary_quantized as two_means, Manhattan, NodeHeaderManhattan};
 use crate::distance::Distance;
 use crate::node::Leaf;
 use crate::parallel::ImmutableSubsetLeafs;
@@ -63,17 +63,35 @@ impl Distance for BinaryQuantizedManhattan {
     fn create_split<'a, R: Rng>(
         children: &'a ImmutableSubsetLeafs<Self>,
         rng: &mut R,
-    ) -> heed::Result<Cow<'a, UnalignedVector<Self::VectorCodec>>> {
+    ) -> heed::Result<Leaf<'static, Self>> {
         let [node_p, node_q] = two_means::<Self, Manhattan, R>(rng, children, false)?;
         let vector: Vec<f32> =
             node_p.vector.iter().zip(node_q.vector.iter()).map(|(p, q)| p - q).collect();
         let mut normal = Leaf {
-            header: NodeHeaderBinaryQuantizedManhattan { bias: 0.0 },
+            header: NodeHeaderBinaryQuantizedManhattan::zeroed(),
             vector: UnalignedVector::from_slice(&vector),
         };
         Self::normalize(&mut normal);
 
-        Ok(Cow::Owned(normal.vector.into_owned()))
+        normal.header.bias = normal
+            .vector
+            .iter()
+            .zip(
+                UnalignedVector::<BinaryQuantized>::from_slice(
+                    &node_p.vector.iter().collect::<Vec<_>>(),
+                )
+                .iter(),
+            )
+            .zip(
+                UnalignedVector::<BinaryQuantized>::from_slice(
+                    &node_q.vector.iter().collect::<Vec<_>>(),
+                )
+                .iter(),
+            )
+            .map(|((n, p), q)| -n * (p + q) / 2.0)
+            .sum();
+
+        Ok(normal.into_owned())
     }
 
     fn margin(p: &Leaf<Self>, q: &Leaf<Self>) -> f32 {
