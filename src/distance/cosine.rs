@@ -14,25 +14,25 @@ use crate::unaligned_vector::UnalignedVector;
 /// non-zero vectors defined in an inner product space. Cosine similarity
 /// is the cosine of the angle between the vectors.
 #[derive(Debug, Clone)]
-pub enum Angular {}
+pub enum Cosine {}
 
-/// The header of Angular leaf nodes.
+/// The header of Cosine leaf nodes.
 #[repr(C)]
 #[derive(Pod, Zeroable, Debug, Clone, Copy)]
-pub struct NodeHeaderAngular {
+pub struct NodeHeaderCosine {
     norm: f32,
 }
 
-impl Distance for Angular {
-    type Header = NodeHeaderAngular;
+impl Distance for Cosine {
+    type Header = NodeHeaderCosine;
     type VectorCodec = f32;
 
     fn name() -> &'static str {
-        "angular"
+        "cosine"
     }
 
     fn new_header(vector: &UnalignedVector<Self::VectorCodec>) -> Self::Header {
-        NodeHeaderAngular { norm: Self::norm_no_header(vector) }
+        NodeHeaderCosine { norm: Self::norm_no_header(vector) }
     }
 
     fn built_distance(p: &Leaf<Self>, q: &Leaf<Self>) -> f32 {
@@ -72,7 +72,7 @@ impl Distance for Angular {
         let vector: Vec<f32> =
             node_p.vector.iter().zip(node_q.vector.iter()).map(|(p, q)| p - q).collect();
         let unaligned_vector = UnalignedVector::from_vec(vector);
-        let mut normal = Leaf { header: NodeHeaderAngular { norm: 0.0 }, vector: unaligned_vector };
+        let mut normal = Leaf { header: NodeHeaderCosine { norm: 0.0 }, vector: unaligned_vector };
         Self::normalize(&mut normal);
 
         Ok(normal.vector)

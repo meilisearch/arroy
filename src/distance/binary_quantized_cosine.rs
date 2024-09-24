@@ -3,7 +3,7 @@ use std::borrow::Cow;
 use bytemuck::{Pod, Zeroable};
 use rand::Rng;
 
-use super::{two_means_binary_quantized as two_means, Angular};
+use super::{two_means_binary_quantized as two_means, Cosine};
 use crate::distance::Distance;
 use crate::node::Leaf;
 use crate::parallel::ImmutableSubsetLeafs;
@@ -16,27 +16,27 @@ use crate::unaligned_vector::{BinaryQuantized, UnalignedVector};
 /// /!\ This distance function is binary quantized, which means it loses all its precision
 ///     and their scalar values are converted to `-1` or `1`.
 #[derive(Debug, Clone)]
-pub enum BinaryQuantizedAngular {}
+pub enum BinaryQuantizedCosine {}
 
-/// The header of `BinaryQuantizedAngular` leaf nodes.
+/// The header of `BinaryQuantizedCosine` leaf nodes.
 #[repr(C)]
 #[derive(Pod, Zeroable, Debug, Clone, Copy)]
-pub struct NodeHeaderBinaryQuantizedAngular {
+pub struct NodeHeaderBinaryQuantizedCosine {
     norm: f32,
 }
 
-impl Distance for BinaryQuantizedAngular {
+impl Distance for BinaryQuantizedCosine {
     const DEFAULT_OVERSAMPLING: usize = 3;
 
-    type Header = NodeHeaderBinaryQuantizedAngular;
+    type Header = NodeHeaderBinaryQuantizedCosine;
     type VectorCodec = BinaryQuantized;
 
     fn name() -> &'static str {
-        "binary quantized angular"
+        "binary quantized cosine"
     }
 
     fn new_header(vector: &UnalignedVector<Self::VectorCodec>) -> Self::Header {
-        NodeHeaderBinaryQuantizedAngular { norm: Self::norm_no_header(vector) }
+        NodeHeaderBinaryQuantizedCosine { norm: Self::norm_no_header(vector) }
     }
 
     fn built_distance(p: &Leaf<Self>, q: &Leaf<Self>) -> f32 {
@@ -73,12 +73,12 @@ impl Distance for BinaryQuantizedAngular {
         children: &'a ImmutableSubsetLeafs<Self>,
         rng: &mut R,
     ) -> heed::Result<Cow<'a, UnalignedVector<Self::VectorCodec>>> {
-        let [node_p, node_q] = two_means::<Self, Angular, R>(rng, children, true)?;
+        let [node_p, node_q] = two_means::<Self, Cosine, R>(rng, children, true)?;
         let vector: Vec<f32> =
             node_p.vector.iter().zip(node_q.vector.iter()).map(|(p, q)| p - q).collect();
         let unaligned_vector = UnalignedVector::from_vec(vector);
         let mut normal = Leaf {
-            header: NodeHeaderBinaryQuantizedAngular { norm: 0.0 },
+            header: NodeHeaderBinaryQuantizedCosine { norm: 0.0 },
             vector: unaligned_vector,
         };
         Self::normalize(&mut normal);
