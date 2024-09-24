@@ -27,6 +27,76 @@ use crate::{
     PrefixCodec, Result,
 };
 
+/// The options available when building the arroy database.
+#[derive(Default, Clone)]
+pub struct BuildOption {
+    /// The number of trees to build. If `None` arroy will determine the best amount to build for your number of vectors itself.
+    pub n_trees: Option<usize>,
+    /// Configure the maximum number of items stored in a descendant node.
+    /// This is only applied to the newly created or updated tree node.
+    /// If the value is modified while working on an already existing database,
+    /// the nodes that don't need to be updated won't be recreated.
+    pub split_after: Option<usize>,
+}
+
+impl BuildOption {
+    /// Create a new `BuildOption`.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use arroy::BuildOption;
+    /// BuildOption::new();
+    /// ```
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// The number of trees to build. If not set arroy will determine the best amount to build for your number of vectors itself.
+    /// See also `[Self::with_maybe_n_trees]`.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use arroy::BuildOption;
+    /// BuildOption::new().with_n_trees(10);
+    /// ```
+    pub fn with_n_trees(&mut self, n_trees: usize) -> &mut Self {
+        self.n_trees = Some(n_trees);
+        self
+    }
+
+    /// The number of trees to build. If `None` arroy will determine the best amount to build for your number of vectors itself.
+    /// See also `[Self::with_n_trees]`.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use arroy::BuildOption;
+    /// BuildOption::new().with_maybe_n_trees(Some(10));
+    /// ```
+    pub fn with_maybe_n_trees(&mut self, n_trees: Option<usize>) -> &mut Self {
+        self.n_trees = n_trees;
+        self
+    }
+
+    /// Configure the maximum number of items stored in a descendant node.
+    /// This is only applied to the newly created or updated tree node.
+    /// If the value is modified while working on an already existing database,
+    /// the nodes that don't need to be updated won't be recreated.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use arroy::BuildOption;
+    /// BuildOption::new().with_split_after(1000);
+    /// ```
+    pub fn with_split_after(&mut self, split_after: usize) -> &mut Self {
+        self.split_after = Some(split_after);
+        self
+    }
+}
+
 /// A writer to store new items, remove existing ones,
 /// and build the search tree to query the nearest
 /// neighbors to items or vectors.
@@ -252,8 +322,9 @@ impl<D: Distance> Writer<D> {
 
     // we simplify the max descendants (_K) thing by considering
     // that we can fit as much descendants as the number of dimensions
-    fn fit_in_descendant(&self, n: u64) -> bool {
-        n <= self.dimensions as u64
+    fn fit_in_descendant(&self, opt: &BuildOption, n: u64) -> bool {
+        let max_in_descendant = opt.split_after.unwrap_or(self.dimensions) as u64;
+        n <= max_in_descendant
     }
 
     /// Generates a forest of `n_trees` trees.
@@ -268,7 +339,7 @@ impl<D: Distance> Writer<D> {
         self,
         wtxn: &mut RwTxn,
         rng: &mut R,
-        n_trees: Option<usize>,
+        options: &BuildOption,
     ) -> Result<()> {
         log::debug!("started preprocessing the items...");
 
@@ -283,7 +354,7 @@ impl<D: Distance> Writer<D> {
         let item_indices = self.item_indices(wtxn)?;
         let n_items = item_indices.len();
 
-        if self.fit_in_descendant(item_indices.len()) {
+        if self.fit_in_descendant(options, item_indices.len()) {
             log::debug!("We can fit every elements in a single descendant node, we can skip all the build process");
             // No item left in the index, we can clear every tree
 
@@ -363,7 +434,7 @@ impl<D: Distance> Writer<D> {
                 metadata.roots.len()
             );
             let (new_roots, mut tmp_nodes_reader) =
-                self.update_trees(rng, metadata, &to_insert, to_delete, &frozzen_reader)?;
+                self.update_trees(options, rng, metadata, &to_insert, to_delete, &frozzen_reader)?;
             nodes_to_write.append(&mut tmp_nodes_reader);
             roots = new_roots;
         }
@@ -371,17 +442,18 @@ impl<D: Distance> Writer<D> {
         log::debug!("started building trees for {} items...", n_items);
         log::debug!(
             "running {} parallel tree building...",
-            n_trees.map_or_else(|| "an unknown number of".to_string(), |n| n.to_string())
+            options.n_trees.map_or_else(|| "an unknown number of".to_string(), |n| n.to_string())
         );
 
         // Once we updated the current trees we also need to create the new missing trees
         // So we can run the normal path of building trees from scratch.
-        let n_trees_to_build = n_trees
+        let n_trees_to_build = options
+            .n_trees
             .zip(metadata)
             .map(|(n_trees, metadata)| n_trees.saturating_sub(metadata.roots.len()))
-            .or(n_trees);
+            .or(options.n_trees);
         let (mut thread_roots, mut tmp_nodes) =
-            self.build_trees(rng, n_trees_to_build, &item_indices, &frozzen_reader)?;
+            self.build_trees(options, rng, n_trees_to_build, &item_indices, &frozzen_reader)?;
         nodes_to_write.append(&mut tmp_nodes);
 
         log::debug!("started updating the tree nodes of {} trees...", tmp_nodes.len());
@@ -410,7 +482,7 @@ impl<D: Distance> Writer<D> {
             self.delete_extra_trees(
                 wtxn,
                 &mut roots,
-                n_trees,
+                options.n_trees,
                 concurrent_node_ids.used(),
                 n_items,
             )?;
@@ -440,6 +512,7 @@ impl<D: Distance> Writer<D> {
 
     fn update_trees<R: Rng + SeedableRng>(
         &self,
+        opt: &BuildOption,
         rng: &mut R,
         metadata: &Metadata,
         to_insert: &RoaringBitmap,
@@ -459,6 +532,7 @@ impl<D: Distance> Writer<D> {
                 };
                 let root_node = NodeId::tree(root);
                 let (node_id, _items) = self.update_nodes_in_file(
+                    opt,
                     frozen_reader,
                     &mut rng,
                     root_node,
@@ -478,8 +552,10 @@ impl<D: Distance> Writer<D> {
     /// Run in O(n) on the total number of nodes. Return a tuple containing the
     /// node ID you should use instead of the current_node and the number of
     /// items in the subtree.
+    #[allow(clippy::too_many_arguments)]
     fn update_nodes_in_file<R: Rng>(
         &self,
+        opt: &BuildOption,
         frozen_reader: &FrozzenReader<D>,
         rng: &mut R,
         current_node: NodeId,
@@ -501,7 +577,7 @@ impl<D: Distance> Writer<D> {
                     } else {
                         Ok((NodeId::item(item_id), new_items))
                     }
-                } else if self.fit_in_descendant(new_items.len()) {
+                } else if self.fit_in_descendant(opt, new_items.len()) {
                     let node_id = frozen_reader.concurrent_node_ids.next()?;
                     let node_id = NodeId::tree(node_id);
                     tmp_nodes.put(
@@ -513,7 +589,7 @@ impl<D: Distance> Writer<D> {
                     Ok((node_id, new_items))
                 } else {
                     let new_id =
-                        self.make_tree_in_file(frozen_reader, rng, &new_items, tmp_nodes)?;
+                        self.make_tree_in_file(opt, frozen_reader, rng, &new_items, tmp_nodes)?;
 
                     return Ok((new_id, new_items));
                 }
@@ -532,10 +608,11 @@ impl<D: Distance> Writer<D> {
                         if descendants.as_ref() == &new_descendants {
                             // if nothing changed, do nothing
                             Ok((current_node, descendants.into_owned()))
-                        } else if !self.fit_in_descendant(new_descendants.len()) {
+                        } else if !self.fit_in_descendant(opt, new_descendants.len()) {
                             // if it doesn't fit in one descendent we need to craft a new whole subtree
                             tmp_nodes.remove(current_node.item);
                             let new_id = self.make_tree_in_file(
+                                opt,
                                 frozen_reader,
                                 rng,
                                 &new_descendants,
@@ -576,6 +653,7 @@ impl<D: Distance> Writer<D> {
                         }
 
                         let (new_left, left_items) = self.update_nodes_in_file(
+                            opt,
                             frozen_reader,
                             rng,
                             left,
@@ -584,6 +662,7 @@ impl<D: Distance> Writer<D> {
                             tmp_nodes,
                         )?;
                         let (new_right, right_items) = self.update_nodes_in_file(
+                            opt,
                             frozen_reader,
                             rng,
                             right,
@@ -594,7 +673,7 @@ impl<D: Distance> Writer<D> {
 
                         let total_items = left_items | right_items;
 
-                        if self.fit_in_descendant(total_items.len()) {
+                        if self.fit_in_descendant(opt, total_items.len()) {
                             // Since we're shrinking we KNOW that new_left and new_right are descendants
                             // thus we can delete them directly knowing there is no sub-tree to look at.
                             if new_left.mode == NodeMode::Tree {
@@ -639,6 +718,7 @@ impl<D: Distance> Writer<D> {
 
     fn build_trees<R: Rng + SeedableRng>(
         &self,
+        opt: &BuildOption,
         rng: &mut R,
         n_trees: Option<usize>,
         item_indices: &RoaringBitmap,
@@ -663,7 +743,7 @@ impl<D: Distance> Writer<D> {
                     None => TmpNodes::new()?,
                 };
                 let root_id =
-                    self.make_tree_in_file(frozen_reader, &mut rng, item_indices, &mut tmp_nodes)?;
+                    self.make_tree_in_file(opt, frozen_reader, &mut rng, item_indices, &mut tmp_nodes)?;
                 assert!(
                     root_id.mode != NodeMode::Item,
                     "make_tree_in_file returned an item even though there was more than a single element"
@@ -680,6 +760,7 @@ impl<D: Distance> Writer<D> {
     /// and root nodes in files that will be stored in the database later.
     fn make_tree_in_file<R: Rng>(
         &self,
+        opt: &BuildOption,
         reader: &FrozzenReader<D>,
         rng: &mut R,
         item_indices: &RoaringBitmap,
@@ -689,7 +770,7 @@ impl<D: Distance> Writer<D> {
             return Ok(NodeId::item(item_indices.min().unwrap()));
         }
 
-        if self.fit_in_descendant(item_indices.len()) {
+        if self.fit_in_descendant(opt, item_indices.len()) {
             let item_id = reader.concurrent_node_ids.next()?;
             let item = Node::Descendants(Descendants { descendants: Cow::Borrowed(item_indices) });
             tmp_nodes.put(item_id, &item)?;
@@ -742,8 +823,8 @@ impl<D: Distance> Writer<D> {
 
         let normal = SplitPlaneNormal {
             normal,
-            left: self.make_tree_in_file(reader, rng, &children_left, tmp_nodes)?,
-            right: self.make_tree_in_file(reader, rng, &children_right, tmp_nodes)?,
+            left: self.make_tree_in_file(opt, reader, rng, &children_left, tmp_nodes)?,
+            right: self.make_tree_in_file(opt, reader, rng, &children_right, tmp_nodes)?,
         };
 
         let new_node_id = reader.concurrent_node_ids.next()?;

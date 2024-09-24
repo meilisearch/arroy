@@ -6,7 +6,7 @@ use std::path::PathBuf;
 use std::time::Instant;
 
 use arroy::distances::DotProduct;
-use arroy::{Database, Writer};
+use arroy::{BuildOption, Database, Writer};
 use clap::Parser;
 use heed::{EnvFlags, EnvOpenOptions};
 use rand::rngs::StdRng;
@@ -102,7 +102,7 @@ fn main() -> Result<(), heed::BoxedError> {
 
     println!("Building the arroy internal trees...");
     let now = Instant::now();
-    writer.build(&mut wtxn, &mut rng, n_trees).unwrap();
+    writer.build(&mut wtxn, &mut rng, BuildOption::new().with_maybe_n_trees(n_trees)).unwrap();
     wtxn.commit().unwrap();
     println!("Took {:.2?} to build", now.elapsed());
 

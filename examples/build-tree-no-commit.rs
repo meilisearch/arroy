@@ -7,7 +7,7 @@ use std::path::PathBuf;
 use std::time::Instant;
 
 use arroy::distances::DotProduct;
-use arroy::{Database, Reader, Stats, TreeStats, Writer};
+use arroy::{BuildOption, Database, Reader, Stats, TreeStats, Writer};
 use clap::Parser;
 use heed::{EnvFlags, EnvOpenOptions};
 use rand::rngs::StdRng;
@@ -64,7 +64,11 @@ fn main() -> Result<(), heed::BoxedError> {
     let now = Instant::now();
     println!("Building the arroy internal trees...");
     let mut rng = StdRng::seed_from_u64(seed);
-    writer.build(&mut wtxn, &mut rng, n_trees).unwrap();
+    let mut options = BuildOption::new();
+    if let Some(n_trees) = n_trees {
+        options.with_n_trees(n_trees);
+    }
+    writer.build(&mut wtxn, &mut rng, &options).unwrap();
     println!("Took {:.2?} to build", now.elapsed());
 
     let reader = Reader::open(&wtxn, 0, database)?;

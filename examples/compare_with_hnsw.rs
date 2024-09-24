@@ -3,7 +3,7 @@ use std::time::Instant;
 
 use arroy::distances::Euclidean;
 use arroy::internals::{Leaf, UnalignedVector};
-use arroy::{Database, Distance, ItemId, Reader, Result, Writer};
+use arroy::{BuildOption, Database, Distance, ItemId, Reader, Result, Writer};
 use heed::{EnvOpenOptions, RwTxn};
 use instant_distance::{Builder, HnswMap, MapItem};
 use rand::rngs::StdRng;
@@ -79,7 +79,7 @@ fn load_into_arroy(
     for (i, Point(vector)) in points.iter().enumerate() {
         writer.add_item(&mut wtxn, i.try_into().unwrap(), &vector[..])?;
     }
-    writer.build(&mut wtxn, rng, None)?;
+    writer.build(&mut wtxn, rng, &BuildOption::default())?;
     wtxn.commit()?;
 
     Ok(())

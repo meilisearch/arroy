@@ -11,7 +11,7 @@
 //! use std::num::NonZeroUsize;
 //!
 //! use arroy::distances::Euclidean;
-//! use arroy::{Database as ArroyDatabase, Writer, Reader};
+//! use arroy::{Database as ArroyDatabase, Writer, Reader, BuildOption};
 //! use rand::rngs::StdRng;
 //! use rand::{Rng, SeedableRng};
 //!
@@ -40,7 +40,7 @@
 //!
 //! // You can specify the number of trees to use or specify None.
 //! let mut rng = StdRng::seed_from_u64(42);
-//! writer.build(&mut wtxn, &mut rng, None)?;
+//! writer.build(&mut wtxn, &mut rng, &BuildOption::new())?;
 //!
 //! // By committing, other readers can query the database in parallel.
 //! wtxn.commit()?;
@@ -98,7 +98,7 @@ use node::{Node, NodeCodec};
 use node_id::{NodeId, NodeMode};
 pub use reader::Reader;
 pub use stats::{Stats, TreeStats};
-pub use writer::Writer;
+pub use writer::{BuildOption, Writer};
 
 /// The set of types used by the [`Distance`] trait.
 pub mod internals {

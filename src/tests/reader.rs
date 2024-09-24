@@ -6,7 +6,7 @@ use roaring::RoaringBitmap;
 use super::*;
 use crate::distance::Angular;
 use crate::distances::{Euclidean, Manhattan};
-use crate::{ItemId, Reader, Writer};
+use crate::{BuildOption, ItemId, Reader, Writer};
 
 pub struct NnsRes(pub Option<Vec<(ItemId, f32)>>);
 
@@ -44,7 +44,7 @@ fn open_db_with_wrong_dimension() {
     let writer = Writer::new(handle.database, 0, 2);
     writer.add_item(&mut wtxn, 0, &[0.0, 0.0]).unwrap();
 
-    writer.build(&mut wtxn, &mut rng(), Some(1)).unwrap();
+    writer.build(&mut wtxn, &mut rng(), BuildOption::new().with_n_trees(1)).unwrap();
     wtxn.commit().unwrap();
 
     let rtxn = handle.env.read_txn().unwrap();
@@ -60,7 +60,7 @@ fn open_db_with_wrong_distance() {
     let writer = Writer::new(handle.database, 0, 2);
     writer.add_item(&mut wtxn, 0, &[0.0, 0.0]).unwrap();
 
-    writer.build(&mut wtxn, &mut rng(), Some(1)).unwrap();
+    writer.build(&mut wtxn, &mut rng(), BuildOption::new().with_n_trees(1)).unwrap();
     wtxn.commit().unwrap();
 
     let rtxn = handle.env.read_txn().unwrap();
@@ -82,7 +82,7 @@ fn search_in_db_with_a_single_vector() {
     let writer = Writer::new(handle.database, 0, 3);
     writer.add_item(&mut wtxn, 0, &[0.00397, 0.553, 0.0]).unwrap();
 
-    writer.build(&mut wtxn, &mut rng(), None).unwrap();
+    writer.build(&mut wtxn, &mut rng(), &BuildOption::new()).unwrap();
     wtxn.commit().unwrap();
 
     let rtxn = handle.env.read_txn().unwrap();
@@ -105,7 +105,7 @@ fn two_dimension_on_a_line() {
         writer.add_item(&mut wtxn, i, &[i as f32, 0.0]).unwrap();
     }
 
-    writer.build(&mut wtxn, &mut rng(), Some(50)).unwrap();
+    writer.build(&mut wtxn, &mut rng(), BuildOption::new().with_n_trees(50)).unwrap();
     wtxn.commit().unwrap();
 
     let rtxn = handle.env.read_txn().unwrap();
@@ -153,7 +153,7 @@ fn two_dimension_on_a_column() {
         writer.add_item(&mut wtxn, i, &[0.0, i as f32]).unwrap();
     }
 
-    writer.build(&mut wtxn, &mut rng(), Some(50)).unwrap();
+    writer.build(&mut wtxn, &mut rng(), BuildOption::new().with_n_trees(50)).unwrap();
     wtxn.commit().unwrap();
 
     let rtxn = handle.env.read_txn().unwrap();
@@ -178,7 +178,7 @@ fn get_item_ids() {
         writer.add_item(&mut wtxn, i, &[0.0, i as f32]).unwrap();
     }
 
-    writer.build(&mut wtxn, &mut rng(), Some(50)).unwrap();
+    writer.build(&mut wtxn, &mut rng(), BuildOption::new().with_n_trees(50)).unwrap();
 
     let reader = Reader::<Euclidean>::open(&wtxn, 0, handle.database).unwrap();
     let ret = reader.item_ids();
@@ -201,7 +201,7 @@ fn filtering() {
         writer.add_item(&mut wtxn, i, &[0.0, i as f32]).unwrap();
     }
 
-    writer.build(&mut wtxn, &mut rng(), Some(50)).unwrap();
+    writer.build(&mut wtxn, &mut rng(), BuildOption::new().with_n_trees(50)).unwrap();
     wtxn.commit().unwrap();
 
     let rtxn = handle.env.read_txn().unwrap();
@@ -230,7 +230,7 @@ fn search_in_empty_database() {
 
     let mut wtxn = handle.env.write_txn().unwrap();
     let writer = Writer::new(handle.database, 0, 2);
-    writer.build(&mut wtxn, &mut rng(), None).unwrap();
+    writer.build(&mut wtxn, &mut rng(), &BuildOption::new()).unwrap();
     wtxn.commit().unwrap();
 
     let rtxn = handle.env.read_txn().unwrap();
@@ -262,7 +262,7 @@ fn try_reading_in_a_non_built_database() {
     // we build the database once to get valid metadata
     let mut wtxn = handle.env.write_txn().unwrap();
     let writer = Writer::new(handle.database, 0, 2);
-    writer.build(&mut wtxn, &mut rng(), None).unwrap();
+    writer.build(&mut wtxn, &mut rng(), &BuildOption::new()).unwrap();
     let writer = Writer::new(handle.database, 0, 2);
     writer.del_item(&mut wtxn, 0).unwrap();
     // We don't build the database; this leaves the database in a corrupted state
