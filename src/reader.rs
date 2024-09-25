@@ -19,6 +19,107 @@ use crate::{
     TreeStats,
 };
 
+/// Options used to make a query against an arroy [`Reader`].
+pub struct QueryBuilder<'a, D: Distance> {
+    reader: &'a Reader<'a, D>,
+    count: usize,
+    search_k: Option<NonZeroUsize>,
+    oversampling: Option<NonZeroUsize>,
+    candidates: Option<&'a RoaringBitmap>,
+}
+
+impl<'a, D: Distance> QueryBuilder<'a, D> {
+    /// Returns the closests items from `item`.
+    ///
+    /// See also [`Self::by_vector`].
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// # use arroy::{Reader, distances::Euclidean};
+    /// # let (reader, rtxn): (Reader<Euclidean>, heed::RoTxn) = todo!();
+    /// reader.nns(20).by_item(&rtxn, 5);
+    /// ```
+    pub fn by_item(&self, rtxn: &RoTxn, item: ItemId) -> Result<Option<Vec<(ItemId, f32)>>> {
+        match item_leaf(self.reader.database, self.reader.index, rtxn, item)? {
+            Some(leaf) => self.reader.nns_by_leaf(rtxn, &leaf, self).map(Some),
+            None => Ok(None),
+        }
+    }
+
+    /// Returns the closest items from the provided `vector`.
+    ///
+    /// See also [`Self::by_item`].
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// # use arroy::{Reader, distances::Euclidean};
+    /// # let (reader, rtxn): (Reader<Euclidean>, heed::RoTxn) = todo!();
+    /// reader.nns(20).by_vector(&rtxn, &[1.25854, -0.75598, 0.58524]);
+    /// ```
+    pub fn by_vector(&self, rtxn: &RoTxn, vector: &'a [f32]) -> Result<Vec<(ItemId, f32)>> {
+        if vector.len() != self.reader.dimensions() {
+            return Err(Error::InvalidVecDimension {
+                expected: self.reader.dimensions(),
+                received: vector.len(),
+            });
+        }
+
+        let vector = UnalignedVector::from_slice(vector);
+        let leaf = Leaf { header: D::new_header(&vector), vector };
+        self.reader.nns_by_leaf(rtxn, &leaf, self)
+    }
+
+    /// During the query, arroy will inspect up to `search_k` nodes which defaults
+    /// to `n_trees * count` if not provided. `search_k` gives you a run-time
+    /// tradeoff between better accuracy and speed.
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// # use arroy::{Reader, distances::Euclidean};
+    /// # let (reader, rtxn): (Reader<Euclidean>, heed::RoTxn) = todo!();
+    /// use std::num::NonZeroUsize;
+    /// reader.nns(20).search_k(NonZeroUsize::new(1000).unwrap()).by_item(&rtxn, 3);
+    /// ```
+    pub fn search_k(&mut self, search_k: NonZeroUsize) -> &mut Self {
+        self.search_k = Some(search_k);
+        self
+    }
+
+    /// Oversampling will multiply [`search_k`] by the specified number.
+    /// That's useful when you don't want to compute `search_k` yourself.
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// # use arroy::{Reader, distances::Euclidean};
+    /// # let (reader, rtxn): (Reader<Euclidean>, heed::RoTxn) = todo!();
+    /// use std::num::NonZeroUsize;
+    /// reader.nns(20).oversampling(NonZeroUsize::new(6).unwrap()).by_item(&rtxn, 5);
+    /// ```
+    pub fn oversampling(&mut self, oversampling: NonZeroUsize) -> &mut Self {
+        self.oversampling = Some(oversampling);
+        self
+    }
+
+    /// Specify a subset of candidates to inspect. Filters out everything else.
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// # use arroy::{Reader, distances::Euclidean};
+    /// # let (reader, rtxn): (Reader<Euclidean>, heed::RoTxn) = todo!();
+    /// let candidates = roaring::RoaringBitmap::from_iter([1, 3, 4, 5, 6, 7, 8, 9, 15, 16]);
+    /// reader.nns(20).candidates(&candidates).by_item(&rtxn, 6);
+    /// ```
+    pub fn candidates(&mut self, candidates: &'a RoaringBitmap) -> &mut Self {
+        self.candidates = Some(candidates);
+        self
+    }
+}
+
 /// A reader over the arroy trees and user items.
 #[derive(Debug)]
 pub struct Reader<'t, D: Distance> {
@@ -163,62 +264,17 @@ impl<'t, D: Distance> Reader<'t, D> {
         })
     }
 
-    /// Returns the `count` closests items from `item`.
-    ///
-    /// During the query it will inspect up to `search_k` nodes which defaults
-    /// to `n_trees * count` if not provided. `search_k` gives you a run-time
-    /// tradeoff between better accuracy and speed.
-    ///
-    /// The candidates parameter corresponds to the subset of item ids arroy will return.
-    pub fn nns_by_item(
-        &self,
-        rtxn: &'t RoTxn,
-        item: ItemId,
-        count: usize,
-        search_k: Option<NonZeroUsize>,
-        oversampling: Option<NonZeroUsize>,
-        candidates: Option<&RoaringBitmap>,
-    ) -> Result<Option<Vec<(ItemId, f32)>>> {
-        match item_leaf(self.database, self.index, rtxn, item)? {
-            Some(leaf) => {
-                self.nns_by_leaf(rtxn, &leaf, count, search_k, oversampling, candidates).map(Some)
-            }
-            None => Ok(None),
-        }
-    }
-
-    /// Returns the `count` closest items from the provided `vector`.
-    ///
-    /// See [`Reader::nns_by_item`] for more details.
-    pub fn nns_by_vector(
-        &self,
-        rtxn: &'t RoTxn,
-        vector: &[f32],
-        count: usize,
-        search_k: Option<NonZeroUsize>,
-        oversampling: Option<NonZeroUsize>,
-        candidates: Option<&RoaringBitmap>,
-    ) -> Result<Vec<(ItemId, f32)>> {
-        if vector.len() != self.dimensions {
-            return Err(Error::InvalidVecDimension {
-                expected: self.dimensions(),
-                received: vector.len(),
-            });
-        }
-
-        let vector = UnalignedVector::from_slice(vector);
-        let leaf = Leaf { header: D::new_header(&vector), vector };
-        self.nns_by_leaf(rtxn, &leaf, count, search_k, oversampling, candidates)
+    /// Return a [`QueryBuilder`] that lets you configure and execute a search request.
+    /// You must provide the number of items you want to receive.
+    pub fn nns(&self, count: usize) -> QueryBuilder<D> {
+        QueryBuilder { reader: self, count, search_k: None, oversampling: None, candidates: None }
     }
 
     fn nns_by_leaf(
         &self,
         rtxn: &'t RoTxn,
         query_leaf: &Leaf<D>,
-        count: usize,
-        search_k: Option<NonZeroUsize>,
-        oversampling: Option<NonZeroUsize>,
-        candidates: Option<&RoaringBitmap>,
+        opt: &QueryBuilder<D>,
     ) -> Result<Vec<(ItemId, f32)>> {
         if self.items.is_empty() {
             return Ok(Vec::new());
@@ -227,8 +283,9 @@ impl<'t, D: Distance> Reader<'t, D> {
         // The number of root nodes + log2 of the total number of vectors.
         let mut queue =
             BinaryHeap::with_capacity(self.roots.len() + self.items.len().ilog2() as usize);
-        let search_k = search_k.map_or(count * self.roots.len(), NonZeroUsize::get);
-        let search_k = oversampling
+        let search_k = opt.search_k.map_or(opt.count * self.roots.len(), NonZeroUsize::get);
+        let search_k = opt
+            .oversampling
             .map_or(search_k.saturating_mul(D::DEFAULT_OVERSAMPLING), |oversampling| {
                 search_k.saturating_mul(oversampling.get())
             });
@@ -246,12 +303,12 @@ impl<'t, D: Distance> Reader<'t, D> {
             let key = Key::new(self.index, item);
             match self.database.get(rtxn, &key)?.ok_or(Error::missing_key(key))? {
                 Node::Leaf(_) => {
-                    if candidates.map_or(true, |c| c.contains(item.item)) {
+                    if opt.candidates.map_or(true, |c| c.contains(item.item)) {
                         nns.push(item.unwrap_item());
                     }
                 }
                 Node::Descendants(Descendants { descendants }) => {
-                    if let Some(candidates) = candidates {
+                    if let Some(candidates) = opt.candidates {
                         nns.extend((descendants.into_owned() & candidates).iter());
                     } else {
                         nns.extend(descendants.iter());
@@ -282,7 +339,7 @@ impl<'t, D: Distance> Reader<'t, D> {
         }
 
         let mut sorted_nns = BinaryHeap::from(nns_distances);
-        let capacity = count.min(sorted_nns.len());
+        let capacity = opt.count.min(sorted_nns.len());
         let mut output = Vec::with_capacity(capacity);
         while let Some(Reverse((OrderedFloat(dist), item))) = sorted_nns.pop() {
             if output.len() == capacity {
