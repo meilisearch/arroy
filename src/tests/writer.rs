@@ -1048,7 +1048,7 @@ fn prepare_changing_distance() {
 
 #[test]
 fn cancel_indexing_process() {
-    let handle = create_database::<Angular>();
+    let handle = create_database::<Euclidean>();
     let mut rng = rng();
     let mut wtxn = handle.env.write_txn().unwrap();
     let writer = Writer::new(handle.database, 0, 2);
