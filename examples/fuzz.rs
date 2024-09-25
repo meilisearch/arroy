@@ -93,7 +93,7 @@ fn main() -> Result<()> {
                         Operation::Delete(doc) => drop(writer.del_item(&mut wtxn, doc.id)?),
                     }
                 }
-                writer.build(&mut wtxn, &mut rng_arroy, None)?;
+                writer.builder(&mut rng_arroy).build(&mut wtxn)?;
                 wtxn.commit()?;
                 let rtxn = env.read_txn()?;
                 let reader = Reader::<Euclidean>::open(&rtxn, 0, database)?;
