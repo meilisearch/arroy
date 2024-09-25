@@ -51,6 +51,10 @@ pub enum Error {
     #[error("The trees have not been built after an update on index {0}")]
     NeedBuild(u16),
 
+    /// Returned iff the `should_abort` function returned true.
+    #[error("The corresponding build process has been cancelled")]
+    BuildCancelled,
+
     /// Internal error
     #[error("Internal error: {mode}({item}) is missing in index `{index}`")]
     MissingKey {

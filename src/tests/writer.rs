@@ -1,4 +1,7 @@
+use std::sync::atomic::{AtomicUsize, Ordering};
+
 use heed::EnvOpenOptions;
+use insta::assert_snapshot;
 use rand::seq::SliceRandom;
 use rand::Rng;
 
@@ -1041,4 +1044,35 @@ fn prepare_changing_distance() {
     writer.del_item(&mut wtxn, 0).unwrap();
     assert!(writer.need_build(&wtxn).unwrap(), "because an item has been updated");
     writer.builder(&mut rng).build(&mut wtxn).unwrap();
+}
+
+#[test]
+fn cancel_indexing_process() {
+    let handle = create_database::<Angular>();
+    let mut rng = rng();
+    let mut wtxn = handle.env.write_txn().unwrap();
+    let writer = Writer::new(handle.database, 0, 2);
+    writer.add_item(&mut wtxn, 0, &[0.0, 0.0]).unwrap();
+    // Cancel straight away
+    let err = writer.builder(&mut rng).cancel(|| true).build(&mut wtxn).unwrap_err();
+    assert_snapshot!(err, @"The corresponding build process has been cancelled");
+
+    // Do not cancel at all
+    writer.builder(&mut rng).cancel(|| false).build(&mut wtxn).unwrap();
+
+    // Cancel after being called a few times
+    let writer = Writer::new(handle.database, 0, 2);
+    for i in 0..100 {
+        writer.add_item(&mut wtxn, i, &[i as f32, 1.1]).unwrap();
+    }
+    let cpt = AtomicUsize::new(0);
+    let err = writer
+        .builder(&mut rng)
+        .cancel(|| {
+            let prev = cpt.fetch_add(1, Ordering::Relaxed);
+            prev > 5
+        })
+        .build(&mut wtxn)
+        .unwrap_err();
+    assert_snapshot!(err, @"The corresponding build process has been cancelled");
 }
