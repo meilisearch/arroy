@@ -28,55 +28,33 @@ use crate::{
 };
 
 /// The options available when building the arroy database.
-#[derive(Default, Clone)]
-pub struct BuildOption {
-    /// The number of trees to build. If `None` arroy will determine the best amount to build for your number of vectors itself.
-    pub n_trees: Option<usize>,
-    /// Configure the maximum number of items stored in a descendant node.
-    /// This is only applied to the newly created or updated tree node.
-    /// If the value is modified while working on an already existing database,
-    /// the nodes that don't need to be updated won't be recreated.
-    pub split_after: Option<usize>,
+pub struct ArroyBuilder<'a, D: Distance, R: Rng + SeedableRng> {
+    writer: &'a Writer<D>,
+    rng: &'a mut R,
+    inner: BuildOption,
 }
 
-impl BuildOption {
-    /// Create a new `BuildOption`.
-    ///
-    /// # Example
-    ///
-    /// ```
-    /// use arroy::BuildOption;
-    /// BuildOption::new();
-    /// ```
-    pub fn new() -> Self {
-        Self::default()
-    }
+/// The options available when building the arroy database.
+struct BuildOption {
+    n_trees: Option<usize>,
+    split_after: Option<usize>,
+}
 
+impl<'a, D: Distance, R: Rng + SeedableRng> ArroyBuilder<'a, D, R> {
     /// The number of trees to build. If not set arroy will determine the best amount to build for your number of vectors itself.
-    /// See also `[Self::with_maybe_n_trees]`.
     ///
     /// # Example
     ///
+    /// ```no_run
+    /// # use arroy::{Writer, distances::Euclidean};
+    /// # let (writer, wtxn): (Writer<Euclidean>, heed::RwTxn) = todo!();
+    /// use rand::rngs::StdRng;
+    /// use rand::SeedableRng;
+    /// let mut rng = StdRng::seed_from_u64(13);
+    /// writer.builder(&mut rng).n_trees(10).build(&mut wtxn);
     /// ```
-    /// use arroy::BuildOption;
-    /// BuildOption::new().with_n_trees(10);
-    /// ```
-    pub fn with_n_trees(&mut self, n_trees: usize) -> &mut Self {
-        self.n_trees = Some(n_trees);
-        self
-    }
-
-    /// The number of trees to build. If `None` arroy will determine the best amount to build for your number of vectors itself.
-    /// See also `[Self::with_n_trees]`.
-    ///
-    /// # Example
-    ///
-    /// ```
-    /// use arroy::BuildOption;
-    /// BuildOption::new().with_maybe_n_trees(Some(10));
-    /// ```
-    pub fn with_maybe_n_trees(&mut self, n_trees: Option<usize>) -> &mut Self {
-        self.n_trees = n_trees;
+    pub fn n_trees(&mut self, n_trees: usize) -> &mut Self {
+        self.inner.n_trees = Some(n_trees);
         self
     }
 
@@ -87,13 +65,40 @@ impl BuildOption {
     ///
     /// # Example
     ///
+    /// ```no_run
+    /// # use arroy::{Writer, distances::Euclidean};
+    /// # let (writer, wtxn): (Writer<Euclidean>, heed::RwTxn) = todo!();
+    /// use rand::rngs::StdRng;
+    /// use rand::SeedableRng;
+    /// let mut rng = StdRng::seed_from_u64(92);
+    /// writer.builder(&mut rng).split_after(1000).build(&mut wtxn);
     /// ```
-    /// use arroy::BuildOption;
-    /// BuildOption::new().with_split_after(1000);
-    /// ```
-    pub fn with_split_after(&mut self, split_after: usize) -> &mut Self {
-        self.split_after = Some(split_after);
+    pub fn split_after(&mut self, split_after: usize) -> &mut Self {
+        self.inner.split_after = Some(split_after);
         self
+    }
+
+    /// Generates a forest of `n_trees` trees.
+    ///
+    /// More trees give higher precision when querying at the cost of more disk usage.
+    /// After calling build, no more items can be added.
+    ///
+    /// This function is using rayon to spawn threads. It can be configured
+    /// by using the [`rayon::ThreadPoolBuilder`] and the
+    /// [`rayon::ThreadPool::install`] to use it.
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// # use arroy::{Writer, distances::Euclidean};
+    /// # let (writer, wtxn): (Writer<Euclidean>, heed::RwTxn) = todo!();
+    /// use rand::rngs::StdRng;
+    /// use rand::SeedableRng;
+    /// let mut rng = StdRng::seed_from_u64(92);
+    /// writer.builder(&mut rng).build(&mut wtxn);
+    /// ```
+    pub fn build(&mut self, wtxn: &mut RwTxn) -> Result<()> {
+        self.writer.build(wtxn, self.rng, &self.inner)
     }
 }
 
@@ -327,16 +332,13 @@ impl<D: Distance> Writer<D> {
         n <= max_in_descendant
     }
 
-    /// Generates a forest of `n_trees` trees.
-    ///
-    /// More trees give higher precision when querying at the cost of more disk usage.
-    /// After calling build, no more items can be added.
-    ///
-    /// This function is using rayon to spawn threads. It can be configured
-    /// by using the [`rayon::ThreadPoolBuilder`] and the
-    /// [`rayon::ThreadPool::install`] to use it.
-    pub fn build<R: Rng + SeedableRng>(
-        self,
+    /// Returns an [`ArroyBuilder`] to configure the available options to build the database.
+    pub fn builder<'a, R: Rng + SeedableRng>(&'a self, rng: &'a mut R) -> ArroyBuilder<'a, D, R> {
+        ArroyBuilder { writer: self, rng, inner: BuildOption { n_trees: None, split_after: None } }
+    }
+
+    fn build<R: Rng + SeedableRng>(
+        &self,
         wtxn: &mut RwTxn,
         rng: &mut R,
         options: &BuildOption,

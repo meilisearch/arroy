@@ -1,7 +1,7 @@
 use crate::{
     distance::BinaryQuantizedEuclidean,
     tests::{create_database, rng},
-    BuildOption, Writer,
+    Writer,
 };
 
 #[test]
@@ -41,7 +41,7 @@ fn write_and_retrieve_binary_quantized_vector() {
     ]
     "###);
 
-    writer.build(&mut wtxn, &mut rng(), BuildOption::new().with_n_trees(1)).unwrap();
+    writer.builder(&mut rng()).n_trees(1).build(&mut wtxn).unwrap();
     wtxn.commit().unwrap();
 
     insta::assert_snapshot!(handle, @r###"
