@@ -14,7 +14,7 @@ impl UnalignedVectorCodec for f32 {
         let rem = bytes.len() % size_of::<f32>();
         if rem == 0 {
             // safety: `UnalignedF32Slice` is transparent
-            Ok(Cow::Borrowed(unsafe { transmute(bytes) }))
+            Ok(Cow::Borrowed(unsafe { transmute::<&[u8], &UnalignedVector<f32>>(bytes) }))
         } else {
             Err(SizeMismatch { vector_codec: "f32", rem })
         }
