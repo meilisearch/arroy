@@ -7,7 +7,7 @@
 [![dependency status](https://deps.rs/repo/github/meilisearch/arroy/status.svg)](https://deps.rs/repo/github/meilisearch/arroy)
 [![Build](https://github.com/meilisearch/arroy/actions/workflows/rust.yml/badge.svg)](https://github.com/meilisearch/arroy/actions/workflows/rust.yml)
 
-Arroy ([Approximate Rearest Reighbors][1] Oh Yeah) is a Rust library with the interface of the [Annoy Python library][2] to search for vectors in space that are close to a given query vector. It is based on LMDB, a memory-mapped key-value store, so many processes may share the same data and atomically modify the vectors.
+Arroy ([Approximate Rearest Reighbors][1] Oh Yeah) is a Rust library with an interface close of the [Annoy Python library][2] to search for vectors in space that are near a targeted vector. It is based on LMDB, a memory-mapped key-value store, so many processes may share the same data and atomically modify the vectors.
 
 ## Background
 

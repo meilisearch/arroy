@@ -20,11 +20,11 @@ fn clear_small_database() {
     let zero_writer = Writer::new(database, 0, 3);
     zero_writer.add_item(&mut wtxn, 0, &[0.0, 1.0, 2.0]).unwrap();
     zero_writer.clear(&mut wtxn).unwrap();
-    zero_writer.build(&mut wtxn, &mut rng(), None).unwrap();
+    zero_writer.builder(&mut rng()).build(&mut wtxn).unwrap();
 
     let one_writer = Writer::new(database, 1, 3);
     one_writer.add_item(&mut wtxn, 0, &[1.0, 2.0, 3.0]).unwrap();
-    one_writer.build(&mut wtxn, &mut rng(), None).unwrap();
+    one_writer.builder(&mut rng()).build(&mut wtxn).unwrap();
     wtxn.commit().unwrap();
 
     let mut wtxn = env.write_txn().unwrap();
@@ -43,7 +43,7 @@ fn use_u32_max_minus_one_for_a_vec() {
     let writer = Writer::new(handle.database, 0, 3);
     writer.add_item(&mut wtxn, u32::MAX - 1, &[0.0, 1.0, 2.0]).unwrap();
 
-    writer.build(&mut wtxn, &mut rng(), Some(1)).unwrap();
+    writer.builder(&mut rng()).n_trees(1).build(&mut wtxn).unwrap();
     wtxn.commit().unwrap();
 
     insta::assert_snapshot!(handle, @r###"
@@ -62,7 +62,7 @@ fn use_u32_max_for_a_vec() {
     let writer = Writer::new(handle.database, 0, 3);
     writer.add_item(&mut wtxn, u32::MAX, &[0.0, 1.0, 2.0]).unwrap();
 
-    writer.build(&mut wtxn, &mut rng(), Some(1)).unwrap();
+    writer.builder(&mut rng()).n_trees(1).build(&mut wtxn).unwrap();
     wtxn.commit().unwrap();
 
     insta::assert_snapshot!(handle, @r###"
@@ -81,7 +81,7 @@ fn write_one_vector() {
     let writer = Writer::new(handle.database, 0, 3);
     writer.add_item(&mut wtxn, 0, &[0.0, 1.0, 2.0]).unwrap();
 
-    writer.build(&mut wtxn, &mut rng(), None).unwrap();
+    writer.builder(&mut rng()).build(&mut wtxn).unwrap();
     wtxn.commit().unwrap();
 
     insta::assert_snapshot!(handle, @r###"
@@ -100,7 +100,7 @@ fn write_one_vector_in_one_tree() {
     let writer = Writer::new(handle.database, 0, 3);
     writer.add_item(&mut wtxn, 0, &[0.0, 1.0, 2.0]).unwrap();
 
-    writer.build(&mut wtxn, &mut rng(), Some(1)).unwrap();
+    writer.builder(&mut rng()).n_trees(1).build(&mut wtxn).unwrap();
     wtxn.commit().unwrap();
 
     insta::assert_snapshot!(handle, @r###"
@@ -119,7 +119,7 @@ fn write_one_vector_in_multiple_trees() {
     let writer = Writer::new(handle.database, 0, 3);
     writer.add_item(&mut wtxn, 0, &[0.0, 1.0, 2.0]).unwrap();
 
-    writer.build(&mut wtxn, &mut rng(), Some(10)).unwrap();
+    writer.builder(&mut rng()).n_trees(10).build(&mut wtxn).unwrap();
     wtxn.commit().unwrap();
 
     insta::assert_snapshot!(handle, @r###"
@@ -142,7 +142,7 @@ fn write_vectors_until_there_is_a_descendants() {
         writer.add_item(&mut wtxn, id, &[i, i, i]).unwrap();
     }
 
-    writer.build(&mut wtxn, &mut rng(), Some(1)).unwrap();
+    writer.builder(&mut rng()).n_trees(1).build(&mut wtxn).unwrap();
     wtxn.commit().unwrap();
 
     insta::assert_snapshot!(handle, @r###"
@@ -167,7 +167,7 @@ fn write_vectors_until_there_is_a_split() {
         writer.add_item(&mut wtxn, id, &[i, i, i]).unwrap();
     }
 
-    writer.build(&mut wtxn, &mut rng(), Some(1)).unwrap();
+    writer.builder(&mut rng()).n_trees(1).build(&mut wtxn).unwrap();
     wtxn.commit().unwrap();
 
     insta::assert_snapshot!(handle, @r###"
@@ -194,7 +194,7 @@ fn write_and_update_lot_of_random_points() {
         writer.add_item(&mut wtxn, id, &vector).unwrap();
     }
 
-    writer.build(&mut wtxn, &mut rng, Some(10)).unwrap();
+    writer.builder(&mut rng).n_trees(10).build(&mut wtxn).unwrap();
     wtxn.commit().unwrap();
     insta::assert_snapshot!(handle);
 
@@ -204,7 +204,7 @@ fn write_and_update_lot_of_random_points() {
         let vector: [f32; 30] = std::array::from_fn(|_| rng.gen());
         writer.add_item(&mut wtxn, id, &vector).unwrap();
     }
-    writer.build(&mut wtxn, &mut rng, Some(10)).unwrap();
+    writer.builder(&mut rng).n_trees(10).build(&mut wtxn).unwrap();
     wtxn.commit().unwrap();
 
     insta::assert_snapshot!(handle);
@@ -218,7 +218,7 @@ fn write_multiple_indexes() {
     for i in 0..5 {
         let writer = Writer::new(handle.database, i, 3);
         writer.add_item(&mut wtxn, 0, &[0.0, 1.0, 2.0]).unwrap();
-        writer.build(&mut wtxn, &mut rng(), Some(1)).unwrap();
+        writer.builder(&mut rng()).n_trees(1).build(&mut wtxn).unwrap();
     }
     wtxn.commit().unwrap();
 
@@ -268,7 +268,7 @@ fn write_random_vectors_to_random_indexes() {
             let vector: [f32; 10] = std::array::from_fn(|_| rng.gen());
             writer.add_item(&mut wtxn, i, &vector).unwrap();
         }
-        writer.build(&mut wtxn, &mut rng, None).unwrap();
+        writer.builder(&mut rng).build(&mut wtxn).unwrap();
     }
     wtxn.commit().unwrap();
 }
@@ -283,7 +283,7 @@ fn overwrite_one_item_incremental() {
     for i in 0..6 {
         writer.add_item(&mut wtxn, i, &[i as f32, 0.]).unwrap();
     }
-    writer.build(&mut wtxn, &mut rng, Some(1)).unwrap();
+    writer.builder(&mut rng).n_trees(1).build(&mut wtxn).unwrap();
     wtxn.commit().unwrap();
 
     insta::assert_snapshot!(handle, @r###"
@@ -309,7 +309,7 @@ fn overwrite_one_item_incremental() {
 
     writer.add_item(&mut wtxn, 3, &[6., 0.]).unwrap();
 
-    writer.build(&mut wtxn, &mut rng, Some(1)).unwrap();
+    writer.builder(&mut rng).n_trees(1).build(&mut wtxn).unwrap();
     wtxn.commit().unwrap();
 
     insta::assert_snapshot!(handle, @r###"
@@ -338,7 +338,7 @@ fn delete_one_item_in_a_one_item_db() {
     let writer = Writer::new(handle.database, 0, 2);
 
     writer.add_item(&mut wtxn, 0, &[0., 0.]).unwrap();
-    writer.build(&mut wtxn, &mut rng, Some(1)).unwrap();
+    writer.builder(&mut rng).n_trees(1).build(&mut wtxn).unwrap();
     wtxn.commit().unwrap();
 
     insta::assert_snapshot!(handle, @r###"
@@ -354,7 +354,7 @@ fn delete_one_item_in_a_one_item_db() {
 
     writer.del_item(&mut wtxn, 0).unwrap();
 
-    writer.build(&mut wtxn, &mut rng, Some(1)).unwrap();
+    writer.builder(&mut rng).n_trees(1).build(&mut wtxn).unwrap();
     wtxn.commit().unwrap();
 
     insta::assert_snapshot!(handle, @r###"
@@ -378,7 +378,7 @@ fn delete_document_in_an_empty_index_74() {
     let writer = Writer::new(handle.database, 0, 2);
     writer.del_item(&mut wtxn, 0).unwrap();
     writer.add_item(&mut wtxn, 0, &[0., 0.]).unwrap();
-    writer.build(&mut wtxn, &mut rng, None).unwrap();
+    writer.builder(&mut rng).build(&mut wtxn).unwrap();
 
     wtxn.commit().unwrap();
 
@@ -398,11 +398,11 @@ fn delete_document_in_an_empty_index_74() {
     let writer2 = Writer::new(handle.database, 1, 2);
     writer2.del_item(&mut wtxn, 0).unwrap();
 
-    writer1.build(&mut wtxn, &mut rng, None).unwrap();
-    writer2.build(&mut wtxn, &mut rng, None).unwrap();
+    writer1.builder(&mut rng).build(&mut wtxn).unwrap();
+    writer2.builder(&mut rng).build(&mut wtxn).unwrap();
 
     let reader = Reader::open(&wtxn, 1, handle.database).unwrap();
-    let ret = reader.nns_by_vector(&wtxn, &[0., 0.], 10, None, None, None).unwrap();
+    let ret = reader.nns(10).by_vector(&wtxn, &[0., 0.]).unwrap();
     insta::assert_debug_snapshot!(ret, @"[]");
 
     wtxn.commit().unwrap();
@@ -418,7 +418,7 @@ fn delete_document_in_an_empty_index_74() {
 
     let rtxn = handle.env.read_txn().unwrap();
     let reader = Reader::open(&rtxn, 1, handle.database).unwrap();
-    let ret = reader.nns_by_vector(&rtxn, &[0., 0.], 10, None, None, None).unwrap();
+    let ret = reader.nns(10).by_vector(&rtxn, &[0., 0.]).unwrap();
     insta::assert_debug_snapshot!(ret, @"[]");
 }
 
@@ -432,7 +432,7 @@ fn delete_one_item_in_a_descendant() {
     // first, insert a bunch of items
     writer.add_item(&mut wtxn, 0, &[0., 0.]).unwrap();
     writer.add_item(&mut wtxn, 1, &[1., 0.]).unwrap();
-    writer.build(&mut wtxn, &mut rng, Some(1)).unwrap();
+    writer.builder(&mut rng).n_trees(1).build(&mut wtxn).unwrap();
     wtxn.commit().unwrap();
 
     insta::assert_snapshot!(handle, @r###"
@@ -449,7 +449,7 @@ fn delete_one_item_in_a_descendant() {
 
     writer.del_item(&mut wtxn, 0).unwrap();
 
-    writer.build(&mut wtxn, &mut rng, Some(1)).unwrap();
+    writer.builder(&mut rng).n_trees(1).build(&mut wtxn).unwrap();
     wtxn.commit().unwrap();
 
     insta::assert_snapshot!(handle, @r###"
@@ -472,7 +472,7 @@ fn delete_one_leaf_in_a_split() {
     writer.add_item(&mut wtxn, 0, &[0., 0.]).unwrap();
     writer.add_item(&mut wtxn, 1, &[1., 0.]).unwrap();
     writer.add_item(&mut wtxn, 2, &[2., 0.]).unwrap();
-    writer.build(&mut wtxn, &mut rng, Some(1)).unwrap();
+    writer.builder(&mut rng).n_trees(1).build(&mut wtxn).unwrap();
     wtxn.commit().unwrap();
 
     insta::assert_snapshot!(handle, @r###"
@@ -491,7 +491,7 @@ fn delete_one_leaf_in_a_split() {
 
     writer.del_item(&mut wtxn, 0).unwrap();
 
-    writer.build(&mut wtxn, &mut rng, Some(1)).unwrap();
+    writer.builder(&mut rng).n_trees(1).build(&mut wtxn).unwrap();
     wtxn.commit().unwrap();
 
     // after deleting the leaf, the split node should be replaced by a descendant
@@ -514,7 +514,7 @@ fn delete_one_item_in_a_single_document_database() {
 
     // first, insert a bunch of elements
     writer.add_item(&mut wtxn, 0, &[0., 0.]).unwrap();
-    writer.build(&mut wtxn, &mut rng, None).unwrap();
+    writer.builder(&mut rng).build(&mut wtxn).unwrap();
     wtxn.commit().unwrap();
 
     insta::assert_snapshot!(handle, @r###"
@@ -530,7 +530,7 @@ fn delete_one_item_in_a_single_document_database() {
 
     writer.del_item(&mut wtxn, 0).unwrap();
 
-    writer.build(&mut wtxn, &mut rng, None).unwrap();
+    writer.builder(&mut rng).build(&mut wtxn).unwrap();
     wtxn.commit().unwrap();
 
     insta::assert_snapshot!(handle, @r###"
@@ -551,7 +551,7 @@ fn delete_one_item() {
     for i in 0..6 {
         writer.add_item(&mut wtxn, i, &[i as f32, 0.]).unwrap();
     }
-    writer.build(&mut wtxn, &mut rng, Some(1)).unwrap();
+    writer.builder(&mut rng).n_trees(1).build(&mut wtxn).unwrap();
     wtxn.commit().unwrap();
 
     insta::assert_snapshot!(handle, @r###"
@@ -576,7 +576,7 @@ fn delete_one_item() {
 
     writer.del_item(&mut wtxn, 3).unwrap();
 
-    writer.build(&mut wtxn, &mut rng, Some(1)).unwrap();
+    writer.builder(&mut rng).n_trees(1).build(&mut wtxn).unwrap();
     wtxn.commit().unwrap();
 
     insta::assert_snapshot!(handle, @r###"
@@ -600,7 +600,7 @@ fn delete_one_item() {
 
     writer.del_item(&mut wtxn, 1).unwrap();
 
-    writer.build(&mut wtxn, &mut rng, Some(1)).unwrap();
+    writer.builder(&mut rng).n_trees(1).build(&mut wtxn).unwrap();
     wtxn.commit().unwrap();
 
     insta::assert_snapshot!(handle, @r###"
@@ -623,7 +623,7 @@ fn add_one_item_incrementally_in_an_empty_db() {
     let mut rng = rng();
     let mut wtxn = handle.env.write_txn().unwrap();
     let writer = Writer::new(handle.database, 0, 2);
-    writer.build(&mut wtxn, &mut rng, Some(1)).unwrap();
+    writer.builder(&mut rng).n_trees(1).build(&mut wtxn).unwrap();
     wtxn.commit().unwrap();
 
     insta::assert_snapshot!(handle, @r###"
@@ -635,7 +635,7 @@ fn add_one_item_incrementally_in_an_empty_db() {
     let mut wtxn = handle.env.write_txn().unwrap();
     let writer = Writer::new(handle.database, 0, 2);
     writer.add_item(&mut wtxn, 0, &[0., 0.]).unwrap();
-    writer.build(&mut wtxn, &mut rng, Some(1)).unwrap();
+    writer.builder(&mut rng).n_trees(1).build(&mut wtxn).unwrap();
     wtxn.commit().unwrap();
 
     insta::assert_snapshot!(handle, @r###"
@@ -654,7 +654,7 @@ fn add_one_item_incrementally_in_a_one_item_db() {
     let mut wtxn = handle.env.write_txn().unwrap();
     let writer = Writer::new(handle.database, 0, 2);
     writer.add_item(&mut wtxn, 0, &[0., 0.]).unwrap();
-    writer.build(&mut wtxn, &mut rng, Some(1)).unwrap();
+    writer.builder(&mut rng).n_trees(1).build(&mut wtxn).unwrap();
     wtxn.commit().unwrap();
 
     insta::assert_snapshot!(handle, @r###"
@@ -668,7 +668,7 @@ fn add_one_item_incrementally_in_a_one_item_db() {
     let mut wtxn = handle.env.write_txn().unwrap();
     let writer = Writer::new(handle.database, 0, 2);
     writer.add_item(&mut wtxn, 1, &[1., 0.]).unwrap();
-    writer.build(&mut wtxn, &mut rng, Some(1)).unwrap();
+    writer.builder(&mut rng).n_trees(1).build(&mut wtxn).unwrap();
     wtxn.commit().unwrap();
 
     insta::assert_snapshot!(handle, @r###"
@@ -689,7 +689,7 @@ fn add_one_item_incrementally_to_create_a_split_node() {
     let writer = Writer::new(handle.database, 0, 2);
     writer.add_item(&mut wtxn, 0, &[0., 0.]).unwrap();
     writer.add_item(&mut wtxn, 1, &[1., 0.]).unwrap();
-    writer.build(&mut wtxn, &mut rng, Some(1)).unwrap();
+    writer.builder(&mut rng).n_trees(1).build(&mut wtxn).unwrap();
     wtxn.commit().unwrap();
 
     insta::assert_snapshot!(handle, @r###"
@@ -704,7 +704,7 @@ fn add_one_item_incrementally_to_create_a_split_node() {
     let mut wtxn = handle.env.write_txn().unwrap();
     let writer = Writer::new(handle.database, 0, 2);
     writer.add_item(&mut wtxn, 2, &[2., 0.]).unwrap();
-    writer.build(&mut wtxn, &mut rng, Some(1)).unwrap();
+    writer.builder(&mut rng).n_trees(1).build(&mut wtxn).unwrap();
     wtxn.commit().unwrap();
 
     insta::assert_snapshot!(handle, @r###"
@@ -729,7 +729,7 @@ fn add_one_item_incrementally() {
     for i in 0..6 {
         writer.add_item(&mut wtxn, i, &[i as f32, 0.]).unwrap();
     }
-    writer.build(&mut wtxn, &mut rng, Some(1)).unwrap();
+    writer.builder(&mut rng).n_trees(1).build(&mut wtxn).unwrap();
     wtxn.commit().unwrap();
 
     insta::assert_snapshot!(handle, @r###"
@@ -754,7 +754,7 @@ fn add_one_item_incrementally() {
 
     writer.add_item(&mut wtxn, 25, &[25., 0.]).unwrap();
 
-    writer.build(&mut wtxn, &mut rng, Some(1)).unwrap();
+    writer.builder(&mut rng).n_trees(1).build(&mut wtxn).unwrap();
     wtxn.commit().unwrap();
 
     insta::assert_snapshot!(handle, @r###"
@@ -781,7 +781,7 @@ fn add_one_item_incrementally() {
 
     writer.add_item(&mut wtxn, 8, &[8., 0.]).unwrap();
 
-    writer.build(&mut wtxn, &mut rng, Some(1)).unwrap();
+    writer.builder(&mut rng).n_trees(1).build(&mut wtxn).unwrap();
     wtxn.commit().unwrap();
 
     insta::assert_snapshot!(handle, @r###"
@@ -817,7 +817,7 @@ fn delete_extraneous_tree() {
         writer.add_item(&mut wtxn, i, &[i as f32, 0., 0., 0.]).unwrap();
     }
     // 5 nodes of 4 dimensions should create 3 trees by default.
-    writer.build(&mut wtxn, &mut rng, None).unwrap();
+    writer.builder(&mut rng).build(&mut wtxn).unwrap();
     wtxn.commit().unwrap();
 
     insta::assert_snapshot!(handle, @r###"
@@ -839,7 +839,7 @@ fn delete_extraneous_tree() {
 
     let mut wtxn = handle.env.write_txn().unwrap();
     let writer = Writer::new(handle.database, 0, 2);
-    writer.build(&mut wtxn, &mut rng, Some(2)).unwrap();
+    writer.builder(&mut rng).n_trees(2).build(&mut wtxn).unwrap();
     wtxn.commit().unwrap();
 
     insta::assert_snapshot!(handle, @r###"
@@ -859,7 +859,7 @@ fn delete_extraneous_tree() {
 
     let mut wtxn = handle.env.write_txn().unwrap();
     let writer = Writer::new(handle.database, 0, 2);
-    writer.build(&mut wtxn, &mut rng, Some(1)).unwrap();
+    writer.builder(&mut rng).n_trees(1).build(&mut wtxn).unwrap();
     wtxn.commit().unwrap();
 
     insta::assert_snapshot!(handle, @r###"
@@ -886,7 +886,7 @@ fn reuse_node_id() {
     for i in 0..6 {
         writer.add_item(&mut wtxn, i, &[i as f32, 0.]).unwrap();
     }
-    writer.build(&mut wtxn, &mut rng, Some(1)).unwrap();
+    writer.builder(&mut rng).n_trees(1).build(&mut wtxn).unwrap();
     wtxn.commit().unwrap();
 
     insta::assert_snapshot!(handle, @r###"
@@ -911,7 +911,7 @@ fn reuse_node_id() {
 
     // if we delete the 1 it should free the node id 0
     writer.del_item(&mut wtxn, 1).unwrap();
-    writer.build(&mut wtxn, &mut rng, Some(1)).unwrap();
+    writer.builder(&mut rng).n_trees(1).build(&mut wtxn).unwrap();
     wtxn.commit().unwrap();
 
     insta::assert_snapshot!(handle, @r###"
@@ -934,7 +934,7 @@ fn reuse_node_id() {
 
     // if we re-insert the 1 the node id 0 should be re-used
     writer.add_item(&mut wtxn, 1, &[1., 0.]).unwrap();
-    writer.build(&mut wtxn, &mut rng, Some(1)).unwrap();
+    writer.builder(&mut rng).n_trees(1).build(&mut wtxn).unwrap();
     wtxn.commit().unwrap();
 
     insta::assert_snapshot!(handle, @r###"
@@ -958,7 +958,7 @@ fn reuse_node_id() {
     let writer = Writer::new(handle.database, 0, 2);
 
     // if we now build a new tree, the id 1 should be re-used
-    writer.build(&mut wtxn, &mut rng, Some(2)).unwrap();
+    writer.builder(&mut rng).n_trees(2).build(&mut wtxn).unwrap();
     wtxn.commit().unwrap();
 
     insta::assert_snapshot!(handle, @r###"
@@ -997,7 +997,7 @@ fn need_build() {
         writer.need_build(&wtxn).unwrap(),
         "because metadata are missing and an item has been updated"
     );
-    writer.build(&mut wtxn, &mut rng, None).unwrap();
+    writer.builder(&mut rng).build(&mut wtxn).unwrap();
 
     let writer = Writer::new(handle.database, 0, 2);
     writer.del_item(&mut wtxn, 0).unwrap();
@@ -1013,17 +1013,17 @@ fn prepare_changing_distance() {
     writer.add_item(&mut wtxn, 0, &[0.0, 0.0]).unwrap();
     writer.add_item(&mut wtxn, 1, &[1.0, 1.0]).unwrap();
     writer.add_item(&mut wtxn, 3, &[3.0, 3.0]).unwrap();
-    writer.build(&mut wtxn, &mut rng, None).unwrap();
+    writer.builder(&mut rng).build(&mut wtxn).unwrap();
     let writer = Writer::new(handle.database, 1, 2);
     writer.add_item(&mut wtxn, 0, &[0.0, 0.0]).unwrap();
     writer.add_item(&mut wtxn, 1, &[1.0, 1.0]).unwrap();
     writer.add_item(&mut wtxn, 3, &[3.0, 3.0]).unwrap();
-    writer.build(&mut wtxn, &mut rng, None).unwrap();
+    writer.builder(&mut rng).build(&mut wtxn).unwrap();
     let writer = Writer::new(handle.database, 2, 2);
     writer.add_item(&mut wtxn, 0, &[0.0, 0.0]).unwrap();
     writer.add_item(&mut wtxn, 1, &[1.0, 1.0]).unwrap();
     writer.add_item(&mut wtxn, 3, &[3.0, 3.0]).unwrap();
-    writer.build(&mut wtxn, &mut rng, None).unwrap();
+    writer.builder(&mut rng).build(&mut wtxn).unwrap();
     wtxn.commit().unwrap();
 
     let mut wtxn = handle.env.write_txn().unwrap();
@@ -1032,7 +1032,7 @@ fn prepare_changing_distance() {
     let writer = writer.prepare_changing_distance::<BinaryQuantizedCosine>(&mut wtxn).unwrap();
     assert!(writer.need_build(&wtxn).unwrap(), "after changing the distance");
 
-    writer.build(&mut wtxn, &mut rng, None).unwrap();
+    writer.builder(&mut rng).build(&mut wtxn).unwrap();
     wtxn.commit().unwrap();
 
     // TODO: this should not works, see https://github.com/meilisearch/arroy/issues/92
@@ -1040,5 +1040,5 @@ fn prepare_changing_distance() {
     let writer = Writer::new(handle.database, 1, 2);
     writer.del_item(&mut wtxn, 0).unwrap();
     assert!(writer.need_build(&wtxn).unwrap(), "because an item has been updated");
-    writer.build(&mut wtxn, &mut rng, None).unwrap();
+    writer.builder(&mut rng).build(&mut wtxn).unwrap();
 }

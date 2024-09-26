@@ -44,12 +44,12 @@ fn open_db_with_wrong_dimension() {
     let writer = Writer::new(handle.database, 0, 2);
     writer.add_item(&mut wtxn, 0, &[0.0, 0.0]).unwrap();
 
-    writer.build(&mut wtxn, &mut rng(), Some(1)).unwrap();
+    writer.builder(&mut rng()).n_trees(1).build(&mut wtxn).unwrap();
     wtxn.commit().unwrap();
 
     let rtxn = handle.env.read_txn().unwrap();
     let reader = Reader::<Euclidean>::open(&rtxn, 0, handle.database).unwrap();
-    let ret = reader.nns_by_vector(&rtxn, &[1.0, 2.0, 3.0], 5, None, None, None).unwrap_err();
+    let ret = reader.nns(5).by_vector(&rtxn, &[1.0, 2.0, 3.0]).unwrap_err();
     insta::assert_snapshot!(ret, @"Invalid vector dimensions. Got 3 but expected 2");
 }
 
@@ -60,7 +60,7 @@ fn open_db_with_wrong_distance() {
     let writer = Writer::new(handle.database, 0, 2);
     writer.add_item(&mut wtxn, 0, &[0.0, 0.0]).unwrap();
 
-    writer.build(&mut wtxn, &mut rng(), Some(1)).unwrap();
+    writer.builder(&mut rng()).n_trees(1).build(&mut wtxn).unwrap();
     wtxn.commit().unwrap();
 
     let rtxn = handle.env.read_txn().unwrap();
@@ -82,13 +82,13 @@ fn search_in_db_with_a_single_vector() {
     let writer = Writer::new(handle.database, 0, 3);
     writer.add_item(&mut wtxn, 0, &[0.00397, 0.553, 0.0]).unwrap();
 
-    writer.build(&mut wtxn, &mut rng(), None).unwrap();
+    writer.builder(&mut rng()).build(&mut wtxn).unwrap();
     wtxn.commit().unwrap();
 
     let rtxn = handle.env.read_txn().unwrap();
     let reader = Reader::<Cosine>::open(&rtxn, 0, handle.database).unwrap();
 
-    let ret = reader.nns_by_item(&rtxn, 0, 1, None, None, None).unwrap();
+    let ret = reader.nns(1).by_item(&rtxn, 0).unwrap();
     insta::assert_snapshot!(NnsRes(ret), @r###"
     id(0): distance(0)
     "###);
@@ -105,21 +105,22 @@ fn two_dimension_on_a_line() {
         writer.add_item(&mut wtxn, i, &[i as f32, 0.0]).unwrap();
     }
 
-    writer.build(&mut wtxn, &mut rng(), Some(50)).unwrap();
+    writer.builder(&mut rng()).n_trees(50).build(&mut wtxn).unwrap();
     wtxn.commit().unwrap();
 
     let rtxn = handle.env.read_txn().unwrap();
     let reader = Reader::<Euclidean>::open(&rtxn, 0, handle.database).unwrap();
 
     // if we can't look into enough nodes we find some random points
-    let ret = reader.nns_by_item(&rtxn, 0, 5, NonZeroUsize::new(1), None, None).unwrap();
+    let ret = reader.nns(5).search_k(NonZeroUsize::new(1).unwrap()).by_item(&rtxn, 0).unwrap();
     insta::assert_snapshot!(NnsRes(ret), @r###"
     id(48): distance(48)
     id(92): distance(92)
     "###);
 
     // if we can look into all the node there is no inifinite loop and it works
-    let ret = reader.nns_by_item(&rtxn, 0, 5, NonZeroUsize::new(usize::MAX), None, None).unwrap();
+    let ret =
+        reader.nns(5).search_k(NonZeroUsize::new(usize::MAX).unwrap()).by_item(&rtxn, 0).unwrap();
     insta::assert_snapshot!(NnsRes(ret), @r###"
     id(0): distance(0)
     id(1): distance(1)
@@ -128,7 +129,7 @@ fn two_dimension_on_a_line() {
     id(4): distance(4)
     "###);
 
-    let ret = reader.nns_by_item(&rtxn, 0, 5, None, None, None).unwrap();
+    let ret = reader.nns(5).by_item(&rtxn, 0).unwrap();
     insta::assert_snapshot!(NnsRes(ret), @r###"
     id(1): distance(1)
     id(2): distance(2)
@@ -153,12 +154,12 @@ fn two_dimension_on_a_column() {
         writer.add_item(&mut wtxn, i, &[0.0, i as f32]).unwrap();
     }
 
-    writer.build(&mut wtxn, &mut rng(), Some(50)).unwrap();
+    writer.builder(&mut rng()).n_trees(50).build(&mut wtxn).unwrap();
     wtxn.commit().unwrap();
 
     let rtxn = handle.env.read_txn().unwrap();
     let reader = Reader::<Euclidean>::open(&rtxn, 0, handle.database).unwrap();
-    let ret = reader.nns_by_item(&rtxn, 0, 5, None, None, None).unwrap();
+    let ret = reader.nns(5).by_item(&rtxn, 0).unwrap();
 
     insta::assert_snapshot!(NnsRes(ret), @r###"
     id(1): distance(1)
@@ -178,7 +179,7 @@ fn get_item_ids() {
         writer.add_item(&mut wtxn, i, &[0.0, i as f32]).unwrap();
     }
 
-    writer.build(&mut wtxn, &mut rng(), Some(50)).unwrap();
+    writer.builder(&mut rng()).n_trees(50).build(&mut wtxn).unwrap();
 
     let reader = Reader::<Euclidean>::open(&wtxn, 0, handle.database).unwrap();
     let ret = reader.item_ids();
@@ -201,22 +202,20 @@ fn filtering() {
         writer.add_item(&mut wtxn, i, &[0.0, i as f32]).unwrap();
     }
 
-    writer.build(&mut wtxn, &mut rng(), Some(50)).unwrap();
+    writer.builder(&mut rng()).n_trees(50).build(&mut wtxn).unwrap();
     wtxn.commit().unwrap();
 
     let rtxn = handle.env.read_txn().unwrap();
     let reader = Reader::<Euclidean>::open(&rtxn, 0, handle.database).unwrap();
 
-    let ret =
-        reader.nns_by_item(&rtxn, 0, 5, None, None, Some(&RoaringBitmap::from_iter(0..2))).unwrap();
+    let ret = reader.nns(5).candidates(&RoaringBitmap::from_iter(0..2)).by_item(&rtxn, 0).unwrap();
     insta::assert_snapshot!(NnsRes(ret), @r###"
     id(0): distance(0)
     id(1): distance(1)
     "###);
 
-    let ret = reader
-        .nns_by_item(&rtxn, 0, 5, None, None, Some(&RoaringBitmap::from_iter(98..1000)))
-        .unwrap();
+    let ret =
+        reader.nns(5).candidates(&RoaringBitmap::from_iter(98..1000)).by_item(&rtxn, 0).unwrap();
     insta::assert_snapshot!(NnsRes(ret), @r###"
     id(98): distance(98)
     id(99): distance(99)
@@ -230,12 +229,12 @@ fn search_in_empty_database() {
 
     let mut wtxn = handle.env.write_txn().unwrap();
     let writer = Writer::new(handle.database, 0, 2);
-    writer.build(&mut wtxn, &mut rng(), None).unwrap();
+    writer.builder(&mut rng()).build(&mut wtxn).unwrap();
     wtxn.commit().unwrap();
 
     let rtxn = handle.env.read_txn().unwrap();
     let reader = Reader::open(&rtxn, 0, handle.database).unwrap();
-    let ret = reader.nns_by_vector(&rtxn, &[0., 0.], 10, None, None, None).unwrap();
+    let ret = reader.nns(10).by_vector(&rtxn, &[0., 0.]).unwrap();
     insta::assert_debug_snapshot!(ret, @"[]");
 }
 
@@ -262,7 +261,7 @@ fn try_reading_in_a_non_built_database() {
     // we build the database once to get valid metadata
     let mut wtxn = handle.env.write_txn().unwrap();
     let writer = Writer::new(handle.database, 0, 2);
-    writer.build(&mut wtxn, &mut rng(), None).unwrap();
+    writer.builder(&mut rng()).build(&mut wtxn).unwrap();
     let writer = Writer::new(handle.database, 0, 2);
     writer.del_item(&mut wtxn, 0).unwrap();
     // We don't build the database; this leaves the database in a corrupted state

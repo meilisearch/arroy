@@ -40,7 +40,7 @@
 //!
 //! // You can specify the number of trees to use or specify None.
 //! let mut rng = StdRng::seed_from_u64(42);
-//! writer.build(&mut wtxn, &mut rng, None)?;
+//! writer.builder(&mut rng).build(&mut wtxn)?;
 //!
 //! // By committing, other readers can query the database in parallel.
 //! wtxn.commit()?;
@@ -49,18 +49,18 @@
 //! let reader = Reader::<Euclidean>::open(&rtxn, index, db)?;
 //! let n_results = 20;
 //!
+//! let mut query = reader.nns(n_results);
+//!
 //! // You can increase the quality of the results by forcing arroy to search into more nodes.
 //! // This multiplier is arbitrary but basically the higher, the better the results, the slower the query.
 //! let is_precise = true;
-//! let search_k = if is_precise {
-//!     NonZeroUsize::new(n_results * reader.n_trees() * 15)
-//! } else {
-//!     None
-//! };
+//! if is_precise {
+//!     query.search_k(NonZeroUsize::new(n_results * reader.n_trees() * 15).unwrap());
+//! }
 //!
 //! // Similar searching can be achieved by requesting the nearest neighbors of a given item.
 //! let item_id = 0;
-//! let arroy_results = reader.nns_by_item(&rtxn, item_id, n_results, search_k, None, None)?.unwrap();
+//! let arroy_results = query.by_item(&rtxn, item_id)?.unwrap();
 //! # Ok(()) }
 //! ```
 
@@ -96,9 +96,9 @@ use key::{Key, Prefix, PrefixCodec};
 use metadata::{Metadata, MetadataCodec};
 use node::{Node, NodeCodec};
 use node_id::{NodeId, NodeMode};
-pub use reader::Reader;
+pub use reader::{QueryBuilder, Reader};
 pub use stats::{Stats, TreeStats};
-pub use writer::Writer;
+pub use writer::{ArroyBuilder, Writer};
 
 /// The set of types used by the [`Distance`] trait.
 pub mod internals {

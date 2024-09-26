@@ -39,14 +39,16 @@ fn main() -> Result<()> {
     let rtxn = env.read_txn()?;
     let reader = Reader::<Euclidean>::open(&rtxn, 0, database)?;
 
+    let mut query = reader.nns(NUMBER_FETCHED);
+
     // By making it precise we are near the HNSW but
     // we take a lot more time to search than the HNSW.
     let is_precise = true;
-    let search_k =
-        if is_precise { NonZeroUsize::new(NUMBER_FETCHED * reader.n_trees() * 20) } else { None };
+    if is_precise {
+        query.search_k(NonZeroUsize::new(NUMBER_FETCHED * reader.n_trees() * 20).unwrap());
+    }
 
-    let arroy_results =
-        reader.nns_by_item(&rtxn, 0, NUMBER_FETCHED, search_k, None, None)?.unwrap();
+    let arroy_results = query.by_item(&rtxn, 0)?.unwrap();
     eprintln!("took {:.02?} to find into arroy", before.elapsed());
 
     let first = Point(reader.item_vector(&rtxn, 0)?.unwrap());
@@ -79,7 +81,7 @@ fn load_into_arroy(
     for (i, Point(vector)) in points.iter().enumerate() {
         writer.add_item(&mut wtxn, i.try_into().unwrap(), &vector[..])?;
     }
-    writer.build(&mut wtxn, rng, None)?;
+    writer.builder(rng).build(&mut wtxn)?;
     wtxn.commit()?;
 
     Ok(())
