@@ -112,10 +112,10 @@ fn two_dimension_on_a_line() {
     let reader = Reader::<Euclidean>::open(&rtxn, 0, handle.database).unwrap();
 
     // if we can't look into enough nodes we find some random points
-    let ret = reader.nns(5).search_k(NonZeroUsize::new(1).unwrap()).by_item(&rtxn, 0).unwrap();
+    let ret = reader.nns(5).search_k(NonZeroUsize::new(1).unwrap()).by_item(&rtxn, 1).unwrap();
     insta::assert_snapshot!(NnsRes(ret), @r###"
-    id(48): distance(48)
-    id(92): distance(92)
+    id(48): distance(47)
+    id(92): distance(91)
     "###);
 
     // if we can look into all the node there is no inifinite loop and it works
@@ -131,11 +131,11 @@ fn two_dimension_on_a_line() {
 
     let ret = reader.nns(5).by_item(&rtxn, 0).unwrap();
     insta::assert_snapshot!(NnsRes(ret), @r###"
+    id(0): distance(0)
     id(1): distance(1)
     id(2): distance(2)
     id(3): distance(3)
     id(4): distance(4)
-    id(5): distance(5)
     "###);
 }
 
@@ -162,11 +162,11 @@ fn two_dimension_on_a_column() {
     let ret = reader.nns(5).by_item(&rtxn, 0).unwrap();
 
     insta::assert_snapshot!(NnsRes(ret), @r###"
+    id(0): distance(0)
     id(1): distance(1)
     id(2): distance(2)
     id(3): distance(3)
     id(4): distance(4)
-    id(5): distance(5)
     "###);
 }
 

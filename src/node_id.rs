@@ -9,9 +9,9 @@ use crate::ItemId;
 #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[repr(u8)]
 pub enum NodeMode {
-    Item = 0,
+    Metadata = 0,
     Tree = 1,
-    Metadata = 2,
+    Item = 2,
 }
 
 impl TryFrom<u8> for NodeMode {
