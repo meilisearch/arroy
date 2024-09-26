@@ -82,7 +82,6 @@ impl<'a, D: Distance, R: Rng + SeedableRng> ArroyBuilder<'a, D, R> {
     /// Generates a forest of `n_trees` trees.
     ///
     /// More trees give higher precision when querying at the cost of more disk usage.
-    /// After calling build, no more items can be added.
     ///
     /// This function is using rayon to spawn threads. It can be configured
     /// by using the [`rayon::ThreadPoolBuilder`] and the
