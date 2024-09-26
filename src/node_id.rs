@@ -107,11 +107,11 @@ mod test {
         assert!(NodeId::tree(1) > NodeId::tree(0));
         assert!(NodeId::tree(0) < NodeId::tree(1));
 
-        // tree > item whatever is the value
-        assert!(NodeId::tree(0) > NodeId::item(1));
+        // tree < item whatever is the value
+        assert!(NodeId::tree(u32::MAX) < NodeId::item(0));
 
         assert!(NodeId::metadata() == NodeId::metadata());
-        assert!(NodeId::metadata() > NodeId::tree(12));
-        assert!(NodeId::metadata() > NodeId::item(12));
+        assert!(NodeId::metadata() < NodeId::tree(u32::MAX));
+        assert!(NodeId::metadata() < NodeId::item(u32::MAX));
     }
 }
