@@ -3,7 +3,7 @@
 use std::fs;
 use std::io::{BufRead, BufReader};
 use std::path::PathBuf;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use arroy::distances::DotProduct;
 use arroy::{Database, Writer};
@@ -12,8 +12,8 @@ use heed::{EnvFlags, EnvOpenOptions};
 use rand::rngs::StdRng;
 use rand::SeedableRng;
 
-/// 2 GiB
-const DEFAULT_MAP_SIZE: usize = 1024 * 1024 * 1024 * 2;
+/// 200 GiB
+const DEFAULT_MAP_SIZE: usize = 1024 * 1024 * 1024 * 200;
 
 #[derive(Parser)]
 #[command(author, version, about, long_about = None)]
@@ -74,6 +74,7 @@ fn main() -> Result<(), heed::BoxedError> {
     // === END vectors ===
 
     let now = Instant::now();
+    let mut insertion_time = Duration::default();
     let mut count = 0;
     for line in reader.lines() {
         let line = line?;
@@ -89,14 +90,17 @@ fn main() -> Result<(), heed::BoxedError> {
             .map(|s| s.trim().parse::<f32>().unwrap())
             .collect();
 
+        let now = Instant::now();
         if no_append {
             writer.add_item(&mut wtxn, id, &vector)?;
         } else {
             writer.append_item(&mut wtxn, id, &vector)?;
         }
+        insertion_time += now.elapsed();
         count += 1;
     }
-    println!("Took {:.2?} to parse and insert into arroy", now.elapsed());
+    println!("Took {:.2?} to parse and insert into arroy", now.elapsed() - insertion_time);
+    println!("Took {insertion_time:.2?} insert into arroy");
     println!("There are {count} vectors");
     println!();
 
