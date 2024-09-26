@@ -41,7 +41,7 @@ struct BuildOption {
 }
 
 impl<'a, D: Distance, R: Rng + SeedableRng> ArroyBuilder<'a, D, R> {
-    /// The number of trees to build. If not set arroy will determine the best amount to build for your number of vectors itself.
+    /// The number of trees to build. If not set arroy will determine the best amount to build for your number of vectors by itself.
     ///
     /// # Example
     ///
@@ -59,6 +59,7 @@ impl<'a, D: Distance, R: Rng + SeedableRng> ArroyBuilder<'a, D, R> {
     }
 
     /// Configure the maximum number of items stored in a descendant node.
+    ///
     /// This is only applied to the newly created or updated tree node.
     /// If the value is modified while working on an already existing database,
     /// the nodes that don't need to be updated won't be recreated.
@@ -85,7 +86,7 @@ impl<'a, D: Distance, R: Rng + SeedableRng> ArroyBuilder<'a, D, R> {
     ///
     /// This function is using rayon to spawn threads. It can be configured
     /// by using the [`rayon::ThreadPoolBuilder`] and the
-    /// [`rayon::ThreadPool::install`] to use it.
+    /// [`rayon::ThreadPool::install`].
     ///
     /// # Example
     ///
