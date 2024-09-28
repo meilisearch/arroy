@@ -31,13 +31,20 @@ use crate::{
 pub struct ArroyBuilder<'a, D: Distance, R: Rng + SeedableRng> {
     writer: &'a Writer<D>,
     rng: &'a mut R,
-    inner: BuildOption,
+    inner: BuildOption<'a>,
 }
 
 /// The options available when building the arroy database.
-struct BuildOption {
+struct BuildOption<'a> {
     n_trees: Option<usize>,
     split_after: Option<usize>,
+    cancel: Box<dyn Fn() -> bool + 'a + Sync + Send>,
+}
+
+impl Default for BuildOption<'_> {
+    fn default() -> Self {
+        Self { n_trees: None, split_after: None, cancel: Box::new(|| false) }
+    }
 }
 
 impl<'a, D: Distance, R: Rng + SeedableRng> ArroyBuilder<'a, D, R> {
@@ -76,6 +83,41 @@ impl<'a, D: Distance, R: Rng + SeedableRng> ArroyBuilder<'a, D, R> {
     /// ```
     pub fn split_after(&mut self, split_after: usize) -> &mut Self {
         self.inner.split_after = Some(split_after);
+        self
+    }
+
+    /// Provide a closure that can cancel the indexing process early if needed.
+    /// There is no guarantee on when the process is going to cancel itself, but
+    /// arroy will try to stop as soon as possible once the closure returns `true`.
+    ///
+    /// Since the closure is not mutable and will be called from multiple threads
+    /// at the same time it's encouraged to make it quick to execute. A common
+    /// way to use it is to fetch an `AtomicBool` inside it that can be set
+    /// from another thread without lock.
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// # use arroy::{Writer, distances::Euclidean};
+    /// # let (writer, wtxn): (Writer<Euclidean>, heed::RwTxn) = todo!();
+    /// use rand::rngs::StdRng;
+    /// use rand::SeedableRng;
+    /// use std::sync::atomic::{AtomicBool, Ordering};
+    ///
+    /// let stops_after = AtomicBool::new(false);
+    ///
+    /// // Cancel the task after one minute
+    /// std::thread::spawn(|| {
+    ///     let one_minute = std::time::Duration::from_secs(60);
+    ///     std::thread::sleep(one_minute);
+    ///     stops_after.store(true, Ordering::Relaxed);
+    /// });
+    ///
+    /// let mut rng = StdRng::seed_from_u64(92);
+    /// writer.builder(&mut rng).split_after(1000).build(&mut wtxn);
+    /// ```
+    pub fn cancel(&mut self, cancel: impl Fn() -> bool + 'a + Sync + Send) -> &mut Self {
+        self.inner.cancel = Box::new(cancel);
         self
     }
 
@@ -334,7 +376,7 @@ impl<D: Distance> Writer<D> {
 
     /// Returns an [`ArroyBuilder`] to configure the available options to build the database.
     pub fn builder<'a, R: Rng + SeedableRng>(&'a self, rng: &'a mut R) -> ArroyBuilder<'a, D, R> {
-        ArroyBuilder { writer: self, rng, inner: BuildOption { n_trees: None, split_after: None } }
+        ArroyBuilder { writer: self, rng, inner: BuildOption::default() }
     }
 
     fn build<R: Rng + SeedableRng>(
@@ -345,6 +387,10 @@ impl<D: Distance> Writer<D> {
     ) -> Result<()> {
         log::debug!("started preprocessing the items...");
 
+        if (options.cancel)() {
+            return Err(Error::BuildCancelled);
+        }
+
         D::preprocess(wtxn, |wtxn| {
             Ok(self
                 .database
@@ -352,6 +398,10 @@ impl<D: Distance> Writer<D> {
                 .prefix_iter_mut(wtxn, &Prefix::item(self.index))?
                 .remap_key_type::<KeyCodec>())
         })?;
+
+        if (options.cancel)() {
+            return Err(Error::BuildCancelled);
+        }
 
         let item_indices = self.item_indices(wtxn)?;
         let n_items = item_indices.len();
@@ -414,6 +464,10 @@ impl<D: Distance> Writer<D> {
             metadata.as_ref().map_or_else(Vec::new, |metadata| metadata.roots.iter().collect());
 
         log::debug!("Getting a reference to your {} items...", n_items);
+
+        if (options.cancel)() {
+            return Err(Error::BuildCancelled);
+        }
 
         let used_node_ids = self.used_tree_node(wtxn)?;
         let nb_tree_nodes = used_node_ids.len();
@@ -483,6 +537,7 @@ impl<D: Distance> Writer<D> {
             log::debug!("Deleting the extraneous trees if there is some...");
             self.delete_extra_trees(
                 wtxn,
+                options,
                 &mut roots,
                 options.n_trees,
                 concurrent_node_ids.used(),
@@ -565,6 +620,9 @@ impl<D: Distance> Writer<D> {
         to_delete: &RoaringBitmap,
         tmp_nodes: &mut TmpNodes<NodeCodec<D>>,
     ) -> Result<(NodeId, RoaringBitmap)> {
+        if (opt.cancel)() {
+            return Err(Error::BuildCancelled);
+        }
         match current_node.mode {
             NodeMode::Item => {
                 // We were called on a specific item, we should create a descendants node
@@ -768,6 +826,9 @@ impl<D: Distance> Writer<D> {
         item_indices: &RoaringBitmap,
         tmp_nodes: &mut TmpNodes<NodeCodec<D>>,
     ) -> Result<NodeId> {
+        if (opt.cancel)() {
+            return Err(Error::BuildCancelled);
+        }
         if item_indices.len() == 1 {
             return Ok(NodeId::item(item_indices.min().unwrap()));
         }
@@ -839,6 +900,7 @@ impl<D: Distance> Writer<D> {
     fn delete_extra_trees(
         &self,
         wtxn: &mut RwTxn,
+        opt: &BuildOption,
         roots: &mut Vec<ItemId>,
         nb_trees: Option<usize>,
         nb_tree_nodes: u64,
@@ -868,6 +930,9 @@ impl<D: Distance> Writer<D> {
             log::debug!("Deleting {} trees", to_delete.len());
 
             for tree in to_delete {
+                if (opt.cancel)() {
+                    return Err(Error::BuildCancelled);
+                }
                 self.delete_tree(wtxn, NodeId::tree(tree))?;
             }
         }
