@@ -47,8 +47,8 @@ fn write_and_retrieve_binary_quantized_vector() {
     insta::assert_snapshot!(handle, @r###"
     ==================
     Dumping index 0
-    Item 0: Leaf(Leaf { header: NodeHeaderBinaryQuantizedEuclidean { bias: 0.0 }, vector: [-1.0000, -1.0000, 1.0000, -1.0000, 1.0000, 1.0000, -1.0000, 1.0000, -1.0000, -1.0000, "other ..."] })
-    Tree 0: Descendants(Descendants { descendants: [0] })
     Root: Metadata { dimensions: 16, items: RoaringBitmap<[0]>, roots: [0], distance: "binary quantized euclidean" }
+    Tree 0: Descendants(Descendants { descendants: [0] })
+    Item 0: Leaf(Leaf { header: NodeHeaderBinaryQuantizedEuclidean { bias: 0.0 }, vector: [-1.0000, -1.0000, 1.0000, -1.0000, 1.0000, 1.0000, -1.0000, 1.0000, -1.0000, -1.0000, "other ..."] })
     "###);
 }

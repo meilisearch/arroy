@@ -307,6 +307,7 @@ impl<D: Distance> Writer<D> {
             .remap_data_type::<RoaringBitmapCodec>()
             .get(wtxn, &Key::updated(self.index))?
             .unwrap_or_default();
+        // We cannot append here because we may have removed an item with a larger id before
         updated.insert(item);
         self.database.remap_data_type::<RoaringBitmapCodec>().put(
             wtxn,
