@@ -80,6 +80,7 @@ impl<D: Distance> fmt::Display for DatabaseHandle<D> {
                 NodeMode::Metadata => {
                     panic!()
                 }
+                NodeMode::Updated => todo!(),
             }
         }
 

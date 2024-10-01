@@ -4,7 +4,7 @@ use std::iter::repeat;
 use std::marker;
 use std::num::NonZeroUsize;
 
-use heed::types::{Bytes, DecodeIgnore};
+use heed::types::DecodeIgnore;
 use heed::RoTxn;
 use ordered_float::OrderedFloat;
 use roaring::RoaringBitmap;
@@ -146,7 +146,13 @@ impl<'t, D: Distance> Reader<'t, D> {
                 received: D::name(),
             });
         }
-        if database.remap_data_type::<Bytes>().get(rtxn, &Key::updated(index))?.is_some() {
+        if database
+            .remap_types::<PrefixCodec, DecodeIgnore>()
+            .prefix_iter(rtxn, &Prefix::updated(index))?
+            .remap_key_type::<KeyCodec>()
+            .next()
+            .is_some()
+        {
             return Err(Error::NeedBuild(index));
         }
 
