@@ -77,10 +77,7 @@ impl<D: Distance> fmt::Display for DatabaseHandle<D> {
                         .unwrap();
                     writeln!(f, "updated_item_ids: {updated_item_ids:?}")?;
                 }
-                NodeMode::Metadata => {
-                    panic!()
-                }
-                NodeMode::Updated => todo!(),
+                NodeMode::Updated | NodeMode::Metadata => panic!(),
             }
         }
 
