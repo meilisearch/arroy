@@ -3,7 +3,7 @@ use std::borrow::Cow;
 use std::mem;
 use std::path::PathBuf;
 
-use heed::types::{Bytes, DecodeIgnore};
+use heed::types::{Bytes, DecodeIgnore, Unit};
 use heed::{MdbError, PutFlags, RoTxn, RwTxn};
 use rand::{Rng, SeedableRng};
 use rayon::iter::repeatn;
@@ -20,7 +20,6 @@ use crate::parallel::{
     TmpNodesReader,
 };
 use crate::reader::item_leaf;
-use crate::roaring::RoaringBitmapCodec;
 use crate::unaligned_vector::UnalignedVector;
 use crate::{
     Database, Error, ItemId, Key, Metadata, MetadataCodec, Node, NodeCodec, NodeId, Prefix,
@@ -224,8 +223,10 @@ impl<D: Distance> Writer<D> {
     pub fn need_build(&self, rtxn: &RoTxn) -> Result<bool> {
         Ok(self
             .database
-            .remap_data_type::<DecodeIgnore>()
-            .get(rtxn, &Key::updated(self.index))?
+            .remap_types::<PrefixCodec, DecodeIgnore>()
+            .prefix_iter(rtxn, &Prefix::updated(self.index))?
+            .remap_key_type::<KeyCodec>()
+            .next()
             .is_some()
             || self
                 .database
@@ -266,17 +267,7 @@ impl<D: Distance> Writer<D> {
         let vector = UnalignedVector::from_slice(vector);
         let leaf = Leaf { header: D::new_header(&vector), vector };
         self.database.put(wtxn, &Key::item(self.index, item), &Node::Leaf(leaf))?;
-        let mut updated = self
-            .database
-            .remap_data_type::<RoaringBitmapCodec>()
-            .get(wtxn, &Key::updated(self.index))?
-            .unwrap_or_default();
-        updated.insert(item);
-        self.database.remap_data_type::<RoaringBitmapCodec>().put(
-            wtxn,
-            &Key::updated(self.index),
-            &updated,
-        )?;
+        self.database.remap_data_type::<Unit>().put(wtxn, &Key::updated(self.index, item), &())?;
 
         Ok(())
     }
@@ -302,18 +293,8 @@ impl<D: Distance> Writer<D> {
             Err(heed::Error::Mdb(MdbError::KeyExist)) => return Err(Error::InvalidItemAppend),
             Err(e) => return Err(e.into()),
         }
-        let mut updated = self
-            .database
-            .remap_data_type::<RoaringBitmapCodec>()
-            .get(wtxn, &Key::updated(self.index))?
-            .unwrap_or_default();
-        // We cannot append here because we may have removed an item with a larger id before
-        updated.insert(item);
-        self.database.remap_data_type::<RoaringBitmapCodec>().put(
-            wtxn,
-            &Key::updated(self.index),
-            &updated,
-        )?;
+        // We cannot append here because the items appear after the updated keys
+        self.database.remap_data_type::<Unit>().put(wtxn, &Key::updated(self.index, item), &())?;
 
         Ok(())
     }
@@ -321,16 +302,10 @@ impl<D: Distance> Writer<D> {
     /// Deletes an item stored in this database and returns `true` if it existed.
     pub fn del_item(&self, wtxn: &mut RwTxn, item: ItemId) -> Result<bool> {
         if self.database.delete(wtxn, &Key::item(self.index, item))? {
-            let mut updated = self
-                .database
-                .remap_data_type::<RoaringBitmapCodec>()
-                .get(wtxn, &Key::updated(self.index))?
-                .unwrap_or_default();
-            updated.insert(item);
-            self.database.remap_data_type::<RoaringBitmapCodec>().put(
+            self.database.remap_data_type::<Unit>().put(
                 wtxn,
-                &Key::updated(self.index),
-                &updated,
+                &Key::updated(self.index, item),
+                &(),
             )?;
 
             Ok(true)
@@ -430,7 +405,18 @@ impl<D: Distance> Writer<D> {
             }
 
             log::debug!("reset the updated items...");
-            self.database.delete(wtxn, &Key::updated(self.index))?;
+            let mut updated_iter = self
+                .database
+                .remap_types::<PrefixCodec, DecodeIgnore>()
+                .prefix_iter_mut(wtxn, &Prefix::updated(self.index))?
+                .remap_key_type::<KeyCodec>();
+            while updated_iter.next().transpose()?.is_some() {
+                // Safe because we don't hold any reference to the database currently
+                unsafe {
+                    updated_iter.del_current()?;
+                }
+            }
+            drop(updated_iter);
 
             log::debug!("write the metadata...");
             let metadata = Metadata {
@@ -448,11 +434,23 @@ impl<D: Distance> Writer<D> {
             return Ok(());
         }
 
-        let updated_items = self
+        log::debug!("reset and retrieve the updated items...");
+        let mut updated_items = RoaringBitmap::new();
+        let mut updated_iter = self
             .database
-            .remap_data_type::<RoaringBitmapCodec>()
-            .get(wtxn, &Key::updated(self.index))?
-            .unwrap_or_default();
+            .remap_types::<PrefixCodec, DecodeIgnore>()
+            .prefix_iter_mut(wtxn, &Prefix::updated(self.index))?
+            .remap_key_type::<KeyCodec>();
+        while let Some((key, _)) = updated_iter.next().transpose()? {
+            let inserted = updated_items.push(key.node.item);
+            debug_assert!(inserted, "The keys should be sorted by LMDB");
+            // Safe because we don't hold any reference to the database currently
+            unsafe {
+                updated_iter.del_current()?;
+            }
+        }
+        drop(updated_iter);
+
         // while iterating on the nodes we want to delete all the modified element even if they are being inserted right after.
         let to_delete = &updated_items;
         let to_insert = &item_indices & &updated_items;
@@ -547,9 +545,6 @@ impl<D: Distance> Writer<D> {
         } else {
             roots.append(&mut thread_roots);
         }
-
-        log::debug!("reset the updated items...");
-        self.database.delete(wtxn, &Key::updated(self.index))?;
 
         log::debug!("write the metadata...");
         let metadata = Metadata {
@@ -774,6 +769,7 @@ impl<D: Distance> Writer<D> {
                 }
             }
             NodeMode::Metadata => unreachable!(),
+            NodeMode::Updated => todo!(),
         }
     }
 

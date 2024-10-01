@@ -75,6 +75,7 @@ impl Error {
                 NodeMode::Item => "Item",
                 NodeMode::Tree => "Tree",
                 NodeMode::Metadata => "Metadata",
+                NodeMode::Updated => "Updated",
             },
             item: key.node.item,
         }
