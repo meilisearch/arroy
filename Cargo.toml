@@ -11,7 +11,7 @@ license = "MIT"
 edition = "2021"
 
 [dependencies]
-bytemuck = { version = "1.16.1", features = ["derive", "extern_crate_alloc"] }
+bytemuck = { version = "1.18.0", features = ["derive", "extern_crate_alloc"] }
 byteorder = "1.5.0"
 heed = { version = "0.20.2", default-features = false }
 log = "0.4.21"
