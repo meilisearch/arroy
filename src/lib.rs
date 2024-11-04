@@ -235,7 +235,7 @@ pub fn ugrade_from_prev_version(
                     .put(wtxn, &key, &tree_node)?;
             }
             OldNodeMode::Metadata => {
-                match key.index {
+                match key.node.item {
                     0 => {
                         key.node.mode = NodeMode::Metadata;
                         // The distance has been renamed
@@ -256,7 +256,10 @@ pub fn ugrade_from_prev_version(
                             write_database.remap_types::<KeyCodec, Unit>().put(wtxn, &key, &())?;
                         }
                     }
-                    _ => (),
+                    other => {
+                        let bytes = value.remap::<MetadataCodec>().decode().unwrap();
+                        panic!("Unexpected {other} with value: {bytes:?}");
+                    }
                 }
             }
         };
