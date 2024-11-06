@@ -40,8 +40,9 @@ impl Distance for Cosine {
         let qn = q.header.norm;
         let pq = dot_product(&p.vector, &q.vector);
         let pnqn = pn * qn;
-        if pnqn != 0.0 {
+        if pnqn > f32::EPSILON {
             let cos = pq / pnqn;
+            let cos = cos.clamp(-1.0, 1.0);
             // cos is [-1; 1]
             // cos =  0. -> 0.5
             // cos = -1. -> 1.0
