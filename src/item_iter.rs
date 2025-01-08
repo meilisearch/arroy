@@ -7,7 +7,7 @@ pub struct ItemIter<'t, D: Distance> {
     pub(crate) inner: heed::RoPrefix<'t, KeyCodec, NodeCodec<D>>,
 }
 
-impl<'t, D: Distance> Iterator for ItemIter<'t, D> {
+impl<D: Distance> Iterator for ItemIter<'_, D> {
     // TODO think about exposing the UnalignedF32Slice type
     type Item = Result<(ItemId, Vec<f32>)>;
 
