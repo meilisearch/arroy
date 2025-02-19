@@ -512,6 +512,7 @@ impl<D: Distance> Writer<D> {
         let used_node_ids = self.used_tree_node(wtxn)?;
         let nb_tree_nodes = used_node_ids.len();
 
+        println!("retrieving the frozen reader");
         let concurrent_node_ids = ConcurrentNodeIds::new(used_node_ids);
         let frozzen_reader = FrozzenReader {
             leafs: &ImmutableLeafs::new(wtxn, self.database, self.index, item_indices.len())?,

@@ -243,6 +243,7 @@ impl<'t, D: Distance> ImmutableLeafs<'t, D> {
                 .constant_length
                 .expect("Constant length is missing even though there are vectors");
             let vectors_fits_in_memory = memory / leaf_size;
+            println!("{vectors_fits_in_memory} vectors fits in memory");
             let items = self
                 .leafs
                 .keys()
