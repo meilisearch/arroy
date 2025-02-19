@@ -9,7 +9,7 @@ use heed::types::Bytes;
 use heed::{BytesDecode, BytesEncode, RoTxn};
 use memmap2::Mmap;
 use nohash::{BuildNoHashHasher, IntMap};
-use rand::seq::index;
+use rand::seq::{index, IteratorRandom};
 use rand::Rng;
 use roaring::RoaringBitmap;
 
@@ -230,6 +230,25 @@ impl<'t, D: Distance> ImmutableLeafs<'t, D> {
         // - len: All the items share the same dimensions and are the same size
         let bytes = unsafe { slice::from_raw_parts(ptr, len) };
         NodeCodec::bytes_decode(bytes).map_err(heed::Error::Decoding).map(|node| node.leaf())
+    }
+
+    /// Returns a set of items ID that fits in memory.
+    /// The memory is specified in bytes and the sample size returned will contains at least 200 elements.
+    /// If there is less than 200 elements in the database then this number will be returned.
+    pub fn sample<R: Rng>(&self, memory: usize, rng: &mut R) -> RoaringBitmap {
+        if self.leafs.len() <= 200 {
+            RoaringBitmap::from_iter(self.leafs.keys())
+        } else {
+            let leaf_size = self
+                .constant_length
+                .expect("Constant length is missing even though there are vectors");
+            let vectors_fits_in_memory = memory / leaf_size;
+            let items = self
+                .leafs
+                .keys()
+                .choose_multiple(rng, vectors_fits_in_memory.min(self.leafs.len()));
+            RoaringBitmap::from_iter(items)
+        }
     }
 }
 
