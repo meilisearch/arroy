@@ -38,12 +38,18 @@ pub struct ArroyBuilder<'a, D: Distance, R: Rng + SeedableRng> {
 struct BuildOption<'a> {
     n_trees: Option<usize>,
     split_after: Option<usize>,
+    available_memory: Option<usize>,
     cancel: Box<dyn Fn() -> bool + 'a + Sync + Send>,
 }
 
 impl Default for BuildOption<'_> {
     fn default() -> Self {
-        Self { n_trees: None, split_after: None, cancel: Box::new(|| false) }
+        Self {
+            n_trees: None,
+            split_after: None,
+            available_memory: None,
+            cancel: Box::new(|| false),
+        }
     }
 }
 
@@ -83,6 +89,28 @@ impl<'a, D: Distance, R: Rng + SeedableRng> ArroyBuilder<'a, D, R> {
     /// ```
     pub fn split_after(&mut self, split_after: usize) -> &mut Self {
         self.inner.split_after = Some(split_after);
+        self
+    }
+
+    /// Configure the maximum memory arroy can use to build its tree in bytes.
+    ///
+    /// This value is used as a hint; arroy may still consume too much memory, especially if the value is too low.
+    /// If not specified, arroy will use as much memory as possible but keep in mind that if arroy tries to use more
+    /// memory than you have, it'll become very slow.
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// # use arroy::{Writer, distances::Euclidean};
+    /// # let (writer, wtxn): (Writer<Euclidean>, heed::RwTxn) = todo!();
+    /// use rand::rngs::StdRng;
+    /// use rand::SeedableRng;
+    /// let mut rng = StdRng::seed_from_u64(92);
+    /// let memory = 1024 * 1024 * 1024 * 4; // 4 GiB
+    /// writer.builder(&mut rng).available_memory(memory).build(&mut wtxn);
+    /// ```
+    pub fn available_memory(&mut self, memory: usize) -> &mut Self {
+        self.inner.available_memory = Some(memory);
         self
     }
 
@@ -491,6 +519,8 @@ impl<D: Distance> Writer<D> {
             // The globally incrementing node ids that are shared between threads.
             concurrent_node_ids: &concurrent_node_ids,
         };
+        let two_means_candidates =
+            frozzen_reader.leafs.sample(options.available_memory.unwrap_or(usize::MAX), rng);
 
         let mut nodes_to_write = Vec::new();
 
@@ -501,8 +531,15 @@ impl<D: Distance> Writer<D> {
                 n_items,
                 metadata.roots.len()
             );
-            let (new_roots, mut tmp_nodes_reader) =
-                self.update_trees(options, rng, metadata, &to_insert, to_delete, &frozzen_reader)?;
+            let (new_roots, mut tmp_nodes_reader) = self.update_trees(
+                options,
+                rng,
+                metadata,
+                &to_insert,
+                to_delete,
+                &two_means_candidates,
+                &frozzen_reader,
+            )?;
             nodes_to_write.append(&mut tmp_nodes_reader);
             roots = new_roots;
         }
@@ -520,8 +557,14 @@ impl<D: Distance> Writer<D> {
             .zip(metadata)
             .map(|(n_trees, metadata)| n_trees.saturating_sub(metadata.roots.len()))
             .or(options.n_trees);
-        let (mut thread_roots, mut tmp_nodes) =
-            self.build_trees(options, rng, n_trees_to_build, &item_indices, &frozzen_reader)?;
+        let (mut thread_roots, mut tmp_nodes) = self.build_trees(
+            options,
+            rng,
+            n_trees_to_build,
+            &item_indices,
+            &two_means_candidates,
+            &frozzen_reader,
+        )?;
         nodes_to_write.append(&mut tmp_nodes);
 
         log::debug!("started updating the tree nodes of {} trees...", tmp_nodes.len());
@@ -583,6 +626,7 @@ impl<D: Distance> Writer<D> {
         metadata: &Metadata,
         to_insert: &RoaringBitmap,
         to_delete: &RoaringBitmap,
+        two_means_candidates: &RoaringBitmap,
         frozen_reader: &FrozzenReader<D>,
     ) -> Result<(Vec<ItemId>, Vec<TmpNodesReader>)> {
         let roots: Vec<_> = metadata.roots.iter().collect();
@@ -604,6 +648,7 @@ impl<D: Distance> Writer<D> {
                     root_node,
                     to_insert,
                     to_delete,
+                    two_means_candidates,
                     &mut tmp_nodes,
                 )?;
                 assert!(node_id.mode != NodeMode::Item, "update_nodes_in_file returned an item even though there was more than a single element");
@@ -627,6 +672,7 @@ impl<D: Distance> Writer<D> {
         current_node: NodeId,
         to_insert: &RoaringBitmap,
         to_delete: &RoaringBitmap,
+        two_means_candidates: &RoaringBitmap,
         tmp_nodes: &mut TmpNodes<NodeCodec<D>>,
     ) -> Result<(NodeId, RoaringBitmap)> {
         if (opt.cancel)() {
@@ -657,8 +703,14 @@ impl<D: Distance> Writer<D> {
                     )?;
                     Ok((node_id, new_items))
                 } else {
-                    let new_id =
-                        self.make_tree_in_file(opt, frozen_reader, rng, &new_items, tmp_nodes)?;
+                    let new_id = self.make_tree_in_file(
+                        opt,
+                        frozen_reader,
+                        rng,
+                        &new_items,
+                        two_means_candidates,
+                        tmp_nodes,
+                    )?;
 
                     return Ok((new_id, new_items));
                 }
@@ -685,6 +737,7 @@ impl<D: Distance> Writer<D> {
                                 frozen_reader,
                                 rng,
                                 &new_descendants,
+                                two_means_candidates,
                                 tmp_nodes,
                             )?;
 
@@ -728,6 +781,7 @@ impl<D: Distance> Writer<D> {
                             left,
                             &left_ids,
                             to_delete,
+                            two_means_candidates,
                             tmp_nodes,
                         )?;
                         let (new_right, right_items) = self.update_nodes_in_file(
@@ -737,6 +791,7 @@ impl<D: Distance> Writer<D> {
                             right,
                             &right_ids,
                             to_delete,
+                            two_means_candidates,
                             tmp_nodes,
                         )?;
 
@@ -792,6 +847,7 @@ impl<D: Distance> Writer<D> {
         rng: &mut R,
         n_trees: Option<usize>,
         item_indices: &RoaringBitmap,
+        two_means_candidates: &RoaringBitmap,
         frozen_reader: &FrozzenReader<D>,
     ) -> Result<(Vec<ItemId>, Vec<TmpNodesReader>)> {
         let n_items = item_indices.len();
@@ -813,7 +869,7 @@ impl<D: Distance> Writer<D> {
                     None => TmpNodes::new()?,
                 };
                 let root_id =
-                    self.make_tree_in_file(opt, frozen_reader, &mut rng, item_indices, &mut tmp_nodes)?;
+                    self.make_tree_in_file(opt, frozen_reader, &mut rng, item_indices, two_means_candidates, &mut tmp_nodes)?;
                 assert!(
                     root_id.mode != NodeMode::Item,
                     "make_tree_in_file returned an item even though there was more than a single element"
@@ -834,6 +890,7 @@ impl<D: Distance> Writer<D> {
         reader: &FrozzenReader<D>,
         rng: &mut R,
         item_indices: &RoaringBitmap,
+        two_means_candidates: &RoaringBitmap,
         tmp_nodes: &mut TmpNodes<NodeCodec<D>>,
     ) -> Result<NodeId> {
         if (opt.cancel)() {
@@ -850,7 +907,7 @@ impl<D: Distance> Writer<D> {
             return Ok(NodeId::tree(item_id));
         }
 
-        let children = ImmutableSubsetLeafs::from_item_ids(reader.leafs, item_indices);
+        let children = ImmutableSubsetLeafs::from_item_ids(reader.leafs, two_means_candidates);
         let mut children_left = Vec::with_capacity(children.len() as usize);
         let mut children_right = Vec::with_capacity(children.len() as usize);
         let mut remaining_attempts = 3;
@@ -896,8 +953,22 @@ impl<D: Distance> Writer<D> {
 
         let normal = SplitPlaneNormal {
             normal,
-            left: self.make_tree_in_file(opt, reader, rng, &children_left, tmp_nodes)?,
-            right: self.make_tree_in_file(opt, reader, rng, &children_right, tmp_nodes)?,
+            left: self.make_tree_in_file(
+                opt,
+                reader,
+                rng,
+                &children_left,
+                two_means_candidates,
+                tmp_nodes,
+            )?,
+            right: self.make_tree_in_file(
+                opt,
+                reader,
+                rng,
+                &children_right,
+                two_means_candidates,
+                tmp_nodes,
+            )?,
         };
 
         let new_node_id = reader.concurrent_node_ids.next()?;
