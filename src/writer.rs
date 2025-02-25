@@ -908,6 +908,14 @@ impl<D: Distance> Writer<D> {
             return Ok(NodeId::tree(item_id));
         }
 
+        let intersection_len = two_means_candidates.intersection_len(item_indices);
+        let two_means_candidates = if intersection_len >= 2 {
+            two_means_candidates & item_indices
+        } else {
+            two_means_candidates.clone()
+        };
+        let two_means_candidates = &two_means_candidates;
+
         let children = ImmutableSubsetLeafs::from_item_ids(reader.leafs, two_means_candidates);
         let mut children_left = Vec::with_capacity(children.len() as usize);
         let mut children_right = Vec::with_capacity(children.len() as usize);
