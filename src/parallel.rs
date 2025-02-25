@@ -243,7 +243,7 @@ impl<'t, D: Distance> ImmutableLeafs<'t, D> {
                 .constant_length
                 .expect("Constant length is missing even though there are vectors");
             let vectors_fits_in_memory = memory / leaf_size;
-            let vectors_fits_in_memory = vectors_fits_in_memory.min(self.leafs.len());
+            let vectors_fits_in_memory = vectors_fits_in_memory.min(self.leafs.len()).max(200);
             println!("{vectors_fits_in_memory} vectors fits in memory");
             let items = self.leafs.keys().choose_multiple(rng, vectors_fits_in_memory);
             RoaringBitmap::from_iter(items)
