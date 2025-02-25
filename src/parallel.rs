@@ -236,17 +236,45 @@ impl<'t, D: Distance> ImmutableLeafs<'t, D> {
     /// The memory is specified in bytes and the sample size returned will contains at least 200 elements.
     /// If there is less than 200 elements in the database then this number will be returned.
     pub fn sample<R: Rng>(&self, memory: usize, rng: &mut R) -> RoaringBitmap {
+        let page_size = page_size::get();
+
         if self.leafs.len() <= 200 {
             RoaringBitmap::from_iter(self.leafs.keys())
         } else {
             let leaf_size = self
                 .constant_length
                 .expect("Constant length is missing even though there are vectors");
-            let vectors_fits_in_memory = memory / leaf_size;
+            let vectors_fits_in_memory = memory / leaf_size.max(page_size);
             let vectors_fits_in_memory = vectors_fits_in_memory.min(self.leafs.len()).max(200);
-            println!("{vectors_fits_in_memory} vectors fits in memory");
-            let items = self.leafs.keys().choose_multiple(rng, vectors_fits_in_memory);
-            RoaringBitmap::from_iter(items)
+
+            println!("PAGE size > leaf size: {}", page_size > leaf_size);
+            println!("Theorically, {} vectors fit per pages", page_size as f64 / leaf_size as f64);
+            println!("{vectors_fits_in_memory} cache page fits in memory");
+            let mut items_iterator = self.leafs.iter();
+            let mut items = vec![vec![items_iterator.next().unwrap()]];
+            for (item, addr) in items_iterator {
+                let (_i, a) = items.last().unwrap().first().unwrap();
+                // If we have a vector starting on the same page as us or ending on the same page as we finish, keep it
+                if (*addr as usize) / page_size == **a as usize / page_size
+                    || (*addr as usize + leaf_size) / page_size
+                        == (**a as usize + leaf_size) / page_size
+                {
+                    items.last_mut().unwrap().push((item, addr));
+                } else {
+                    items.push(vec![(item, addr)]);
+                }
+            }
+            let items = items.iter().choose_multiple(rng, vectors_fits_in_memory);
+            let bitmap = RoaringBitmap::from_iter(
+                items.into_iter().flat_map(|items| items.iter().map(|(item, _)| *item)),
+            );
+            println!(
+                "{} vectors fits in memory, in practice, on average {} vectors per page",
+                bitmap.len(),
+                bitmap.len() as f64 / vectors_fits_in_memory as f64
+            );
+
+            bitmap
         }
     }
 }
