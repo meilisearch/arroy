@@ -117,6 +117,7 @@ impl<Codec: UnalignedVectorCodec> UnalignedVector<Codec> {
         self.vector.is_empty()
     }
     /// Returns the raw pointer to the start of this slice.
+    #[allow(unused)]
     pub(crate) fn as_ptr(&self) -> *const u8 {
         self.vector.as_ptr()
     }
