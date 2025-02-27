@@ -1,9 +1,9 @@
-#[cfg(target_arch = "x86_64")]
-use super::simple_avx::*;
+// #[cfg(target_arch = "x86_64")]
+// use super::simple_avx::*;
 #[cfg(all(target_arch = "aarch64", target_feature = "neon"))]
 use super::simple_neon::*;
-#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
-use super::simple_sse::*;
+// #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+// use super::simple_sse::*;
 use crate::unaligned_vector::{BinaryQuantized, UnalignedVector};
 
 #[cfg(target_arch = "x86_64")]
@@ -23,14 +23,14 @@ pub fn euclidean_distance(u: &UnalignedVector<f32>, v: &UnalignedVector<f32>) ->
             && is_x86_feature_detected!("fma")
             && u.len() >= MIN_DIM_SIZE_AVX
         {
-            return unsafe { euclid_similarity_avx(u, v) };
+            // return unsafe { euclid_similarity_avx(u, v) };
         }
     }
 
     #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
     {
         if is_x86_feature_detected!("sse") && u.len() >= MIN_DIM_SIZE_SIMD {
-            return unsafe { euclid_similarity_sse(u, v) };
+            // return unsafe { euclid_similarity_sse(u, v) };
         }
     }
 
@@ -57,14 +57,14 @@ pub fn dot_product(u: &UnalignedVector<f32>, v: &UnalignedVector<f32>) -> f32 {
             && is_x86_feature_detected!("fma")
             && u.len() >= MIN_DIM_SIZE_AVX
         {
-            return unsafe { dot_similarity_avx(u, v) };
+            // return unsafe { dot_similarity_avx(u, v) };
         }
     }
 
     #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
     {
         if is_x86_feature_detected!("sse") && u.len() >= MIN_DIM_SIZE_SIMD {
-            return unsafe { dot_similarity_sse(u, v) };
+            // return unsafe { dot_similarity_sse(u, v) };
         }
     }
 
