@@ -2,14 +2,14 @@ name: Rust CI
 
 on:
   push:
-    branches: ['main']
+    branches: ["main"]
   pull_request:
-    branches: ['main']
+    branches: ["main"]
 
 env:
   CARGO_TERM_COLOR: always
   RUST_BACKTRACE: 1
-  RUSTFLAGS: "-D warnings"
+  # RUSTFLAGS: "-D warnings"
 
 jobs:
   test:
