@@ -6,14 +6,17 @@ documentation = "https://docs.rs/arroy"
 repository = "https://github.com/meilisearch/arroy"
 keywords = ["ANN-search", "Graph-algorithms", "Vector-Search", "Store"]
 categories = ["algorithms", "database", "data-structures", "science"]
-authors = ["Kerollmops <clement@meilisearch.com>", "Tamo <tamo@meilisearch.com>"]
+authors = [
+    "Kerollmops <clement@meilisearch.com>",
+    "Tamo <tamo@meilisearch.com>",
+]
 license = "MIT"
 edition = "2021"
 
 [dependencies]
 bytemuck = { version = "1.21.0", features = ["derive", "extern_crate_alloc"] }
 byteorder = "1.5.0"
-heed = { version = "0.21.0", default-features = false }
+heed = { branch = "bump-versions", git = "https://github.com/meilisearch/heed", default-features = false }
 log = "0.4.22"
 memmap2 = "0.9.5"
 ordered-float = "4.6.0"

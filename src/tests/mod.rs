@@ -1,7 +1,7 @@
 use std::fmt;
 
 use heed::types::LazyDecode;
-use heed::{Env, EnvOpenOptions};
+use heed::{Env, EnvOpenOptions, WithTls};
 use rand::rngs::StdRng;
 use rand::SeedableRng;
 use tempfile::TempDir;
@@ -14,7 +14,7 @@ mod reader;
 mod writer;
 
 pub struct DatabaseHandle<D> {
-    pub env: Env,
+    pub env: Env<WithTls>,
     pub database: Database<D>,
     #[allow(unused)]
     pub tempdir: TempDir,
