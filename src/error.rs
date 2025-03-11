@@ -65,6 +65,13 @@ pub enum Error {
         /// The item ID queried
         item: ItemId,
     },
+
+    /// Cannot decode the key mode
+    #[error("Cannot decode key mode: `{mode:?}`")]
+    CannotDecodeKeyMode {
+        /// The mode that couldn't be decoded.
+        mode: NodeMode,
+    },
 }
 
 impl Error {

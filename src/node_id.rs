@@ -54,6 +54,10 @@ impl NodeId {
         Self { mode: NodeMode::Metadata, item: 0 }
     }
 
+    pub const fn version() -> Self {
+        Self { mode: NodeMode::Metadata, item: 1 }
+    }
+
     pub const fn updated(item: u32) -> Self {
         Self { mode: NodeMode::Updated, item }
     }

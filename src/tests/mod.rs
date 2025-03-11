@@ -6,7 +6,7 @@ use rand::rngs::StdRng;
 use rand::SeedableRng;
 use tempfile::TempDir;
 
-use crate::roaring::RoaringBitmapCodec;
+use crate::version::VersionCodec;
 use crate::{Database, Distance, MetadataCodec, NodeCodec, NodeMode, Reader};
 
 mod binary_quantized;
@@ -69,13 +69,13 @@ impl<D: Distance> fmt::Display for DatabaseHandle<D> {
                     writeln!(f, "Root: {metadata:?}")?;
                 }
                 NodeMode::Metadata if key.node.item == 1 => {
-                    let updated_item_ids = self
+                    let version = self
                         .database
-                        .remap_data_type::<RoaringBitmapCodec>()
+                        .remap_data_type::<VersionCodec>()
                         .get(&rtxn, &key)
                         .unwrap()
                         .unwrap();
-                    writeln!(f, "updated_item_ids: {updated_item_ids:?}")?;
+                    writeln!(f, "Version: {version:?}")?;
                 }
                 NodeMode::Updated | NodeMode::Metadata => panic!(),
             }

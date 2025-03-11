@@ -48,6 +48,7 @@ fn write_and_retrieve_binary_quantized_vector() {
     ==================
     Dumping index 0
     Root: Metadata { dimensions: 16, items: RoaringBitmap<[0]>, roots: [0], distance: "binary quantized euclidean" }
+    Version: Version { major: 0, minor: 6, patch: 0 }
     Tree 0: Descendants(Descendants { descendants: [0] })
     Item 0: Leaf(Leaf { header: NodeHeaderBinaryQuantizedEuclidean { bias: 0.0 }, vector: [-1.0000, -1.0000, 1.0000, -1.0000, 1.0000, 1.0000, -1.0000, 1.0000, -1.0000, -1.0000, "other ..."] })
     "###);

@@ -84,6 +84,8 @@ mod reader;
 mod roaring;
 mod spaces;
 mod stats;
+pub mod upgrade;
+mod version;
 mod writer;
 
 #[cfg(test)]
@@ -92,6 +94,7 @@ mod unaligned_vector;
 
 pub use distance::Distance;
 pub use error::Error;
+
 use key::{Key, Prefix, PrefixCodec};
 use metadata::{Metadata, MetadataCodec};
 use node::{Node, NodeCodec};

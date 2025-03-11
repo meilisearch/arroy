@@ -21,6 +21,7 @@ use crate::parallel::{
 };
 use crate::reader::item_leaf;
 use crate::unaligned_vector::UnalignedVector;
+use crate::version::{Version, VersionCodec};
 use crate::{
     Database, Error, ItemId, Key, Metadata, MetadataCodec, Node, NodeCodec, NodeId, Prefix,
     PrefixCodec, Result,
@@ -429,6 +430,18 @@ impl<D: Distance> Writer<D> {
                 wtxn,
                 &Key::metadata(self.index),
                 &metadata,
+            )?;
+
+            log::debug!("write the version...");
+            let version = Version {
+                major: env!("CARGO_PKG_VERSION_MAJOR").parse().unwrap(),
+                minor: env!("CARGO_PKG_VERSION_MINOR").parse().unwrap(),
+                patch: env!("CARGO_PKG_VERSION_PATCH").parse().unwrap(),
+            };
+            self.database.remap_data_type::<VersionCodec>().put(
+                wtxn,
+                &Key::version(self.index),
+                &version,
             )?;
 
             return Ok(());
