@@ -16,7 +16,7 @@ edition = "2021"
 [dependencies]
 bytemuck = { version = "1.21.0", features = ["derive", "extern_crate_alloc"] }
 byteorder = "1.5.0"
-heed = { branch = "bump-versions", git = "https://github.com/meilisearch/heed", default-features = false }
+heed = { branch = "main", git = "https://github.com/meilisearch/heed", default-features = false }
 log = "0.4.22"
 memmap2 = "0.9.5"
 ordered-float = "4.6.0"
