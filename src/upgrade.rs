@@ -123,8 +123,8 @@ pub fn cosine_from_0_4_to_0_5(
 
 /// Upgrade an arroy database from v0.5 to v0.6 without rebuilding the trees.
 pub fn from_0_5_to_0_6<C: Distance>(
-    _rtxn: &RoTxn,
-    _read_database: Database<C>,
+    rtxn: &RoTxn,
+    read_database: Database<C>,
     wtxn: &mut RwTxn,
     write_database: Database<C>,
 ) -> Result<()> {
@@ -133,6 +133,20 @@ pub fn from_0_5_to_0_6<C: Distance>(
         minor: env!("CARGO_PKG_VERSION_MINOR").parse().unwrap(),
         patch: env!("CARGO_PKG_VERSION_PATCH").parse().unwrap(),
     };
-    write_database.remap_data_type::<VersionCodec>().put(wtxn, &Key::version(), &version)?;
+
+    // Note that we have to write the versions into each database.
+    // The reason is that the Keys are prefixed by the index
+    // and that all indexes (u16) are valid.
+    for index in 0..=u16::MAX {
+        let metadata = Key::metadata(index);
+        if read_database.remap_data_type::<MetadataCodec>().get(rtxn, &metadata)?.is_some() {
+            write_database.remap_data_type::<VersionCodec>().put(
+                wtxn,
+                &Key::version(index),
+                &version,
+            )?;
+        }
+    }
+
     Ok(())
 }

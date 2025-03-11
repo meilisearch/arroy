@@ -438,7 +438,11 @@ impl<D: Distance> Writer<D> {
                 minor: env!("CARGO_PKG_VERSION_MINOR").parse().unwrap(),
                 patch: env!("CARGO_PKG_VERSION_PATCH").parse().unwrap(),
             };
-            self.database.remap_data_type::<VersionCodec>().put(wtxn, &Key::version(), &version)?;
+            self.database.remap_data_type::<VersionCodec>().put(
+                wtxn,
+                &Key::version(self.index),
+                &version,
+            )?;
 
             return Ok(());
         }
