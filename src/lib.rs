@@ -84,6 +84,7 @@ mod reader;
 mod roaring;
 mod spaces;
 mod stats;
+mod version;
 mod writer;
 
 #[cfg(test)]
