@@ -47,7 +47,7 @@ pub enum Error {
     )]
     MissingMetadata(u16),
 
-    /// The last time items in the database were updated, the [`Writer::build`] method wasn't called.
+    /// The last time items in the database were updated, the [`crate::ArroyBuilder::build`] method wasn't called.
     #[error("The trees have not been built after an update on index {0}")]
     NeedBuild(u16),
 

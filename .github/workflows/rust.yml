@@ -10,6 +10,7 @@ env:
   CARGO_TERM_COLOR: always
   RUST_BACKTRACE: 1
   RUSTFLAGS: "-D warnings"
+  RUSTDOCFLAGS: "-D warnings"
 
 jobs:
   test:
@@ -53,3 +54,7 @@ jobs:
         with:
           command: clippy
           args: --all-features
+      - uses: actions-rs/cargo@v1
+        if: always()
+        with:
+          command: doc
