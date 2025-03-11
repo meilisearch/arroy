@@ -49,14 +49,14 @@ mod test {
     use super::*;
 
     #[test]
-    fn metadata_codec() {
-        let metadata = Version { major: 0, minor: 10, patch: 100 };
+    fn version_codec() {
+        let version = Version { major: 0, minor: 10, patch: 100 };
 
-        let encoded = VersionCodec::bytes_encode(&metadata).unwrap();
+        let encoded = VersionCodec::bytes_encode(&version).unwrap();
         let decoded = VersionCodec::bytes_decode(&encoded).unwrap();
 
-        assert_eq!(metadata.major, decoded.major);
-        assert_eq!(metadata.minor, decoded.minor);
-        assert_eq!(metadata.patch, decoded.minor);
+        assert_eq!(version.major, decoded.major);
+        assert_eq!(version.minor, decoded.minor);
+        assert_eq!(version.patch, decoded.patch);
     }
 }
