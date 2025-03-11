@@ -272,4 +272,14 @@ pub mod upgrade {
 
         Ok(())
     }
+
+    /// Upgrade a cosine-based arroy database from v0.5 to v0.6 without rebuilding the trees.
+    pub fn cosine_from_0_5_to_0_6(
+        _rtxn: &RoTxn,
+        _read_database: Database<Cosine>,
+        _wtxn: &mut RwTxn,
+        _write_database: Database<Cosine>,
+    ) -> Result<()> {
+        Ok(())
+    }
 }
