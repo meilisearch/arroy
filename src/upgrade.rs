@@ -16,27 +16,6 @@ use crate::{
     Database, Distance, Error, Result,
 };
 
-#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
-#[repr(u8)]
-enum OldNodeMode {
-    Item = 0,
-    Tree = 1,
-    Metadata = 2,
-}
-
-impl TryFrom<u8> for OldNodeMode {
-    type Error = String;
-
-    fn try_from(v: u8) -> std::result::Result<Self, Self::Error> {
-        match v {
-            v if v == OldNodeMode::Item as u8 => Ok(OldNodeMode::Item),
-            v if v == OldNodeMode::Tree as u8 => Ok(OldNodeMode::Tree),
-            v if v == OldNodeMode::Metadata as u8 => Ok(OldNodeMode::Metadata),
-            v => Err(format!("Could not convert {v} as a `NodeMode`.")),
-        }
-    }
-}
-
 /// Upgrade a cosine-based arroy database from v0.4 to v0.5 without rebuilding the trees.
 pub fn cosine_from_0_4_to_0_5(
     rtxn: &RoTxn,
@@ -44,6 +23,27 @@ pub fn cosine_from_0_4_to_0_5(
     wtxn: &mut RwTxn,
     write_database: Database<Cosine>,
 ) -> Result<()> {
+    #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+    #[repr(u8)]
+    enum OldNodeMode {
+        Item = 0,
+        Tree = 1,
+        Metadata = 2,
+    }
+
+    impl TryFrom<u8> for OldNodeMode {
+        type Error = String;
+
+        fn try_from(v: u8) -> std::result::Result<Self, Self::Error> {
+            match v {
+                v if v == OldNodeMode::Item as u8 => Ok(OldNodeMode::Item),
+                v if v == OldNodeMode::Tree as u8 => Ok(OldNodeMode::Tree),
+                v if v == OldNodeMode::Metadata as u8 => Ok(OldNodeMode::Metadata),
+                v => Err(format!("Could not convert {v} as a `NodeMode`.")),
+            }
+        }
+    }
+
     // We need to update EVERY single nodes, thus we can clear the whole DB initially
     write_database.clear(wtxn)?;
 
