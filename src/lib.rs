@@ -1,11 +1,15 @@
-//! Arroy ([Approximate Rearest Reighbors][1] Oh Yeah) is a Rust library with the interface of the [Annoy Python library][2] to search for vectors in space that are close to a given query vector. It is based on LMDB, a memory-mapped key-value store, so many processes may share the same data and atomically modify the vectors.
+//! Arroy ([Approximate Rearest Reighbors][1] Oh Yeah) is a Rust library with the interface of the [Annoy Python library][2]
+//! to search for vectors in space that are close to a given query vector. It is based on LMDB, a memory-mapped key-value store,
+//! so many processes may share the same data and atomically modify the vectors.
 //!
 //! [1]: https://en.wikipedia.org/wiki/Nearest_neighbor_search#Approximate_nearest_neighbor
 //! [2]: https://github.com/spotify/annoy/#full-python-api
 //!
 //! # Examples
 //!
-//! Open an LMDB database, store some vectors in it and query the top 20 nearest items from the first vector. This is the most trivial way to use arroy and it's fairly easy. Just do not forget to [`Writer::build`] and [`heed::RwTxn::commit`] when you are done inserting your items.
+//! Open an LMDB database, store some vectors in it and query the top 20 nearest items from the first vector. This is the most
+//! trivial way to use arroy and it's fairly easy. Just do not forget to [`ArroyBuilder::build`] and [`heed::RwTxn::commit`]
+//! when you are done inserting your items.
 //!
 //! ```
 //! use std::num::NonZeroUsize;

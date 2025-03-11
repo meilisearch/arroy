@@ -88,7 +88,7 @@ impl<'a, D: Distance> QueryBuilder<'a, D> {
         self
     }
 
-    /// Oversampling will multiply [`search_k`] by the specified number.
+    /// Oversampling will multiply [`QueryBuilder::search_k`] by the specified number.
     /// That's useful when you don't want to compute `search_k` yourself.
     ///
     /// # Examples
