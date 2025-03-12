@@ -9,9 +9,10 @@ use heed::types::Bytes;
 use heed::{BytesDecode, BytesEncode, RoTxn};
 use memmap2::Mmap;
 use nohash::{BuildNoHashHasher, IntMap};
+use ordered_float::{Float, FloatCore};
 use rand::seq::{index, IteratorRandom};
 use rand::Rng;
-use roaring::RoaringBitmap;
+use roaring::{RoaringBitmap, RoaringTreemap};
 
 use crate::internals::{KeyCodec, Leaf, NodeCodec};
 use crate::key::{Prefix, PrefixCodec};
@@ -237,44 +238,94 @@ impl<'t, D: Distance> ImmutableLeafs<'t, D> {
     /// If there is less than 200 elements in the database then this number will be returned.
     pub fn sample<R: Rng>(&self, memory: usize, rng: &mut R) -> RoaringBitmap {
         let page_size = page_size::get();
+        let leaf_size =
+            self.constant_length.expect("Constant length is missing even though there are vectors");
+        let theorical_vectors_per_page = page_size as f64 / leaf_size as f64;
 
-        if self.leafs.len() <= 200 {
+        let memory_required_to_hold_everything =
+            page_size * theorical_vectors_per_page.ceil() as usize * self.leafs.len();
+
+        if self.leafs.len() <= 200 || memory >= memory_required_to_hold_everything {
             RoaringBitmap::from_iter(self.leafs.keys())
         } else {
-            let leaf_size = self
-                .constant_length
-                .expect("Constant length is missing even though there are vectors");
-            let vectors_fits_in_memory = memory / leaf_size.max(page_size);
-            let vectors_fits_in_memory = vectors_fits_in_memory.min(self.leafs.len()).max(200);
+            let pages_fit_in_ram = memory / page_size;
+            let theorical_nb_pages = self.leafs.len() as f64 / theorical_vectors_per_page;
 
-            println!("PAGE size > leaf size: {}", page_size > leaf_size);
-            println!("Theorically, {} vectors fit per pages", page_size as f64 / leaf_size as f64);
-            println!("{vectors_fits_in_memory} cache page fits in memory");
-            let mut items_iterator = self.leafs.iter();
-            let mut items = vec![vec![items_iterator.next().unwrap()]];
-            for (item, addr) in items_iterator {
-                let (_i, a) = items.last().unwrap().first().unwrap();
-                // If we have a vector starting on the same page as us or ending on the same page as we finish, keep it
-                if (*addr as usize) / page_size == **a as usize / page_size
-                    || (*addr as usize + leaf_size) / page_size
-                        == (**a as usize + leaf_size) / page_size
-                {
-                    items.last_mut().unwrap().push((item, addr));
-                } else {
-                    items.push(vec![(item, addr)]);
+            let mut pages_to_items = IntMap::with_capacity_and_hasher(
+                theorical_nb_pages.ceil() as usize,
+                BuildNoHashHasher::default(),
+            );
+            let mut items_to_pages =
+                IntMap::with_capacity_and_hasher(self.leafs.len(), BuildNoHashHasher::default());
+
+            for (item, addr) in self.leafs.iter() {
+                let a = *addr as usize;
+
+                let mut current = a;
+                let end = a + leaf_size;
+                // TODO: use a smallVec
+                let mut pages = Vec::new();
+                while current < end {
+                    // TODO: use a smallVec
+                    let page_to_items_entry =
+                        pages_to_items.entry(current / page_size).or_insert(Vec::new());
+                    if page_to_items_entry.last() != Some(item) {
+                        page_to_items_entry.push(*item);
+                    }
+                    pages.push(current / page_size);
+                    current += page_size;
                 }
+                items_to_pages.insert(*item, pages);
             }
-            let items = items.iter().choose_multiple(rng, vectors_fits_in_memory);
-            let bitmap = RoaringBitmap::from_iter(
-                items.into_iter().flat_map(|items| items.iter().map(|(item, _)| *item)),
-            );
-            println!(
-                "{} vectors fits in memory, in practice, on average {} vectors per page",
-                bitmap.len(),
-                bitmap.len() as f64 / vectors_fits_in_memory as f64
-            );
 
-            bitmap
+            // We're going to select a random set of vectors that fits in RAM
+            let mut candidates: RoaringBitmap = self.leafs.keys().collect();
+            let mut vector_selected = RoaringBitmap::new();
+            let mut pages_selected = RoaringTreemap::new();
+
+            while !candidates.is_empty() {
+                let rank = rng.gen_range(0..candidates.len() as u32);
+                let item_id = candidates.select(rank).unwrap();
+                let pages = items_to_pages.get(&item_id).unwrap();
+
+                let pages_selected_after_insertion = pages_selected
+                    .union_len(&RoaringTreemap::from_iter(pages.iter().map(|a| *a as u64)));
+                if pages_selected_after_insertion > pages_fit_in_ram as u64
+                    && vector_selected.len() >= 200
+                {
+                    break;
+                }
+
+                pages_selected.extend(pages.iter().map(|a| *a as u64));
+                vector_selected.insert(item_id);
+                candidates.remove(item_id);
+            }
+
+            // If we can't fit more than one and half vector per page we can skip the next step
+            // and immediately returns the current list of vectors. We're not going to find any
+            // "free" vector between pages
+            if theorical_vectors_per_page < 1.5 {
+                vector_selected
+            } else {
+                // To get the final list of vectors selected, we have to go through the whole list
+                // of pages selected, and retrieve all the complete vectors.
+                // We consider a vector complete if all the pages containing it have been selected.
+                let mut bitmap = RoaringBitmap::new();
+
+                for page in pages_selected.iter() {
+                    let items = pages_to_items.get(&(page as usize)).unwrap();
+                    for item in items {
+                        let pages = items_to_pages.get_mut(item).unwrap();
+                        let idx = pages.iter().position(|p| *p == page as usize).unwrap();
+                        pages.swap_remove(idx);
+                        if pages.is_empty() {
+                            bitmap.insert(*item);
+                        }
+                    }
+                }
+
+                bitmap
+            }
         }
     }
 }
