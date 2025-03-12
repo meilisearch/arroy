@@ -234,7 +234,7 @@ impl<'t, D: Distance> ImmutableLeafs<'t, D> {
 
     /// Returns a set of items ID that fits in memory.
     /// The memory is specified in bytes and the sample size returned will contains at least 200 elements.
-    /// If there is less than 200 elements in the database then this number will be returned.
+    /// If there is less than 200 elements in the database then this number of elements will be returned.
     pub fn sample<R: Rng>(&self, memory: usize, rng: &mut R) -> RoaringBitmap {
         let page_size = page_size::get();
         let leaf_size =

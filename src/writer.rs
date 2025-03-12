@@ -92,7 +92,7 @@ impl<'a, D: Distance, R: Rng + SeedableRng> ArroyBuilder<'a, D, R> {
         self
     }
 
-    /// Configure the maximum memory arroy can use to build its tree in bytes.
+    /// Configure the maximum memory arroy can use to build its trees in bytes.
     ///
     /// This value is used as a hint; arroy may still consume too much memory, especially if the value is too low.
     /// If not specified, arroy will use as much memory as possible but keep in mind that if arroy tries to use more
