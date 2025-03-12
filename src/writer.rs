@@ -911,13 +911,14 @@ impl<D: Distance> Writer<D> {
             return Ok(NodeId::tree(item_id));
         }
 
+        // If we don't have at least two vectors in common between the item_indices and the two_means_candidates
+        // we're going to use the whole list of two_means_candidates to create the split node.
         let intersection_len = two_means_candidates.intersection_len(item_indices);
         let two_means_candidates = if intersection_len >= 2 {
-            two_means_candidates & item_indices
+            &(two_means_candidates & item_indices)
         } else {
-            two_means_candidates.clone()
+            two_means_candidates
         };
-        let two_means_candidates = &two_means_candidates;
 
         let children = ImmutableSubsetLeafs::from_item_ids(reader.leafs, two_means_candidates);
         let mut children_left = Vec::with_capacity(children.len() as usize);
