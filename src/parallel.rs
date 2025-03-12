@@ -251,6 +251,9 @@ impl<'t, D: Distance> ImmutableLeafs<'t, D> {
             let pages_fit_in_ram = memory / page_size;
             let theorical_nb_pages = self.leafs.len() as f64 / theorical_vectors_per_page;
 
+            // First step is to map both:
+            // - the page ptr with the items they contain
+            // - the items with the pages they're contained in
             let mut pages_to_items = IntMap::with_capacity_and_hasher(
                 theorical_nb_pages.ceil() as usize,
                 BuildNoHashHasher::default(),
@@ -263,10 +266,8 @@ impl<'t, D: Distance> ImmutableLeafs<'t, D> {
 
                 let mut current = a;
                 let end = a + leaf_size;
-                // TODO: use a smallVec
                 let mut pages = Vec::new();
                 while current < end {
-                    // TODO: use a smallVec
                     let page_to_items_entry =
                         pages_to_items.entry(current / page_size).or_insert(Vec::new());
                     if page_to_items_entry.last() != Some(item) {
