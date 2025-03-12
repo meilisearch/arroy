@@ -98,6 +98,9 @@ impl<'a, D: Distance, R: Rng + SeedableRng> ArroyBuilder<'a, D, R> {
     /// If not specified, arroy will use as much memory as possible but keep in mind that if arroy tries to use more
     /// memory than you have, it'll become very slow.
     ///
+    /// In this case, it will randomly read the disk as pages will be invalidated by other reads, and OS cache will
+    /// become useless.
+    ///
     /// # Example
     ///
     /// ```no_run
