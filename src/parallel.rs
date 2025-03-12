@@ -9,8 +9,7 @@ use heed::types::Bytes;
 use heed::{BytesDecode, BytesEncode, RoTxn};
 use memmap2::Mmap;
 use nohash::{BuildNoHashHasher, IntMap};
-use ordered_float::{Float, FloatCore};
-use rand::seq::{index, IteratorRandom};
+use rand::seq::index;
 use rand::Rng;
 use roaring::{RoaringBitmap, RoaringTreemap};
 

@@ -620,6 +620,7 @@ impl<D: Distance> Writer<D> {
         }
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn update_trees<R: Rng + SeedableRng>(
         &self,
         opt: &BuildOption,
