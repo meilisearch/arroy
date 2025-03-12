@@ -233,6 +233,7 @@ impl<'t, D: Distance> ImmutableLeafs<'t, D> {
     }
 
     /// Returns a set of items ID that fits in memory.
+    ///
     /// The memory is specified in bytes and the sample size returned will contains at least 200 elements.
     /// If there is less than 200 elements in the database then this number of elements will be returned.
     pub fn sample<R: Rng>(&self, memory: usize, rng: &mut R) -> RoaringBitmap {
@@ -240,6 +241,7 @@ impl<'t, D: Distance> ImmutableLeafs<'t, D> {
         let leaf_size =
             self.constant_length.expect("Constant length is missing even though there are vectors");
         let theorical_vectors_per_page = page_size as f64 / leaf_size as f64;
+        let theorical_pages_per_vector = leaf_size as f64 / page_size as f64;
 
         let memory_required_to_hold_everything =
             page_size * theorical_vectors_per_page.ceil() as usize * self.leafs.len();
@@ -265,14 +267,15 @@ impl<'t, D: Distance> ImmutableLeafs<'t, D> {
 
                 let mut current = a;
                 let end = a + leaf_size;
-                let mut pages = Vec::new();
+                let mut pages = Vec::with_capacity(theorical_pages_per_vector.ceil() as usize + 1);
                 while current < end {
-                    let page_to_items_entry =
-                        pages_to_items.entry(current / page_size).or_insert(Vec::new());
-                    if page_to_items_entry.last() != Some(item) {
-                        page_to_items_entry.push(*item);
-                    }
-                    pages.push(current / page_size);
+                    let current_page_number = current / page_size;
+                    let page_to_items_entry = pages_to_items
+                        .entry(current_page_number)
+                        .or_insert_with(|| Vec::with_capacity((*item) as usize));
+                    debug_assert!(page_to_items_entry.contains(item));
+                    page_to_items_entry.push(*item);
+                    pages.push(current_page_number);
                     current += page_size;
                 }
                 items_to_pages.insert(*item, pages);
@@ -304,28 +307,24 @@ impl<'t, D: Distance> ImmutableLeafs<'t, D> {
             // If we can't fit more than one and half vector per page we can skip the next step
             // and immediately returns the current list of vectors. We're not going to find any
             // "free" vector between pages
-            if theorical_vectors_per_page < 1.5 {
-                vector_selected
-            } else {
+            if theorical_vectors_per_page > 1.5 {
                 // To get the final list of vectors selected, we have to go through the whole list
                 // of pages selected, and retrieve all the complete vectors.
                 // We consider a vector complete if all the pages containing it have been selected.
-                let mut bitmap = RoaringBitmap::new();
-
-                for page in pages_selected.iter() {
+                for page in pages_selected {
                     let items = pages_to_items.get(&(page as usize)).unwrap();
                     for item in items {
                         let pages = items_to_pages.get_mut(item).unwrap();
                         let idx = pages.iter().position(|p| *p == page as usize).unwrap();
                         pages.swap_remove(idx);
                         if pages.is_empty() {
-                            bitmap.insert(*item);
+                            vector_selected.insert(*item);
                         }
                     }
                 }
-
-                bitmap
             }
+
+            vector_selected
         }
     }
 }
