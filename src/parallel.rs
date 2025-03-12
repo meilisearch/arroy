@@ -247,85 +247,85 @@ impl<'t, D: Distance> ImmutableLeafs<'t, D> {
             page_size * theorical_vectors_per_page.ceil() as usize * self.leafs.len();
 
         if self.leafs.len() <= 200 || memory >= memory_required_to_hold_everything {
-            RoaringBitmap::from_iter(self.leafs.keys())
-        } else {
-            let pages_fit_in_ram = memory / page_size;
-            let theorical_nb_pages = self.leafs.len() as f64 / theorical_vectors_per_page;
+            return RoaringBitmap::from_iter(self.leafs.keys());
+        }
 
-            // First step is to map both:
-            // - the page ptr with the items they contain
-            // - the items with the pages they're contained in
-            let mut pages_to_items = IntMap::with_capacity_and_hasher(
-                theorical_nb_pages.ceil() as usize,
-                BuildNoHashHasher::default(),
-            );
-            let mut items_to_pages =
-                IntMap::with_capacity_and_hasher(self.leafs.len(), BuildNoHashHasher::default());
+        let pages_fit_in_ram = memory / page_size;
+        let theorical_nb_pages = self.leafs.len() as f64 / theorical_vectors_per_page;
 
-            for (item, addr) in self.leafs.iter() {
-                let a = *addr as usize;
+        // First step is to map both:
+        // - the page ptr with the items they contain
+        // - the items with the pages they're contained in
+        let mut pages_to_items = IntMap::with_capacity_and_hasher(
+            theorical_nb_pages.ceil() as usize,
+            BuildNoHashHasher::default(),
+        );
+        let mut items_to_pages =
+            IntMap::with_capacity_and_hasher(self.leafs.len(), BuildNoHashHasher::default());
 
-                let mut current = a;
-                let end = a + leaf_size;
-                let mut pages = Vec::with_capacity(theorical_pages_per_vector.ceil() as usize + 1);
-                while current < end {
-                    let current_page_number = current / page_size;
-                    let page_to_items_entry = pages_to_items
-                        .entry(current_page_number)
-                        .or_insert_with(|| Vec::with_capacity((*item) as usize));
-                    debug_assert!(page_to_items_entry.contains(item));
-                    page_to_items_entry.push(*item);
-                    pages.push(current_page_number);
-                    current += page_size;
-                }
-                items_to_pages.insert(*item, pages);
+        for (item, addr) in self.leafs.iter() {
+            let a = *addr as usize;
+
+            let mut current = a;
+            let end = a + leaf_size;
+            let mut pages = Vec::with_capacity(theorical_pages_per_vector.ceil() as usize + 1);
+            while current < end {
+                let current_page_number = current / page_size;
+                let page_to_items_entry = pages_to_items
+                    .entry(current_page_number)
+                    .or_insert_with(|| Vec::with_capacity((*item) as usize));
+                debug_assert!(!page_to_items_entry.contains(item));
+                page_to_items_entry.push(*item);
+                pages.push(current_page_number);
+                current += page_size;
+            }
+            items_to_pages.insert(*item, pages);
+        }
+
+        // We're going to select a random set of vectors that fits in RAM
+        let mut candidates: RoaringBitmap = self.leafs.keys().collect();
+        let mut vector_selected = RoaringBitmap::new();
+        let mut pages_selected = RoaringTreemap::new();
+
+        while !candidates.is_empty() {
+            let rank = rng.gen_range(0..candidates.len() as u32);
+            let item_id = candidates.select(rank).unwrap();
+            let pages = items_to_pages.get(&item_id).unwrap();
+
+            let pages_selected_after_insertion = pages_selected
+                .union_len(&RoaringTreemap::from_iter(pages.iter().map(|a| *a as u64)));
+            if pages_selected_after_insertion > pages_fit_in_ram as u64
+                && vector_selected.len() >= 200
+            {
+                break;
             }
 
-            // We're going to select a random set of vectors that fits in RAM
-            let mut candidates: RoaringBitmap = self.leafs.keys().collect();
-            let mut vector_selected = RoaringBitmap::new();
-            let mut pages_selected = RoaringTreemap::new();
+            pages_selected.extend(pages.iter().map(|a| *a as u64));
+            vector_selected.insert(item_id);
+            candidates.remove(item_id);
+        }
 
-            while !candidates.is_empty() {
-                let rank = rng.gen_range(0..candidates.len() as u32);
-                let item_id = candidates.select(rank).unwrap();
-                let pages = items_to_pages.get(&item_id).unwrap();
-
-                let pages_selected_after_insertion = pages_selected
-                    .union_len(&RoaringTreemap::from_iter(pages.iter().map(|a| *a as u64)));
-                if pages_selected_after_insertion > pages_fit_in_ram as u64
-                    && vector_selected.len() >= 200
-                {
-                    break;
-                }
-
-                pages_selected.extend(pages.iter().map(|a| *a as u64));
-                vector_selected.insert(item_id);
-                candidates.remove(item_id);
-            }
-
-            // If we can't fit more than one and half vector per page we can skip the next step
-            // and immediately returns the current list of vectors. We're not going to find any
-            // "free" vector between pages
-            if theorical_vectors_per_page > 1.5 {
-                // To get the final list of vectors selected, we have to go through the whole list
-                // of pages selected, and retrieve all the complete vectors.
-                // We consider a vector complete if all the pages containing it have been selected.
-                for page in pages_selected {
-                    let items = pages_to_items.get(&(page as usize)).unwrap();
-                    for item in items {
-                        let pages = items_to_pages.get_mut(item).unwrap();
-                        let idx = pages.iter().position(|p| *p == page as usize).unwrap();
-                        pages.swap_remove(idx);
-                        if pages.is_empty() {
-                            vector_selected.insert(*item);
-                        }
+        // If we can't fit more than one and half vector per page we can skip the next step
+        // and immediately returns the current list of vectors. We're not going to find any
+        // "free" vector between pages
+        if theorical_vectors_per_page > 1.5 {
+            // To get the final list of vectors selected, we have to go through the whole list
+            // of pages selected, and retrieve all the complete vectors.
+            // We consider a vector complete if all the pages containing it have been selected.
+            for page in pages_selected {
+                let items = pages_to_items.get(&(page as usize)).unwrap();
+                for item in items {
+                    let pages = items_to_pages.get_mut(item).unwrap();
+                    let idx = pages.iter().position(|p| *p == page as usize).unwrap();
+                    pages.swap_remove(idx);
+                    if pages.is_empty() {
+                        vector_selected.insert(*item);
                     }
                 }
             }
-
-            vector_selected
         }
+
+        vector_selected
     }
 }
 
