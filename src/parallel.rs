@@ -273,7 +273,7 @@ impl<'t, D: Distance> ImmutableLeafs<'t, D> {
                 let current_page_number = current / page_size;
                 let page_to_items_entry = pages_to_items
                     .entry(current_page_number)
-                    .or_insert_with(|| Vec::with_capacity((*item) as usize));
+                    .or_insert_with(|| Vec::with_capacity((theorical_vectors_per_page.ceil() as usize + 1));
                 debug_assert!(!page_to_items_entry.contains(item));
                 page_to_items_entry.push(*item);
                 pages.push(current_page_number);
@@ -292,9 +292,15 @@ impl<'t, D: Distance> ImmutableLeafs<'t, D> {
             let item_id = candidates.select(rank).unwrap();
             let pages = items_to_pages.get(&item_id).unwrap();
 
-            let pages_selected_after_insertion = pages_selected
-                .union_len(&RoaringTreemap::from_iter(pages.iter().map(|a| *a as u64)));
-            if pages_selected_after_insertion > pages_fit_in_ram as u64
+            // We count how many pages would be added to the treemap to see if we're going
+            // to exceed the allowed number of pages 
+            let mut new_pages_selected = 0;
+            for p in pages.iter() {
+                if !pages_selected.contains(p) {
+                    new_pages_selected += 1;
+                }
+            }
+            if (pages_selected_after_insertion + new_pages_selected) > pages_fit_in_ram as u64
                 && vector_selected.len() >= 200
             {
                 break;
