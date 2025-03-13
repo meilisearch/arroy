@@ -295,14 +295,10 @@ impl<'t, D: Distance> ImmutableLeafs<'t, D> {
 
             // We count how many pages would be added to the treemap to see if we're going
             // to exceed the allowed number of pages
-            let mut new_pages_selected = 0;
-            for p in pages {
-                if !pages_selected.contains(*p as u64) {
-                    new_pages_selected += 1;
-                }
-            }
+            let new_pages_selected =
+                pages.iter().filter(|p| !pages_selected.contains(**p as u64)).count();
 
-            if (pages_selected.len() + new_pages_selected) > pages_fit_in_ram as u64
+            if (pages_selected.len() + new_pages_selected as u64) > pages_fit_in_ram as u64
                 && vector_selected.len() >= 200
             {
                 break;
