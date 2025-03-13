@@ -271,9 +271,10 @@ impl<'t, D: Distance> ImmutableLeafs<'t, D> {
             let mut pages = Vec::with_capacity(theorical_pages_per_vector.ceil() as usize + 1);
             while current < end {
                 let current_page_number = current / page_size;
-                let page_to_items_entry = pages_to_items
-                    .entry(current_page_number)
-                    .or_insert_with(|| Vec::with_capacity((theorical_vectors_per_page.ceil() as usize + 1));
+                let page_to_items_entry =
+                    pages_to_items.entry(current_page_number).or_insert_with(|| {
+                        Vec::with_capacity((theorical_vectors_per_page.ceil() as usize + 1))
+                    });
                 debug_assert!(!page_to_items_entry.contains(item));
                 page_to_items_entry.push(*item);
                 pages.push(current_page_number);
@@ -293,7 +294,7 @@ impl<'t, D: Distance> ImmutableLeafs<'t, D> {
             let pages = items_to_pages.get(&item_id).unwrap();
 
             // We count how many pages would be added to the treemap to see if we're going
-            // to exceed the allowed number of pages 
+            // to exceed the allowed number of pages
             let mut new_pages_selected = 0;
             for p in pages.iter() {
                 if !pages_selected.contains(p) {
