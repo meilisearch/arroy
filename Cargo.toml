@@ -26,6 +26,7 @@ roaring = "0.10.9"
 tempfile = "3.15.0"
 thiserror = "2.0.9"
 nohash = "0.2.0"
+page_size = "0.6.0"
 
 [dev-dependencies]
 anyhow = "1.0.95"
