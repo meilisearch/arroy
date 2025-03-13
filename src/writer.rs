@@ -651,9 +651,6 @@ impl<D: Distance> Writer<D> {
             "running {} parallel tree building...",
             options.n_trees.map_or_else(|| "an unknown number of".to_string(), |n| n.to_string())
         );
-        // We don't know in advance how many trees will be created
-        (options.progress)(WriterProgress { main: MainStep::CreateNewTrees, sub: None });
-
         // Once we updated the current trees we also need to create the new missing trees
         // So we can run the normal path of building trees from scratch.
         let n_trees_to_build = options
@@ -661,6 +658,17 @@ impl<D: Distance> Writer<D> {
             .zip(metadata)
             .map(|(n_trees, metadata)| n_trees.saturating_sub(metadata.roots.len()))
             .or(options.n_trees);
+
+        // If we don't have both the metadata and the number of tree to build specified we can't create the substep.
+        // But to make the code easier to read, we're going to update an atomic in `build_trees` even if it's not linked to anything.
+        let trees_progress = Arc::new(AtomicU32::new(0));
+        let sub = n_trees_to_build.map(|trees_to_build| SubStep {
+            unit: "trees",
+            current: trees_progress.clone(),
+            max: trees_to_build as u32,
+        });
+        (options.progress)(WriterProgress { main: MainStep::CreateNewTrees, sub });
+
         let (mut thread_roots, mut tmp_nodes) = self.build_trees(
             options,
             rng,
@@ -668,6 +676,7 @@ impl<D: Distance> Writer<D> {
             &item_indices,
             &two_means_candidates,
             &frozzen_reader,
+            &trees_progress,
         )?;
         nodes_to_write.append(&mut tmp_nodes);
 
@@ -959,6 +968,7 @@ impl<D: Distance> Writer<D> {
         }
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn build_trees<R: Rng + SeedableRng>(
         &self,
         opt: &BuildOption,
@@ -967,6 +977,7 @@ impl<D: Distance> Writer<D> {
         item_indices: &RoaringBitmap,
         two_means_candidates: &RoaringBitmap,
         frozen_reader: &FrozzenReader<D>,
+        progress: &AtomicU32,
     ) -> Result<(Vec<ItemId>, Vec<TmpNodesReader>)> {
         let n_items = item_indices.len();
         let concurrent_node_ids = frozen_reader.concurrent_node_ids;
@@ -993,6 +1004,8 @@ impl<D: Distance> Writer<D> {
                     "make_tree_in_file returned an item even though there was more than a single element"
                 );
                 tracing::debug!("finished generating tree {i:X}");
+                progress.fetch_add(1, Ordering::Relaxed);
+
                 // make_tree will NEVER return a leaf when called as root
                 Ok((root_id.unwrap_tree(), tmp_nodes.into_bytes_reader()?))
             })
