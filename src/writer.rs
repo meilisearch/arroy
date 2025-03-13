@@ -34,12 +34,33 @@ pub struct ArroyBuilder<'a, D: Distance, R: Rng + SeedableRng> {
     inner: BuildOption<'a>,
 }
 
+/// Some steps arroy will go through during an indexing process.
+/// Some steps may be skipped in certain cases, and the name of the variant
+/// the order in which they appear and the time they take is unspecified, and
+/// might change from one version to the next one.
+/// It's recommended not to assume anything from this enum.
+#[repr(u8)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, enum_iterator::Sequence)]
+#[allow(missing_docs)]
+pub enum WriterProgress {
+    PreProcessingTheItems,
+    WritingTheDescendantsAndMetadata,
+    RetrieveTheUpdatedItems,
+    RetrievingTheTreeAndItemNodes,
+    UpdatingTheTrees,
+    CreateNewTrees,
+    WritingNodesToDatabase,
+    DeleteExtraneousTrees,
+    WriteTheMetadata,
+}
+
 /// The options available when building the arroy database.
 struct BuildOption<'a> {
     n_trees: Option<usize>,
     split_after: Option<usize>,
     available_memory: Option<usize>,
     cancel: Box<dyn Fn() -> bool + 'a + Sync + Send>,
+    progress: Box<dyn Fn(WriterProgress) + 'a + Sync + Send>,
 }
 
 impl Default for BuildOption<'_> {
@@ -49,6 +70,7 @@ impl Default for BuildOption<'_> {
             split_after: None,
             available_memory: None,
             cancel: Box::new(|| false),
+            progress: Box::new(|_| ()),
         }
     }
 }
@@ -145,10 +167,29 @@ impl<'a, D: Distance, R: Rng + SeedableRng> ArroyBuilder<'a, D, R> {
     /// });
     ///
     /// let mut rng = StdRng::seed_from_u64(92);
-    /// writer.builder(&mut rng).split_after(1000).build(&mut wtxn);
+    /// writer.builder(&mut rng).cancel(|| stops_after.load(Ordering::Relaxed)).build(&mut wtxn);
     /// ```
     pub fn cancel(&mut self, cancel: impl Fn() -> bool + 'a + Sync + Send) -> &mut Self {
         self.inner.cancel = Box::new(cancel);
+        self
+    }
+
+    /// The provided closure is called between all the indexing steps.
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// # use arroy::{Writer, distances::Euclidean};
+    /// # let (writer, wtxn): (Writer<Euclidean>, heed::RwTxn) = todo!();
+    /// use rand::rngs::StdRng;
+    /// use rand::SeedableRng;
+    /// use std::sync::atomic::{AtomicBool, Ordering};
+    ///
+    /// let mut rng = StdRng::seed_from_u64(4729);
+    /// writer.builder(&mut rng).progress(|progress| println!("{progress:?}")).build(&mut wtxn);
+    /// ```
+    pub fn progress(&mut self, progress: impl Fn(WriterProgress) + 'a + Sync + Send) -> &mut Self {
+        self.inner.progress = Box::new(progress);
         self
     }
 
@@ -395,6 +436,8 @@ impl<D: Distance> Writer<D> {
     ) -> Result<()> {
         tracing::debug!("started preprocessing the items...");
 
+        (options.progress)(WriterProgress::PreProcessingTheItems);
+
         if (options.cancel)() {
             return Err(Error::BuildCancelled);
         }
@@ -416,6 +459,7 @@ impl<D: Distance> Writer<D> {
 
         if self.fit_in_descendant(options, item_indices.len()) {
             tracing::debug!("We can fit every elements in a single descendant node, we can skip all the build process");
+            (options.progress)(WriterProgress::WritingTheDescendantsAndMetadata);
             // No item left in the index, we can clear every tree
 
             self.database.remap_data_type::<Bytes>().delete_range(
@@ -479,6 +523,7 @@ impl<D: Distance> Writer<D> {
         }
 
         tracing::debug!("reset and retrieve the updated items...");
+        (options.progress)(WriterProgress::RetrieveTheUpdatedItems);
         let mut updated_items = RoaringBitmap::new();
         let mut updated_iter = self
             .database
@@ -512,6 +557,7 @@ impl<D: Distance> Writer<D> {
             return Err(Error::BuildCancelled);
         }
 
+        (options.progress)(WriterProgress::RetrievingTheTreeAndItemNodes);
         let used_node_ids = self.used_tree_node(wtxn)?;
         let nb_tree_nodes = used_node_ids.len();
 
@@ -534,6 +580,7 @@ impl<D: Distance> Writer<D> {
                 n_items,
                 metadata.roots.len()
             );
+            (options.progress)(WriterProgress::UpdatingTheTrees);
             let (new_roots, mut tmp_nodes_reader) = self.update_trees(
                 options,
                 rng,
@@ -552,6 +599,7 @@ impl<D: Distance> Writer<D> {
             "running {} parallel tree building...",
             options.n_trees.map_or_else(|| "an unknown number of".to_string(), |n| n.to_string())
         );
+        (options.progress)(WriterProgress::CreateNewTrees);
 
         // Once we updated the current trees we also need to create the new missing trees
         // So we can run the normal path of building trees from scratch.
@@ -571,6 +619,7 @@ impl<D: Distance> Writer<D> {
         nodes_to_write.append(&mut tmp_nodes);
 
         tracing::debug!("started updating the tree nodes of {} trees...", tmp_nodes.len());
+        (options.progress)(WriterProgress::WritingNodesToDatabase);
         for (i, tmp_node) in nodes_to_write.iter().enumerate() {
             tracing::debug!(
                 "started deleting the {} tree nodes of the {i}nth trees...",
@@ -593,6 +642,7 @@ impl<D: Distance> Writer<D> {
         if thread_roots.is_empty() {
             // we may have too many nodes
             tracing::debug!("Deleting the extraneous trees if there is some...");
+            (options.progress)(WriterProgress::DeleteExtraneousTrees);
             self.delete_extra_trees(
                 wtxn,
                 options,
@@ -606,6 +656,7 @@ impl<D: Distance> Writer<D> {
         }
 
         tracing::debug!("write the metadata...");
+        (options.progress)(WriterProgress::WriteTheMetadata);
         let metadata = Metadata {
             dimensions: self.dimensions.try_into().unwrap(),
             items: item_indices,
