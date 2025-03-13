@@ -393,7 +393,7 @@ impl<D: Distance> Writer<D> {
         rng: &mut R,
         options: &BuildOption,
     ) -> Result<()> {
-        log::debug!("started preprocessing the items...");
+        tracing::debug!("started preprocessing the items...");
 
         if (options.cancel)() {
             return Err(Error::BuildCancelled);
@@ -415,7 +415,7 @@ impl<D: Distance> Writer<D> {
         let n_items = item_indices.len();
 
         if self.fit_in_descendant(options, item_indices.len()) {
-            log::debug!("We can fit every elements in a single descendant node, we can skip all the build process");
+            tracing::debug!("We can fit every elements in a single descendant node, we can skip all the build process");
             // No item left in the index, we can clear every tree
 
             self.database.remap_data_type::<Bytes>().delete_range(
@@ -436,7 +436,7 @@ impl<D: Distance> Writer<D> {
                 roots.push(0);
             }
 
-            log::debug!("reset the updated items...");
+            tracing::debug!("reset the updated items...");
             let mut updated_iter = self
                 .database
                 .remap_types::<PrefixCodec, DecodeIgnore>()
@@ -450,7 +450,7 @@ impl<D: Distance> Writer<D> {
             }
             drop(updated_iter);
 
-            log::debug!("write the metadata...");
+            tracing::debug!("write the metadata...");
             let metadata = Metadata {
                 dimensions: self.dimensions.try_into().unwrap(),
                 items: item_indices,
@@ -463,7 +463,7 @@ impl<D: Distance> Writer<D> {
                 &metadata,
             )?;
 
-            log::debug!("write the version...");
+            tracing::debug!("write the version...");
             let version = Version {
                 major: env!("CARGO_PKG_VERSION_MAJOR").parse().unwrap(),
                 minor: env!("CARGO_PKG_VERSION_MINOR").parse().unwrap(),
@@ -478,7 +478,7 @@ impl<D: Distance> Writer<D> {
             return Ok(());
         }
 
-        log::debug!("reset and retrieve the updated items...");
+        tracing::debug!("reset and retrieve the updated items...");
         let mut updated_items = RoaringBitmap::new();
         let mut updated_iter = self
             .database
@@ -506,7 +506,7 @@ impl<D: Distance> Writer<D> {
         let mut roots =
             metadata.as_ref().map_or_else(Vec::new, |metadata| metadata.roots.iter().collect());
 
-        log::debug!("Getting a reference to your {} items...", n_items);
+        tracing::debug!("Getting a reference to your {} items...", n_items);
 
         if (options.cancel)() {
             return Err(Error::BuildCancelled);
@@ -529,7 +529,7 @@ impl<D: Distance> Writer<D> {
 
         // If there is metadata it means that we already have trees and we must update them
         if let Some(ref metadata) = metadata {
-            log::debug!(
+            tracing::debug!(
                 "started inserting new items {} in {} trees...",
                 n_items,
                 metadata.roots.len()
@@ -547,8 +547,8 @@ impl<D: Distance> Writer<D> {
             roots = new_roots;
         }
 
-        log::debug!("started building trees for {} items...", n_items);
-        log::debug!(
+        tracing::debug!("started building trees for {} items...", n_items);
+        tracing::debug!(
             "running {} parallel tree building...",
             options.n_trees.map_or_else(|| "an unknown number of".to_string(), |n| n.to_string())
         );
@@ -570,9 +570,9 @@ impl<D: Distance> Writer<D> {
         )?;
         nodes_to_write.append(&mut tmp_nodes);
 
-        log::debug!("started updating the tree nodes of {} trees...", tmp_nodes.len());
+        tracing::debug!("started updating the tree nodes of {} trees...", tmp_nodes.len());
         for (i, tmp_node) in nodes_to_write.iter().enumerate() {
-            log::debug!(
+            tracing::debug!(
                 "started deleting the {} tree nodes of the {i}nth trees...",
                 tmp_node.len()
             );
@@ -580,7 +580,7 @@ impl<D: Distance> Writer<D> {
                 let key = Key::tree(self.index, item_id);
                 self.database.remap_data_type::<Bytes>().delete(wtxn, &key)?;
             }
-            log::debug!(
+            tracing::debug!(
                 "started inserting the {} tree nodes of the {i}nth trees...",
                 tmp_node.len()
             );
@@ -592,7 +592,7 @@ impl<D: Distance> Writer<D> {
 
         if thread_roots.is_empty() {
             // we may have too many nodes
-            log::debug!("Deleting the extraneous trees if there is some...");
+            tracing::debug!("Deleting the extraneous trees if there is some...");
             self.delete_extra_trees(
                 wtxn,
                 options,
@@ -605,7 +605,7 @@ impl<D: Distance> Writer<D> {
             roots.append(&mut thread_roots);
         }
 
-        log::debug!("write the metadata...");
+        tracing::debug!("write the metadata...");
         let metadata = Metadata {
             dimensions: self.dimensions.try_into().unwrap(),
             items: item_indices,
@@ -638,7 +638,7 @@ impl<D: Distance> Writer<D> {
         repeatn(rng.next_u64(), metadata.roots.len())
             .zip(roots)
             .map(|(seed, root)| {
-                log::debug!("started updating tree {root:X}...");
+                tracing::debug!("started updating tree {root:X}...");
                 let mut rng = R::seed_from_u64(seed.wrapping_add(root as u64));
                 let mut tmp_nodes: TmpNodes<NodeCodec<D>> = match self.tmpdir.as_ref() {
                     Some(path) => TmpNodes::new_in(path)?,
@@ -657,7 +657,7 @@ impl<D: Distance> Writer<D> {
                 )?;
                 assert!(node_id.mode != NodeMode::Item, "update_nodes_in_file returned an item even though there was more than a single element");
 
-                log::debug!("finished updating tree {root:X}");
+                tracing::debug!("finished updating tree {root:X}");
                 Ok((node_id.unwrap_tree(), tmp_nodes.into_bytes_reader()?))
             })
             .collect()
@@ -866,7 +866,7 @@ impl<D: Distance> Writer<D> {
                 None => concurrent_node_ids.used() < n_items,
             })
             .map(|(i, seed)| {
-                log::debug!("started generating tree {i:X}...");
+                tracing::debug!("started generating tree {i:X}...");
                 let mut rng = R::seed_from_u64(seed.wrapping_add(i as u64));
                 let mut tmp_nodes = match self.tmpdir.as_ref() {
                     Some(path) => TmpNodes::new_in(path)?,
@@ -878,7 +878,7 @@ impl<D: Distance> Writer<D> {
                     root_id.mode != NodeMode::Item,
                     "make_tree_in_file returned an item even though there was more than a single element"
                 );
-                log::debug!("finished generating tree {i:X}");
+                tracing::debug!("finished generating tree {i:X}");
                 // make_tree will NEVER return a leaf when called as root
                 Ok((root_id.unwrap_tree(), tmp_nodes.into_bytes_reader()?))
             })
@@ -1021,7 +1021,7 @@ impl<D: Distance> Writer<D> {
             // the less precise one
             let new_roots = roots.split_off(to_delete);
             let to_delete = mem::replace(roots, new_roots);
-            log::debug!("Deleting {} trees", to_delete.len());
+            tracing::debug!("Deleting {} trees", to_delete.len());
 
             for tree in to_delete {
                 if (opt.cancel)() {
