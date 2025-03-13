@@ -37,6 +37,7 @@ pub struct ArroyBuilder<'a, D: Distance, R: Rng + SeedableRng> {
 }
 
 /// Helps you understand what is happening inside of arroy during an indexing process.
+#[derive(Debug)]
 pub struct WriterProgress {
     /// The `main` part describes what's going on overall.
     pub main: MainStep,
@@ -45,6 +46,7 @@ pub struct WriterProgress {
 }
 
 /// When a `MainStep` takes too long, it may output a sub-step that gives you more details about the progression we've made on the current step.
+#[derive(Debug)]
 pub struct SubStep {
     /// The name of what is being updated.
     pub unit: &'static str,
