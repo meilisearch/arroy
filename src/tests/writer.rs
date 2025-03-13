@@ -53,7 +53,7 @@ fn use_u32_max_minus_one_for_a_vec() {
     ==================
     Dumping index 0
     Root: Metadata { dimensions: 3, items: RoaringBitmap<[4294967294]>, roots: [0], distance: "euclidean" }
-    Version: Version { major: 0, minor: 6, patch: 0 }
+    Version: Version { major: 0, minor: 6, patch: 1 }
     Tree 0: Descendants(Descendants { descendants: [4294967294] })
     Item 4294967294: Leaf(Leaf { header: NodeHeaderEuclidean { bias: 0.0 }, vector: [0.0000, 1.0000, 2.0000] })
     "###);
@@ -73,7 +73,7 @@ fn use_u32_max_for_a_vec() {
     ==================
     Dumping index 0
     Root: Metadata { dimensions: 3, items: RoaringBitmap<[4294967295]>, roots: [0], distance: "euclidean" }
-    Version: Version { major: 0, minor: 6, patch: 0 }
+    Version: Version { major: 0, minor: 6, patch: 1 }
     Tree 0: Descendants(Descendants { descendants: [4294967295] })
     Item 4294967295: Leaf(Leaf { header: NodeHeaderEuclidean { bias: 0.0 }, vector: [0.0000, 1.0000, 2.0000] })
     "###);
@@ -93,7 +93,7 @@ fn write_one_vector() {
     ==================
     Dumping index 0
     Root: Metadata { dimensions: 3, items: RoaringBitmap<[0]>, roots: [0], distance: "euclidean" }
-    Version: Version { major: 0, minor: 6, patch: 0 }
+    Version: Version { major: 0, minor: 6, patch: 1 }
     Tree 0: Descendants(Descendants { descendants: [0] })
     Item 0: Leaf(Leaf { header: NodeHeaderEuclidean { bias: 0.0 }, vector: [0.0000, 1.0000, 2.0000] })
     "###);
@@ -113,7 +113,7 @@ fn write_one_vector_in_one_tree() {
     ==================
     Dumping index 0
     Root: Metadata { dimensions: 3, items: RoaringBitmap<[0]>, roots: [0], distance: "euclidean" }
-    Version: Version { major: 0, minor: 6, patch: 0 }
+    Version: Version { major: 0, minor: 6, patch: 1 }
     Tree 0: Descendants(Descendants { descendants: [0] })
     Item 0: Leaf(Leaf { header: NodeHeaderEuclidean { bias: 0.0 }, vector: [0.0000, 1.0000, 2.0000] })
     "###);
@@ -133,7 +133,7 @@ fn write_one_vector_in_multiple_trees() {
     ==================
     Dumping index 0
     Root: Metadata { dimensions: 3, items: RoaringBitmap<[0]>, roots: [0], distance: "euclidean" }
-    Version: Version { major: 0, minor: 6, patch: 0 }
+    Version: Version { major: 0, minor: 6, patch: 1 }
     Tree 0: Descendants(Descendants { descendants: [0] })
     Item 0: Leaf(Leaf { header: NodeHeaderEuclidean { bias: 0.0 }, vector: [0.0000, 1.0000, 2.0000] })
     "###);
@@ -157,7 +157,7 @@ fn write_vectors_until_there_is_a_descendants() {
     ==================
     Dumping index 0
     Root: Metadata { dimensions: 3, items: RoaringBitmap<[0, 1, 2]>, roots: [0], distance: "euclidean" }
-    Version: Version { major: 0, minor: 6, patch: 0 }
+    Version: Version { major: 0, minor: 6, patch: 1 }
     Tree 0: Descendants(Descendants { descendants: [0, 1, 2] })
     Item 0: Leaf(Leaf { header: NodeHeaderEuclidean { bias: 0.0 }, vector: [0.0000, 0.0000, 0.0000] })
     Item 1: Leaf(Leaf { header: NodeHeaderEuclidean { bias: 0.0 }, vector: [1.0000, 1.0000, 1.0000] })
@@ -235,31 +235,31 @@ fn write_multiple_indexes() {
     ==================
     Dumping index 0
     Root: Metadata { dimensions: 3, items: RoaringBitmap<[0]>, roots: [0], distance: "euclidean" }
-    Version: Version { major: 0, minor: 6, patch: 0 }
+    Version: Version { major: 0, minor: 6, patch: 1 }
     Tree 0: Descendants(Descendants { descendants: [0] })
     Item 0: Leaf(Leaf { header: NodeHeaderEuclidean { bias: 0.0 }, vector: [0.0000, 1.0000, 2.0000] })
     ==================
     Dumping index 1
     Root: Metadata { dimensions: 3, items: RoaringBitmap<[0]>, roots: [0], distance: "euclidean" }
-    Version: Version { major: 0, minor: 6, patch: 0 }
+    Version: Version { major: 0, minor: 6, patch: 1 }
     Tree 0: Descendants(Descendants { descendants: [0] })
     Item 0: Leaf(Leaf { header: NodeHeaderEuclidean { bias: 0.0 }, vector: [0.0000, 1.0000, 2.0000] })
     ==================
     Dumping index 2
     Root: Metadata { dimensions: 3, items: RoaringBitmap<[0]>, roots: [0], distance: "euclidean" }
-    Version: Version { major: 0, minor: 6, patch: 0 }
+    Version: Version { major: 0, minor: 6, patch: 1 }
     Tree 0: Descendants(Descendants { descendants: [0] })
     Item 0: Leaf(Leaf { header: NodeHeaderEuclidean { bias: 0.0 }, vector: [0.0000, 1.0000, 2.0000] })
     ==================
     Dumping index 3
     Root: Metadata { dimensions: 3, items: RoaringBitmap<[0]>, roots: [0], distance: "euclidean" }
-    Version: Version { major: 0, minor: 6, patch: 0 }
+    Version: Version { major: 0, minor: 6, patch: 1 }
     Tree 0: Descendants(Descendants { descendants: [0] })
     Item 0: Leaf(Leaf { header: NodeHeaderEuclidean { bias: 0.0 }, vector: [0.0000, 1.0000, 2.0000] })
     ==================
     Dumping index 4
     Root: Metadata { dimensions: 3, items: RoaringBitmap<[0]>, roots: [0], distance: "euclidean" }
-    Version: Version { major: 0, minor: 6, patch: 0 }
+    Version: Version { major: 0, minor: 6, patch: 1 }
     Tree 0: Descendants(Descendants { descendants: [0] })
     Item 0: Leaf(Leaf { header: NodeHeaderEuclidean { bias: 0.0 }, vector: [0.0000, 1.0000, 2.0000] })
     "###);
@@ -359,7 +359,7 @@ fn delete_one_item_in_a_one_item_db() {
     ==================
     Dumping index 0
     Root: Metadata { dimensions: 2, items: RoaringBitmap<[0]>, roots: [0], distance: "euclidean" }
-    Version: Version { major: 0, minor: 6, patch: 0 }
+    Version: Version { major: 0, minor: 6, patch: 1 }
     Tree 0: Descendants(Descendants { descendants: [0] })
     Item 0: Leaf(Leaf { header: NodeHeaderEuclidean { bias: 0.0 }, vector: [0.0000, 0.0000] })
     "###);
@@ -376,7 +376,7 @@ fn delete_one_item_in_a_one_item_db() {
     ==================
     Dumping index 0
     Root: Metadata { dimensions: 2, items: RoaringBitmap<[]>, roots: [], distance: "euclidean" }
-    Version: Version { major: 0, minor: 6, patch: 0 }
+    Version: Version { major: 0, minor: 6, patch: 1 }
     "###);
 
     let rtxn = handle.env.read_txn().unwrap();
@@ -402,7 +402,7 @@ fn delete_document_in_an_empty_index_74() {
     ==================
     Dumping index 0
     Root: Metadata { dimensions: 2, items: RoaringBitmap<[0]>, roots: [0], distance: "euclidean" }
-    Version: Version { major: 0, minor: 6, patch: 0 }
+    Version: Version { major: 0, minor: 6, patch: 1 }
     Tree 0: Descendants(Descendants { descendants: [0] })
     Item 0: Leaf(Leaf { header: NodeHeaderEuclidean { bias: 0.0 }, vector: [0.0000, 0.0000] })
     "###);
@@ -428,11 +428,11 @@ fn delete_document_in_an_empty_index_74() {
     ==================
     Dumping index 0
     Root: Metadata { dimensions: 2, items: RoaringBitmap<[]>, roots: [], distance: "euclidean" }
-    Version: Version { major: 0, minor: 6, patch: 0 }
+    Version: Version { major: 0, minor: 6, patch: 1 }
     ==================
     Dumping index 1
     Root: Metadata { dimensions: 2, items: RoaringBitmap<[]>, roots: [], distance: "euclidean" }
-    Version: Version { major: 0, minor: 6, patch: 0 }
+    Version: Version { major: 0, minor: 6, patch: 1 }
     "###);
 
     let rtxn = handle.env.read_txn().unwrap();
@@ -458,7 +458,7 @@ fn delete_one_item_in_a_descendant() {
     ==================
     Dumping index 0
     Root: Metadata { dimensions: 2, items: RoaringBitmap<[0, 1]>, roots: [0], distance: "euclidean" }
-    Version: Version { major: 0, minor: 6, patch: 0 }
+    Version: Version { major: 0, minor: 6, patch: 1 }
     Tree 0: Descendants(Descendants { descendants: [0, 1] })
     Item 0: Leaf(Leaf { header: NodeHeaderEuclidean { bias: 0.0 }, vector: [0.0000, 0.0000] })
     Item 1: Leaf(Leaf { header: NodeHeaderEuclidean { bias: 0.0 }, vector: [1.0000, 0.0000] })
@@ -476,7 +476,7 @@ fn delete_one_item_in_a_descendant() {
     ==================
     Dumping index 0
     Root: Metadata { dimensions: 2, items: RoaringBitmap<[1]>, roots: [0], distance: "euclidean" }
-    Version: Version { major: 0, minor: 6, patch: 0 }
+    Version: Version { major: 0, minor: 6, patch: 1 }
     Tree 0: Descendants(Descendants { descendants: [1] })
     Item 1: Leaf(Leaf { header: NodeHeaderEuclidean { bias: 0.0 }, vector: [1.0000, 0.0000] })
     "###);
@@ -520,7 +520,7 @@ fn delete_one_leaf_in_a_split() {
     ==================
     Dumping index 0
     Root: Metadata { dimensions: 2, items: RoaringBitmap<[1, 2]>, roots: [0], distance: "euclidean" }
-    Version: Version { major: 0, minor: 6, patch: 0 }
+    Version: Version { major: 0, minor: 6, patch: 1 }
     Tree 0: Descendants(Descendants { descendants: [1, 2] })
     Item 1: Leaf(Leaf { header: NodeHeaderEuclidean { bias: 0.0 }, vector: [1.0000, 0.0000] })
     Item 2: Leaf(Leaf { header: NodeHeaderEuclidean { bias: 0.0 }, vector: [2.0000, 0.0000] })
@@ -543,7 +543,7 @@ fn delete_one_item_in_a_single_document_database() {
     ==================
     Dumping index 0
     Root: Metadata { dimensions: 2, items: RoaringBitmap<[0]>, roots: [0], distance: "cosine" }
-    Version: Version { major: 0, minor: 6, patch: 0 }
+    Version: Version { major: 0, minor: 6, patch: 1 }
     Tree 0: Descendants(Descendants { descendants: [0] })
     Item 0: Leaf(Leaf { header: NodeHeaderCosine { norm: 0.0 }, vector: [0.0000, 0.0000] })
     "###);
@@ -560,7 +560,7 @@ fn delete_one_item_in_a_single_document_database() {
     ==================
     Dumping index 0
     Root: Metadata { dimensions: 2, items: RoaringBitmap<[]>, roots: [], distance: "cosine" }
-    Version: Version { major: 0, minor: 6, patch: 0 }
+    Version: Version { major: 0, minor: 6, patch: 1 }
     "###);
 }
 
@@ -654,7 +654,7 @@ fn add_one_item_incrementally_in_an_empty_db() {
     ==================
     Dumping index 0
     Root: Metadata { dimensions: 2, items: RoaringBitmap<[]>, roots: [], distance: "euclidean" }
-    Version: Version { major: 0, minor: 6, patch: 0 }
+    Version: Version { major: 0, minor: 6, patch: 1 }
     "###);
 
     let mut wtxn = handle.env.write_txn().unwrap();
@@ -667,7 +667,7 @@ fn add_one_item_incrementally_in_an_empty_db() {
     ==================
     Dumping index 0
     Root: Metadata { dimensions: 2, items: RoaringBitmap<[0]>, roots: [0], distance: "euclidean" }
-    Version: Version { major: 0, minor: 6, patch: 0 }
+    Version: Version { major: 0, minor: 6, patch: 1 }
     Tree 0: Descendants(Descendants { descendants: [0] })
     Item 0: Leaf(Leaf { header: NodeHeaderEuclidean { bias: 0.0 }, vector: [0.0000, 0.0000] })
     "###);
@@ -687,7 +687,7 @@ fn add_one_item_incrementally_in_a_one_item_db() {
     ==================
     Dumping index 0
     Root: Metadata { dimensions: 2, items: RoaringBitmap<[0]>, roots: [0], distance: "euclidean" }
-    Version: Version { major: 0, minor: 6, patch: 0 }
+    Version: Version { major: 0, minor: 6, patch: 1 }
     Tree 0: Descendants(Descendants { descendants: [0] })
     Item 0: Leaf(Leaf { header: NodeHeaderEuclidean { bias: 0.0 }, vector: [0.0000, 0.0000] })
     "###);
@@ -702,7 +702,7 @@ fn add_one_item_incrementally_in_a_one_item_db() {
     ==================
     Dumping index 0
     Root: Metadata { dimensions: 2, items: RoaringBitmap<[0, 1]>, roots: [0], distance: "euclidean" }
-    Version: Version { major: 0, minor: 6, patch: 0 }
+    Version: Version { major: 0, minor: 6, patch: 1 }
     Tree 0: Descendants(Descendants { descendants: [0, 1] })
     Item 0: Leaf(Leaf { header: NodeHeaderEuclidean { bias: 0.0 }, vector: [0.0000, 0.0000] })
     Item 1: Leaf(Leaf { header: NodeHeaderEuclidean { bias: 0.0 }, vector: [1.0000, 0.0000] })
@@ -724,7 +724,7 @@ fn add_one_item_incrementally_to_create_a_split_node() {
     ==================
     Dumping index 0
     Root: Metadata { dimensions: 2, items: RoaringBitmap<[0, 1]>, roots: [0], distance: "euclidean" }
-    Version: Version { major: 0, minor: 6, patch: 0 }
+    Version: Version { major: 0, minor: 6, patch: 1 }
     Tree 0: Descendants(Descendants { descendants: [0, 1] })
     Item 0: Leaf(Leaf { header: NodeHeaderEuclidean { bias: 0.0 }, vector: [0.0000, 0.0000] })
     Item 1: Leaf(Leaf { header: NodeHeaderEuclidean { bias: 0.0 }, vector: [1.0000, 0.0000] })
@@ -740,7 +740,7 @@ fn add_one_item_incrementally_to_create_a_split_node() {
     ==================
     Dumping index 0
     Root: Metadata { dimensions: 2, items: RoaringBitmap<[0, 1, 2]>, roots: [2], distance: "euclidean" }
-    Version: Version { major: 0, minor: 6, patch: 0 }
+    Version: Version { major: 0, minor: 6, patch: 1 }
     Tree 1: Descendants(Descendants { descendants: [1, 2] })
     Tree 2: SplitPlaneNormal(SplitPlaneNormal<euclidean> { left: Item(0), right: Tree(1), normal: [1.0000, 0.0000] })
     Item 0: Leaf(Leaf { header: NodeHeaderEuclidean { bias: 0.0 }, vector: [0.0000, 0.0000] })
@@ -1051,7 +1051,7 @@ fn append() {
     ==================
     Dumping index 1
     Root: Metadata { dimensions: 2, items: RoaringBitmap<[0, 1]>, roots: [0], distance: "euclidean" }
-    Version: Version { major: 0, minor: 6, patch: 0 }
+    Version: Version { major: 0, minor: 6, patch: 1 }
     Tree 0: Descendants(Descendants { descendants: [0, 1] })
     Item 0: Leaf(Leaf { header: NodeHeaderEuclidean { bias: 0.0 }, vector: [0.0000, 0.0000] })
     Item 1: Leaf(Leaf { header: NodeHeaderEuclidean { bias: 0.0 }, vector: [0.1000, 0.1000] })

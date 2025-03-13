@@ -194,6 +194,7 @@ impl<'t, D: Distance> ImmutableLeafs<'t, D> {
         database: Database<D>,
         index: u16,
         nb_leafs: u64,
+        progress: &AtomicU32,
     ) -> heed::Result<Self> {
         let mut leafs =
             IntMap::with_capacity_and_hasher(nb_leafs as usize, BuildNoHashHasher::default());
@@ -209,6 +210,7 @@ impl<'t, D: Distance> ImmutableLeafs<'t, D> {
             let item_id = key.node.unwrap_item();
             assert_eq!(*constant_length.get_or_insert(bytes.len()), bytes.len());
             leafs.insert(item_id, bytes.as_ptr());
+            progress.fetch_add(1, Ordering::Relaxed);
         }
 
         Ok(ImmutableLeafs { leafs, constant_length, _marker: marker::PhantomData })
@@ -407,6 +409,7 @@ impl<'t, D: Distance> ImmutableTrees<'t, D> {
         database: Database<D>,
         index: u16,
         nb_trees: u64,
+        progress: &AtomicU32,
     ) -> heed::Result<Self> {
         let mut trees =
             IntMap::with_capacity_and_hasher(nb_trees as usize, BuildNoHashHasher::default());
@@ -420,6 +423,7 @@ impl<'t, D: Distance> ImmutableTrees<'t, D> {
             let (key, bytes) = result?;
             let tree_id = key.node.unwrap_tree();
             trees.insert(tree_id, (bytes.len(), bytes.as_ptr()));
+            progress.fetch_add(1, Ordering::Relaxed);
         }
 
         Ok(ImmutableTrees { trees, _marker: marker::PhantomData })

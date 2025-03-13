@@ -2,6 +2,8 @@ use std::any::TypeId;
 use std::borrow::Cow;
 use std::mem;
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicU32, Ordering};
+use std::sync::Arc;
 
 use heed::types::{Bytes, DecodeIgnore, Unit};
 use heed::{MdbError, PutFlags, RoTxn, RwTxn};
@@ -34,12 +36,60 @@ pub struct ArroyBuilder<'a, D: Distance, R: Rng + SeedableRng> {
     inner: BuildOption<'a>,
 }
 
+/// Helps you understand what is happening inside of arroy during an indexing process.
+#[derive(Debug)]
+pub struct WriterProgress {
+    /// The `main` part describes what's going on overall.
+    pub main: MainStep,
+    /// Sometimes, when a part takes a lot of time, you'll get a substep describing with more details what's going on.
+    pub sub: Option<SubStep>,
+}
+
+/// When a `MainStep` takes too long, it may output a sub-step that gives you more details about the progression we've made on the current step.
+#[derive(Debug)]
+pub struct SubStep {
+    /// The name of what is being updated.
+    pub unit: &'static str,
+    /// The `current` iteration we're at. It's stored in an `AtomicU32` so arroy can update it very quickly without calling your closure again.
+    pub current: Arc<AtomicU32>,
+    /// The `max`imum number of iteration it'll do before updating the `MainStep` again.
+    pub max: u32,
+}
+
+impl SubStep {
+    fn new(unit: &'static str, max: u32) -> (Self, Arc<AtomicU32>) {
+        let current = Arc::new(AtomicU32::new(0));
+        (Self { unit, current: current.clone(), max }, current)
+    }
+}
+
+/// Some steps arroy will go through during an indexing process.
+/// Some steps may be skipped in certain cases, and the name of the variant
+/// the order in which they appear and the time they take is unspecified, and
+/// might change from one version to the next one.
+/// It's recommended not to assume anything from this enum.
+#[repr(u8)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, enum_iterator::Sequence)]
+#[allow(missing_docs)]
+pub enum MainStep {
+    PreProcessingTheItems,
+    WritingTheDescendantsAndMetadata,
+    RetrieveTheUpdatedItems,
+    RetrievingTheTreeAndItemNodes,
+    UpdatingTheTrees,
+    CreateNewTrees,
+    WritingNodesToDatabase,
+    DeleteExtraneousTrees,
+    WriteTheMetadata,
+}
+
 /// The options available when building the arroy database.
 struct BuildOption<'a> {
     n_trees: Option<usize>,
     split_after: Option<usize>,
     available_memory: Option<usize>,
     cancel: Box<dyn Fn() -> bool + 'a + Sync + Send>,
+    progress: Box<dyn Fn(WriterProgress) + 'a + Sync + Send>,
 }
 
 impl Default for BuildOption<'_> {
@@ -49,6 +99,7 @@ impl Default for BuildOption<'_> {
             split_after: None,
             available_memory: None,
             cancel: Box::new(|| false),
+            progress: Box::new(|_| ()),
         }
     }
 }
@@ -145,10 +196,29 @@ impl<'a, D: Distance, R: Rng + SeedableRng> ArroyBuilder<'a, D, R> {
     /// });
     ///
     /// let mut rng = StdRng::seed_from_u64(92);
-    /// writer.builder(&mut rng).split_after(1000).build(&mut wtxn);
+    /// writer.builder(&mut rng).cancel(|| stops_after.load(Ordering::Relaxed)).build(&mut wtxn);
     /// ```
     pub fn cancel(&mut self, cancel: impl Fn() -> bool + 'a + Sync + Send) -> &mut Self {
         self.inner.cancel = Box::new(cancel);
+        self
+    }
+
+    /// The provided closure is called between all the indexing steps.
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// # use arroy::{Writer, distances::Euclidean};
+    /// # let (writer, wtxn): (Writer<Euclidean>, heed::RwTxn) = todo!();
+    /// use rand::rngs::StdRng;
+    /// use rand::SeedableRng;
+    /// use std::sync::atomic::{AtomicBool, Ordering};
+    ///
+    /// let mut rng = StdRng::seed_from_u64(4729);
+    /// writer.builder(&mut rng).progress(|progress| println!("{progress:?}")).build(&mut wtxn);
+    /// ```
+    pub fn progress(&mut self, progress: impl Fn(WriterProgress) + 'a + Sync + Send) -> &mut Self {
+        self.inner.progress = Box::new(progress);
         self
     }
 
@@ -395,6 +465,8 @@ impl<D: Distance> Writer<D> {
     ) -> Result<()> {
         tracing::debug!("started preprocessing the items...");
 
+        (options.progress)(WriterProgress { main: MainStep::PreProcessingTheItems, sub: None });
+
         if (options.cancel)() {
             return Err(Error::BuildCancelled);
         }
@@ -416,6 +488,10 @@ impl<D: Distance> Writer<D> {
 
         if self.fit_in_descendant(options, item_indices.len()) {
             tracing::debug!("We can fit every elements in a single descendant node, we can skip all the build process");
+            (options.progress)(WriterProgress {
+                main: MainStep::WritingTheDescendantsAndMetadata,
+                sub: None,
+            });
             // No item left in the index, we can clear every tree
 
             self.database.remap_data_type::<Bytes>().delete_range(
@@ -479,6 +555,7 @@ impl<D: Distance> Writer<D> {
         }
 
         tracing::debug!("reset and retrieve the updated items...");
+        (options.progress)(WriterProgress { main: MainStep::RetrieveTheUpdatedItems, sub: None });
         let mut updated_items = RoaringBitmap::new();
         let mut updated_iter = self
             .database
@@ -515,10 +592,29 @@ impl<D: Distance> Writer<D> {
         let used_node_ids = self.used_tree_node(wtxn)?;
         let nb_tree_nodes = used_node_ids.len();
 
+        let (sub, nodes_extraction_progress) =
+            SubStep::new("nodes", item_indices.len() as u32 + nb_tree_nodes as u32);
+        (options.progress)(WriterProgress {
+            main: MainStep::RetrievingTheTreeAndItemNodes,
+            sub: Some(sub),
+        });
+
         let concurrent_node_ids = ConcurrentNodeIds::new(used_node_ids);
         let frozzen_reader = FrozzenReader {
-            leafs: &ImmutableLeafs::new(wtxn, self.database, self.index, item_indices.len())?,
-            trees: &ImmutableTrees::new(wtxn, self.database, self.index, nb_tree_nodes)?,
+            leafs: &ImmutableLeafs::new(
+                wtxn,
+                self.database,
+                self.index,
+                item_indices.len(),
+                &nodes_extraction_progress,
+            )?,
+            trees: &ImmutableTrees::new(
+                wtxn,
+                self.database,
+                self.index,
+                nb_tree_nodes,
+                &nodes_extraction_progress,
+            )?,
             // The globally incrementing node ids that are shared between threads.
             concurrent_node_ids: &concurrent_node_ids,
         };
@@ -534,6 +630,8 @@ impl<D: Distance> Writer<D> {
                 n_items,
                 metadata.roots.len()
             );
+            let (sub, trees_progress) = SubStep::new("trees", metadata.roots.len() as u32);
+            (options.progress)(WriterProgress { main: MainStep::UpdatingTheTrees, sub: Some(sub) });
             let (new_roots, mut tmp_nodes_reader) = self.update_trees(
                 options,
                 rng,
@@ -542,6 +640,7 @@ impl<D: Distance> Writer<D> {
                 to_delete,
                 &two_means_candidates,
                 &frozzen_reader,
+                &trees_progress,
             )?;
             nodes_to_write.append(&mut tmp_nodes_reader);
             roots = new_roots;
@@ -552,7 +651,6 @@ impl<D: Distance> Writer<D> {
             "running {} parallel tree building...",
             options.n_trees.map_or_else(|| "an unknown number of".to_string(), |n| n.to_string())
         );
-
         // Once we updated the current trees we also need to create the new missing trees
         // So we can run the normal path of building trees from scratch.
         let n_trees_to_build = options
@@ -560,6 +658,17 @@ impl<D: Distance> Writer<D> {
             .zip(metadata)
             .map(|(n_trees, metadata)| n_trees.saturating_sub(metadata.roots.len()))
             .or(options.n_trees);
+
+        // If we don't have both the metadata and the number of tree to build specified we can't create the substep.
+        // But to make the code easier to read, we're going to update an atomic in `build_trees` even if it's not linked to anything.
+        let trees_progress = Arc::new(AtomicU32::new(0));
+        let sub = n_trees_to_build.map(|trees_to_build| SubStep {
+            unit: "trees",
+            current: trees_progress.clone(),
+            max: trees_to_build as u32,
+        });
+        (options.progress)(WriterProgress { main: MainStep::CreateNewTrees, sub });
+
         let (mut thread_roots, mut tmp_nodes) = self.build_trees(
             options,
             rng,
@@ -567,10 +676,17 @@ impl<D: Distance> Writer<D> {
             &item_indices,
             &two_means_candidates,
             &frozzen_reader,
+            &trees_progress,
         )?;
         nodes_to_write.append(&mut tmp_nodes);
 
         tracing::debug!("started updating the tree nodes of {} trees...", tmp_nodes.len());
+        let (sub, nodes_written_progress) =
+            SubStep::new("nodes written", nodes_to_write.len() as u32);
+        (options.progress)(WriterProgress {
+            main: MainStep::WritingNodesToDatabase,
+            sub: Some(sub),
+        });
         for (i, tmp_node) in nodes_to_write.iter().enumerate() {
             tracing::debug!(
                 "started deleting the {} tree nodes of the {i}nth trees...",
@@ -588,11 +704,14 @@ impl<D: Distance> Writer<D> {
                 let key = Key::tree(self.index, item_id);
                 self.database.remap_data_type::<Bytes>().put(wtxn, &key, item_bytes)?;
             }
+
+            nodes_written_progress.fetch_add(1, Ordering::Relaxed);
         }
 
         if thread_roots.is_empty() {
             // we may have too many nodes
             tracing::debug!("Deleting the extraneous trees if there is some...");
+            (options.progress)(WriterProgress { main: MainStep::DeleteExtraneousTrees, sub: None });
             self.delete_extra_trees(
                 wtxn,
                 options,
@@ -606,6 +725,7 @@ impl<D: Distance> Writer<D> {
         }
 
         tracing::debug!("write the metadata...");
+        (options.progress)(WriterProgress { main: MainStep::WriteTheMetadata, sub: None });
         let metadata = Metadata {
             dimensions: self.dimensions.try_into().unwrap(),
             items: item_indices,
@@ -632,6 +752,7 @@ impl<D: Distance> Writer<D> {
         to_delete: &RoaringBitmap,
         two_means_candidates: &RoaringBitmap,
         frozen_reader: &FrozzenReader<D>,
+        trees_progress: &AtomicU32,
     ) -> Result<(Vec<ItemId>, Vec<TmpNodesReader>)> {
         let roots: Vec<_> = metadata.roots.iter().collect();
 
@@ -656,6 +777,8 @@ impl<D: Distance> Writer<D> {
                     &mut tmp_nodes,
                 )?;
                 assert!(node_id.mode != NodeMode::Item, "update_nodes_in_file returned an item even though there was more than a single element");
+
+                trees_progress.fetch_add(1, Ordering::Relaxed);
 
                 tracing::debug!("finished updating tree {root:X}");
                 Ok((node_id.unwrap_tree(), tmp_nodes.into_bytes_reader()?))
@@ -845,6 +968,7 @@ impl<D: Distance> Writer<D> {
         }
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn build_trees<R: Rng + SeedableRng>(
         &self,
         opt: &BuildOption,
@@ -853,6 +977,7 @@ impl<D: Distance> Writer<D> {
         item_indices: &RoaringBitmap,
         two_means_candidates: &RoaringBitmap,
         frozen_reader: &FrozzenReader<D>,
+        progress: &AtomicU32,
     ) -> Result<(Vec<ItemId>, Vec<TmpNodesReader>)> {
         let n_items = item_indices.len();
         let concurrent_node_ids = frozen_reader.concurrent_node_ids;
@@ -879,6 +1004,8 @@ impl<D: Distance> Writer<D> {
                     "make_tree_in_file returned an item even though there was more than a single element"
                 );
                 tracing::debug!("finished generating tree {i:X}");
+                progress.fetch_add(1, Ordering::Relaxed);
+
                 // make_tree will NEVER return a leaf when called as root
                 Ok((root_id.unwrap_tree(), tmp_nodes.into_bytes_reader()?))
             })
