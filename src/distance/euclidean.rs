@@ -48,7 +48,7 @@ impl Distance for Euclidean {
     fn init(_node: &mut Leaf<Self>) {}
 
     fn create_split<'a, R: Rng>(
-        children: &'a ImmutableSubsetLeafs<Self>,
+        children: ImmutableSubsetLeafs<'a, Self>,
         rng: &mut R,
     ) -> heed::Result<Cow<'a, UnalignedVector<Self::VectorCodec>>> {
         let [node_p, node_q] = two_means(rng, children, false)?;

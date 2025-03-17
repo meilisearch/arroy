@@ -95,7 +95,7 @@ pub trait Distance: Send + Sync + Sized + Clone + fmt::Debug + 'static {
     }
 
     fn create_split<'a, R: Rng>(
-        children: &'a ImmutableSubsetLeafs<Self>,
+        children: ImmutableSubsetLeafs<'a, Self>,
         rng: &mut R,
     ) -> heed::Result<Cow<'a, UnalignedVector<Self::VectorCodec>>>;
 
@@ -135,7 +135,7 @@ pub trait Distance: Send + Sync + Sized + Clone + fmt::Debug + 'static {
 
 fn two_means<D: Distance, R: Rng>(
     rng: &mut R,
-    leafs: &ImmutableSubsetLeafs<D>,
+    mut leafs: ImmutableSubsetLeafs<D>,
     cosine: bool,
 ) -> heed::Result<[Leaf<'static, D>; 2]> {
     // This algorithm is a huge heuristic. Empirically it works really well, but I
@@ -159,7 +159,7 @@ fn two_means<D: Distance, R: Rng>(
     let mut ic = 1.0;
     let mut jc = 1.0;
     for _ in 0..ITERATION_STEPS {
-        let node_k = leafs.choose(rng)?.unwrap();
+        let Some(node_k) = leafs.choose(rng)? else { break };
         let di = ic * D::non_built_distance(&leaf_p, &node_k);
         let dj = jc * D::non_built_distance(&leaf_q, &node_k);
         let norm = if cosine { D::norm(&node_k) } else { 1.0 };
@@ -182,7 +182,7 @@ fn two_means<D: Distance, R: Rng>(
 
 pub fn two_means_binary_quantized<D: Distance, NonBqDist: Distance, R: Rng>(
     rng: &mut R,
-    leafs: &ImmutableSubsetLeafs<D>,
+    mut leafs: ImmutableSubsetLeafs<D>,
     cosine: bool,
 ) -> heed::Result<[Leaf<'static, NonBqDist>; 2]> {
     // This algorithm is a huge heuristic. Empirically it works really well, but I

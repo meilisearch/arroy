@@ -1047,7 +1047,8 @@ impl<D: Distance> Writer<D> {
             two_means_candidates
         };
 
-        let children = ImmutableSubsetLeafs::from_item_ids(reader.leafs, two_means_candidates);
+        let children =
+            ImmutableSubsetLeafs::from_item_ids(reader.leafs, two_means_candidates.clone());
         let mut children_left = Vec::with_capacity(children.len() as usize);
         let mut children_right = Vec::with_capacity(children.len() as usize);
         let mut remaining_attempts = 3;
@@ -1056,7 +1057,7 @@ impl<D: Distance> Writer<D> {
             children_left.clear();
             children_right.clear();
 
-            let normal = D::create_split(&children, rng)?;
+            let normal = D::create_split(children.clone(), rng)?;
             for item_id in item_indices.iter() {
                 let node = reader.leafs.get(item_id)?.unwrap();
                 match D::side(&normal, &node, rng) {
