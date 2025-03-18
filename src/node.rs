@@ -77,7 +77,7 @@ impl fmt::Debug for Descendants<'_> {
 
 #[derive(Clone)]
 pub struct ItemIds<'a> {
-    bytes: &'a [u8],
+    bytes: Cow<'a, [u8]>,
 }
 
 impl<'a> ItemIds<'a> {
@@ -86,19 +86,23 @@ impl<'a> ItemIds<'a> {
     }
 
     pub fn from_bytes(bytes: &[u8]) -> ItemIds<'_> {
-        ItemIds { bytes }
+        ItemIds { bytes: Cow::Borrowed(bytes) }
     }
 
     pub fn raw_bytes(&self) -> &[u8] {
-        self.bytes
+        &self.bytes
     }
 
     pub fn len(&self) -> usize {
         self.bytes.len() / size_of::<ItemId>()
     }
 
-    pub fn iter(&self) -> impl Iterator<Item = ItemId> + 'a {
+    pub fn iter(&'a self) -> impl Iterator<Item = ItemId> + 'a {
         self.bytes.chunks_exact(size_of::<ItemId>()).map(NativeEndian::read_u32)
+    }
+
+    pub fn into_owned(self) -> ItemIds<'static> {
+        ItemIds::<'static> { bytes: self.bytes.into_owned().into() }
     }
 }
 

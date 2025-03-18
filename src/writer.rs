@@ -573,8 +573,8 @@ impl<D: Distance> Writer<D> {
         drop(updated_iter);
 
         // while iterating on the nodes we want to delete all the modified element even if they are being inserted right after.
-        let to_delete = &updated_items;
-        let to_insert = &item_indices & &updated_items;
+        let mut to_delete = updated_items.clone();
+        let mut to_insert = &item_indices & &updated_items;
 
         let metadata = self
             .database
@@ -589,139 +589,171 @@ impl<D: Distance> Writer<D> {
             return Err(Error::BuildCancelled);
         }
 
-        let used_node_ids = self.used_tree_node(wtxn)?;
-        let nb_tree_nodes = used_node_ids.len();
+        while !to_insert.is_empty() || !to_delete.is_empty() {
+            println!("Roots: {roots:?}");
+            let used_node_ids = self.used_tree_node(wtxn)?;
+            let nb_tree_nodes = used_node_ids.len();
 
-        let (sub, nodes_extraction_progress) =
-            SubStep::new("nodes", item_indices.len() as u32 + nb_tree_nodes as u32);
-        (options.progress)(WriterProgress {
-            main: MainStep::RetrievingTheTreeAndItemNodes,
-            sub: Some(sub),
-        });
+            let (sub, nodes_extraction_progress) =
+                SubStep::new("nodes", item_indices.len() as u32 + nb_tree_nodes as u32);
+            (options.progress)(WriterProgress {
+                main: MainStep::RetrievingTheTreeAndItemNodes,
+                sub: Some(sub),
+            });
 
-        let concurrent_node_ids = ConcurrentNodeIds::new(used_node_ids);
-        let frozzen_reader = FrozzenReader {
-            leafs: &ImmutableLeafs::new(
-                wtxn,
-                self.database,
-                self.index,
-                item_indices.len(),
-                &nodes_extraction_progress,
-            )?,
-            trees: &ImmutableTrees::new(
-                wtxn,
-                self.database,
-                self.index,
-                nb_tree_nodes,
-                &nodes_extraction_progress,
-            )?,
-            // The globally incrementing node ids that are shared between threads.
-            concurrent_node_ids: &concurrent_node_ids,
-        };
-        let two_means_candidates =
-            frozzen_reader.leafs.sample(options.available_memory.unwrap_or(usize::MAX), rng);
+            let concurrent_node_ids = ConcurrentNodeIds::new(used_node_ids);
+            let frozzen_reader = FrozzenReader {
+                leafs: &ImmutableLeafs::new(
+                    wtxn,
+                    self.database,
+                    self.index,
+                    item_indices.len(),
+                    &nodes_extraction_progress,
+                )?,
+                trees: &ImmutableTrees::new(
+                    wtxn,
+                    self.database,
+                    self.index,
+                    nb_tree_nodes,
+                    &nodes_extraction_progress,
+                )?,
+                // The globally incrementing node ids that are shared between threads.
+                concurrent_node_ids: &concurrent_node_ids,
+            };
+            let leaf_size = frozzen_reader.leafs.constant_length();
+            let subset_items_to_insert = match leaf_size {
+                Some(leaf_size) => {
+                    let page_size = page_size::get();
+                    let theorical_vectors_per_page = page_size as f64 / leaf_size as f64;
+                    let nb_items_to_add = options.available_memory.unwrap_or(usize::MAX)
+                        / ((theorical_vectors_per_page.ceil() as usize + 1) * page_size);
 
-        let mut nodes_to_write = Vec::new();
-
-        // If there is metadata it means that we already have trees and we must update them
-        if let Some(ref metadata) = metadata {
-            tracing::debug!(
-                "started inserting new items {} in {} trees...",
-                n_items,
-                metadata.roots.len()
+                    to_insert.iter().take(nb_items_to_add).collect()
+                }
+                None => RoaringBitmap::new(),
+            };
+            println!(
+                "Inserting {} items in this iteration. {} Items remaining in total",
+                subset_items_to_insert.len(),
+                to_insert.len()
             );
-            let (sub, trees_progress) = SubStep::new("trees", metadata.roots.len() as u32);
-            (options.progress)(WriterProgress { main: MainStep::UpdatingTheTrees, sub: Some(sub) });
-            let (new_roots, mut tmp_nodes_reader) = self.update_trees(
+
+            let mut nodes_to_write = Vec::new();
+
+            let two_means_candidates = subset_items_to_insert.clone();
+
+            // If we already have trees, we must update them
+            if !roots.is_empty() {
+                println!("here");
+                tracing::debug!(
+                    "started inserting new items {} in {} trees...",
+                    n_items,
+                    roots.len()
+                );
+                let (sub, trees_progress) = SubStep::new("trees", roots.len() as u32);
+                (options.progress)(WriterProgress {
+                    main: MainStep::UpdatingTheTrees,
+                    sub: Some(sub),
+                });
+                let (new_roots, mut tmp_nodes_reader) = self.update_trees(
+                    options,
+                    rng,
+                    &roots,
+                    &subset_items_to_insert,
+                    &to_delete,
+                    &two_means_candidates,
+                    &frozzen_reader,
+                    &trees_progress,
+                )?;
+                nodes_to_write.append(&mut tmp_nodes_reader);
+                roots = new_roots;
+            }
+
+            tracing::debug!("started building trees for {} items...", n_items);
+            tracing::debug!(
+                "running {} parallel tree building...",
+                options
+                    .n_trees
+                    .map_or_else(|| "an unknown number of".to_string(), |n| n.to_string())
+            );
+            // Once we updated the current trees we also need to create the new missing trees
+            // So we can run the normal path of building trees from scratch.
+            let n_trees_to_build = options
+                .n_trees
+                .zip((!roots.is_empty()).then_some(roots.len()))
+                .map(|(n_trees, roots_len)| n_trees.saturating_sub(roots_len))
+                .or(options.n_trees);
+
+            // If we don't have both the metadata and the number of tree to build specified we can't create the substep.
+            // But to make the code easier to read, we're going to update an atomic in `build_trees` even if it's not linked to anything.
+            let trees_progress = Arc::new(AtomicU32::new(0));
+            let sub = n_trees_to_build.map(|trees_to_build| SubStep {
+                unit: "trees",
+                current: trees_progress.clone(),
+                max: trees_to_build as u32,
+            });
+            (options.progress)(WriterProgress { main: MainStep::CreateNewTrees, sub });
+
+            let (mut thread_roots, mut tmp_nodes) = self.build_trees(
                 options,
                 rng,
-                metadata,
-                &to_insert,
-                to_delete,
+                n_trees_to_build,
+                &subset_items_to_insert,
                 &two_means_candidates,
                 &frozzen_reader,
                 &trees_progress,
             )?;
-            nodes_to_write.append(&mut tmp_nodes_reader);
-            roots = new_roots;
-        }
+            nodes_to_write.append(&mut tmp_nodes);
 
-        tracing::debug!("started building trees for {} items...", n_items);
-        tracing::debug!(
-            "running {} parallel tree building...",
-            options.n_trees.map_or_else(|| "an unknown number of".to_string(), |n| n.to_string())
-        );
-        // Once we updated the current trees we also need to create the new missing trees
-        // So we can run the normal path of building trees from scratch.
-        let n_trees_to_build = options
-            .n_trees
-            .zip(metadata)
-            .map(|(n_trees, metadata)| n_trees.saturating_sub(metadata.roots.len()))
-            .or(options.n_trees);
+            tracing::debug!("started updating the tree nodes of {} trees...", tmp_nodes.len());
+            let (sub, nodes_written_progress) =
+                SubStep::new("nodes written", nodes_to_write.len() as u32);
+            (options.progress)(WriterProgress {
+                main: MainStep::WritingNodesToDatabase,
+                sub: Some(sub),
+            });
+            for (i, tmp_node) in nodes_to_write.iter().enumerate() {
+                tracing::debug!(
+                    "started deleting the {} tree nodes of the {i}nth trees...",
+                    tmp_node.len()
+                );
+                for item_id in tmp_node.to_delete() {
+                    let key = Key::tree(self.index, item_id);
+                    self.database.remap_data_type::<Bytes>().delete(wtxn, &key)?;
+                }
+                tracing::debug!(
+                    "started inserting the {} tree nodes of the {i}nth trees...",
+                    tmp_node.len()
+                );
+                for (item_id, item_bytes) in tmp_node.to_insert() {
+                    let key = Key::tree(self.index, item_id);
+                    self.database.remap_data_type::<Bytes>().put(wtxn, &key, item_bytes)?;
+                }
 
-        // If we don't have both the metadata and the number of tree to build specified we can't create the substep.
-        // But to make the code easier to read, we're going to update an atomic in `build_trees` even if it's not linked to anything.
-        let trees_progress = Arc::new(AtomicU32::new(0));
-        let sub = n_trees_to_build.map(|trees_to_build| SubStep {
-            unit: "trees",
-            current: trees_progress.clone(),
-            max: trees_to_build as u32,
-        });
-        (options.progress)(WriterProgress { main: MainStep::CreateNewTrees, sub });
-
-        let (mut thread_roots, mut tmp_nodes) = self.build_trees(
-            options,
-            rng,
-            n_trees_to_build,
-            &item_indices,
-            &two_means_candidates,
-            &frozzen_reader,
-            &trees_progress,
-        )?;
-        nodes_to_write.append(&mut tmp_nodes);
-
-        tracing::debug!("started updating the tree nodes of {} trees...", tmp_nodes.len());
-        let (sub, nodes_written_progress) =
-            SubStep::new("nodes written", nodes_to_write.len() as u32);
-        (options.progress)(WriterProgress {
-            main: MainStep::WritingNodesToDatabase,
-            sub: Some(sub),
-        });
-        for (i, tmp_node) in nodes_to_write.iter().enumerate() {
-            tracing::debug!(
-                "started deleting the {} tree nodes of the {i}nth trees...",
-                tmp_node.len()
-            );
-            for item_id in tmp_node.to_delete() {
-                let key = Key::tree(self.index, item_id);
-                self.database.remap_data_type::<Bytes>().delete(wtxn, &key)?;
-            }
-            tracing::debug!(
-                "started inserting the {} tree nodes of the {i}nth trees...",
-                tmp_node.len()
-            );
-            for (item_id, item_bytes) in tmp_node.to_insert() {
-                let key = Key::tree(self.index, item_id);
-                self.database.remap_data_type::<Bytes>().put(wtxn, &key, item_bytes)?;
+                nodes_written_progress.fetch_add(1, Ordering::Relaxed);
             }
 
-            nodes_written_progress.fetch_add(1, Ordering::Relaxed);
-        }
+            to_insert -= subset_items_to_insert;
+            to_delete.clear();
 
-        if thread_roots.is_empty() {
-            // we may have too many nodes
-            tracing::debug!("Deleting the extraneous trees if there is some...");
-            (options.progress)(WriterProgress { main: MainStep::DeleteExtraneousTrees, sub: None });
-            self.delete_extra_trees(
-                wtxn,
-                options,
-                &mut roots,
-                options.n_trees,
-                concurrent_node_ids.used(),
-                n_items,
-            )?;
-        } else {
-            roots.append(&mut thread_roots);
+            if thread_roots.is_empty() {
+                // we may have too many nodes
+                tracing::debug!("Deleting the extraneous trees if there is some...");
+                (options.progress)(WriterProgress {
+                    main: MainStep::DeleteExtraneousTrees,
+                    sub: None,
+                });
+                self.delete_extra_trees(
+                    wtxn,
+                    options,
+                    &mut roots,
+                    options.n_trees,
+                    concurrent_node_ids.used(),
+                    n_items,
+                )?;
+            } else {
+                roots.append(&mut thread_roots);
+            }
         }
 
         tracing::debug!("write the metadata...");
@@ -747,16 +779,16 @@ impl<D: Distance> Writer<D> {
         &self,
         opt: &BuildOption,
         rng: &mut R,
-        metadata: &Metadata,
+        roots: &[u32],
         to_insert: &RoaringBitmap,
         to_delete: &RoaringBitmap,
         two_means_candidates: &RoaringBitmap,
         frozen_reader: &FrozzenReader<D>,
         trees_progress: &AtomicU32,
     ) -> Result<(Vec<ItemId>, Vec<TmpNodesReader>)> {
-        let roots: Vec<_> = metadata.roots.iter().collect();
+        let roots: Vec<_> = roots.to_vec();
 
-        repeatn(rng.next_u64(), metadata.roots.len())
+        repeatn(rng.next_u64(), roots.len())
             .zip(roots)
             .map(|(seed, root)| {
                 tracing::debug!("started updating tree {root:X}...");

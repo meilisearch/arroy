@@ -216,6 +216,10 @@ impl<'t, D: Distance> ImmutableLeafs<'t, D> {
         Ok(ImmutableLeafs { leafs, constant_length, _marker: marker::PhantomData })
     }
 
+    pub fn constant_length(&self) -> Option<usize> {
+        self.constant_length
+    }
+
     /// Returns the leafs identified by the given ID.
     pub fn get(&self, item_id: ItemId) -> heed::Result<Option<Leaf<'t, D>>> {
         let len = match self.constant_length {
@@ -239,16 +243,26 @@ impl<'t, D: Distance> ImmutableLeafs<'t, D> {
     /// The memory is specified in bytes and the sample size returned will contains at least 200 elements.
     /// If there is less than 200 elements in the database then this number of elements will be returned.
     pub fn sample<R: Rng>(&self, memory: usize, rng: &mut R) -> RoaringBitmap {
+        println!("Available memory {memory}B");
         let page_size = page_size::get();
         let leaf_size =
             self.constant_length.expect("Constant length is missing even though there are vectors");
         let theorical_vectors_per_page = page_size as f64 / leaf_size as f64;
         let theorical_pages_per_vector = leaf_size as f64 / page_size as f64;
 
+        println!("leaf_size: {leaf_size}B, page_size: {page_size}");
+        // let memory_required_to_hold_everything =
+        //     page_size * (theorical_pages_per_vector.ceil() as usize) * self.leafs.len();
         let memory_required_to_hold_everything =
-            page_size * theorical_vectors_per_page.ceil() as usize * self.leafs.len();
+            page_size * (theorical_vectors_per_page.ceil() as usize) * self.leafs.len();
 
+        println!(
+            "nb leafs: {}, memory required: {}B",
+            self.leafs.len(),
+            memory_required_to_hold_everything
+        );
         if self.leafs.len() <= 200 || memory >= memory_required_to_hold_everything {
+            println!("here");
             return RoaringBitmap::from_iter(self.leafs.keys());
         }
 
@@ -290,6 +304,8 @@ impl<'t, D: Distance> ImmutableLeafs<'t, D> {
         let mut vector_selected = RoaringBitmap::new();
         let mut pages_selected = RoaringTreemap::new();
 
+        println!("pages_fit_in_ram: {pages_fit_in_ram}");
+
         while !candidates.is_empty() {
             let rank = rng.gen_range(0..candidates.len() as u32);
             let item_id = candidates.select(rank).unwrap();
@@ -310,6 +326,10 @@ impl<'t, D: Distance> ImmutableLeafs<'t, D> {
             vector_selected.insert(item_id);
             candidates.remove(item_id);
         }
+        println!("pages selected: {}", pages_selected.len());
+        println!("leaf selected: {}", vector_selected.len());
+        let memory_used = pages_selected.len() as usize * page_size;
+        println!("Used memory {memory_used}B");
 
         // If we can't fit more than one and half vector per page we can skip the next step
         // and immediately returns the current list of vectors. We're not going to find any
@@ -318,7 +338,7 @@ impl<'t, D: Distance> ImmutableLeafs<'t, D> {
             // To get the final list of vectors selected, we have to go through the whole list
             // of pages selected, and retrieve all the complete vectors.
             // We consider a vector complete if all the pages containing it have been selected.
-            for page in pages_selected {
+            for page in &pages_selected {
                 let items = pages_to_items.get(&(page as usize)).unwrap();
                 for item in items {
                     let pages = items_to_pages.get_mut(item).unwrap();
@@ -330,6 +350,8 @@ impl<'t, D: Distance> ImmutableLeafs<'t, D> {
                 }
             }
         }
+
+        println!("Ended up selecting {} leafs", vector_selected.len());
 
         vector_selected
     }

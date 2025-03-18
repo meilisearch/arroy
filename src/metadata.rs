@@ -16,6 +16,19 @@ pub struct Metadata<'a> {
     pub distance: &'a str,
 }
 
+/*
+impl<'a> Metadata<'a> {
+    pub fn into_owned(self) -> Metadata<'static> {
+        Metadata {
+            dimensions: self.dimensions,
+            items: self.items,
+            roots: self.roots.into_owned(),
+            distance: self.distance.into_owned().into(),
+        }
+    }
+}
+*/
+
 pub enum MetadataCodec {}
 
 impl<'a> heed::BytesEncode<'a> for MetadataCodec {
