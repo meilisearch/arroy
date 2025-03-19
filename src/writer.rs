@@ -862,6 +862,10 @@ impl<D: Distance> Writer<D> {
                     )?;
                     Ok((node_id, new_items))
                 } else {
+                    println!("An item became too big while updating an item: Making a new tree from {} items including {} that are not two means candidates",
+                        new_items.len(),
+                        new_items.len() - new_items.intersection_len(two_means_candidates)
+                    );
                     let new_id = self.make_tree_in_file(
                         opt,
                         frozen_reader,
@@ -889,6 +893,10 @@ impl<D: Distance> Writer<D> {
                             // if nothing changed, do nothing
                             Ok((current_node, descendants.into_owned()))
                         } else if !self.fit_in_descendant(opt, new_descendants.len()) {
+                            println!("A descendant became too big while updating a tree: Making a new tree from {} items including {} that are not two means candidates",
+                                new_descendants.len(),
+                                new_descendants.len() - new_descendants.intersection_len(two_means_candidates)
+                            );
                             // if it doesn't fit in one descendent we need to craft a new whole subtree
                             tmp_nodes.remove(current_node.item);
                             let new_id = self.make_tree_in_file(
@@ -924,6 +932,7 @@ impl<D: Distance> Writer<D> {
                         if normal.is_zero() {
                             randomly_split_children(rng, to_insert, &mut left_ids, &mut right_ids);
                         } else {
+                            println!("In splitplane normal: Iterating on {} items we must insert, computing their side to the normal", to_insert.len());
                             for leaf in to_insert {
                                 let node = frozen_reader.leafs.get(leaf)?.unwrap();
                                 match D::side(&normal, &node, rng) {
@@ -957,6 +966,7 @@ impl<D: Distance> Writer<D> {
                         let total_items = left_items | right_items;
 
                         if self.fit_in_descendant(opt, total_items.len()) {
+                            println!("shrinking a split node into one descendant");
                             // Since we're shrinking we KNOW that new_left and new_right are descendants
                             // thus we can delete them directly knowing there is no sub-tree to look at.
                             if new_left.mode == NodeMode::Tree {
@@ -1089,6 +1099,10 @@ impl<D: Distance> Writer<D> {
             children_right.clear();
 
             let normal = D::create_split(&children, rng)?;
+            println!("Inside build tree, iterating over {} items to compute their side including {} items that are not parts of the two means candidates",
+                item_indices.len(),
+                item_indices.len() - item_indices.intersection_len(two_means_candidates)
+            );
             for item_id in item_indices.iter() {
                 let node = reader.leafs.get(item_id)?.unwrap();
                 match D::side(&normal, &node, rng) {
