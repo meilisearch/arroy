@@ -1,12 +1,9 @@
-use std::{
-    borrow::{Borrow, Cow},
-    fmt,
-    marker::PhantomData,
-    mem::transmute,
-};
+use std::borrow::{Borrow, Cow};
+use std::fmt;
+use std::marker::PhantomData;
+use std::mem::transmute;
 
 pub use binary_quantized::BinaryQuantized;
-
 use bytemuck::pod_collect_to_vec;
 
 mod binary_quantized;

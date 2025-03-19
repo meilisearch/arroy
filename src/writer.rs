@@ -932,7 +932,9 @@ impl<D: Distance> Writer<D> {
                         if normal.is_zero() {
                             randomly_split_children(rng, to_insert, &mut left_ids, &mut right_ids);
                         } else {
-                            println!("In splitplane normal: Iterating on {} items we must insert, computing their side to the normal", to_insert.len());
+                            println!("In splitplane normal: Iterating on {} items we must insert, computing their side to the normal. {} are not part of the two means candidates",
+                                to_insert.len(),
+                                to_insert.len() - to_insert.intersection_len(two_means_candidates));
                             for leaf in to_insert {
                                 let node = frozen_reader.leafs.get(leaf)?.unwrap();
                                 match D::side(&normal, &node, rng) {

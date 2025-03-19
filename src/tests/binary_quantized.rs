@@ -1,8 +1,6 @@
-use crate::{
-    distance::BinaryQuantizedEuclidean,
-    tests::{create_database, rng},
-    Writer,
-};
+use crate::distance::BinaryQuantizedEuclidean;
+use crate::tests::{create_database, rng};
+use crate::Writer;
 
 #[test]
 fn write_and_retrieve_binary_quantized_vector() {

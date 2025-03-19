@@ -1,20 +1,16 @@
 //! Everything related to the upgrade process.
 
-use heed::{
-    types::{Bytes, LazyDecode, Unit},
-    RoTxn, RwTxn,
-};
+use heed::types::{Bytes, LazyDecode, Unit};
+use heed::{RoTxn, RwTxn};
 
-use crate::{
-    distance::Cosine,
-    key::Key,
-    metadata::MetadataCodec,
-    node::{Node, NodeCodec},
-    node_id::NodeMode,
-    roaring::RoaringBitmapCodec,
-    version::{Version, VersionCodec},
-    Database, Distance, Error, Result,
-};
+use crate::distance::Cosine;
+use crate::key::Key;
+use crate::metadata::MetadataCodec;
+use crate::node::{Node, NodeCodec};
+use crate::node_id::NodeMode;
+use crate::roaring::RoaringBitmapCodec;
+use crate::version::{Version, VersionCodec};
+use crate::{Database, Distance, Error, Result};
 
 /// Upgrade a cosine-based arroy database from v0.4 to v0.5 without rebuilding the trees.
 pub fn cosine_from_0_4_to_0_5(

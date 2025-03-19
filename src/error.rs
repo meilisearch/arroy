@@ -1,6 +1,8 @@
 use std::io;
 
-use crate::{key::Key, node_id::NodeMode, ItemId};
+use crate::key::Key;
+use crate::node_id::NodeMode;
+use crate::ItemId;
 
 /// The different set of errors that arroy can encounter.
 #[derive(Debug, thiserror::Error)]

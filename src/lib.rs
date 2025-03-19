@@ -98,7 +98,6 @@ mod unaligned_vector;
 
 pub use distance::Distance;
 pub use error::Error;
-
 use key::{Key, Prefix, PrefixCodec};
 use metadata::{Metadata, MetadataCodec};
 use node::{Node, NodeCodec};

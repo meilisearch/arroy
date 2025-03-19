@@ -1,7 +1,8 @@
-#[cfg(target_feature = "neon")]
-use crate::unaligned_vector::UnalignedVector;
 use std::arch::aarch64::*;
 use std::ptr::read_unaligned;
+
+#[cfg(target_feature = "neon")]
+use crate::unaligned_vector::UnalignedVector;
 
 #[cfg(target_feature = "neon")]
 pub(crate) unsafe fn euclid_similarity_neon(

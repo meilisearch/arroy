@@ -1,7 +1,5 @@
-use std::{
-    borrow::Cow,
-    mem::{size_of, transmute},
-};
+use std::borrow::Cow;
+use std::mem::{size_of, transmute};
 
 use bytemuck::cast_slice;
 use byteorder::{ByteOrder, NativeEndian};
