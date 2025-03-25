@@ -73,6 +73,7 @@ impl SubStep {
 #[allow(missing_docs)]
 pub enum MainStep {
     PreProcessingTheItems,
+    RetrievingTheItemsIds,
     WritingTheDescendantsAndMetadata,
     RetrieveTheUpdatedItems,
     RetrievingTheTreeAndItemNodes,
@@ -463,114 +464,14 @@ impl<D: Distance> Writer<D> {
         rng: &mut R,
         options: &BuildOption,
     ) -> Result<()> {
-        tracing::debug!("started preprocessing the items...");
-
-        (options.progress)(WriterProgress { main: MainStep::PreProcessingTheItems, sub: None });
-
-        if (options.cancel)() {
-            return Err(Error::BuildCancelled);
-        }
-
-        D::preprocess(wtxn, |wtxn| {
-            Ok(self
-                .database
-                .remap_key_type::<PrefixCodec>()
-                .prefix_iter_mut(wtxn, &Prefix::item(self.index))?
-                .remap_key_type::<KeyCodec>())
-        })?;
-
-        if (options.cancel)() {
-            return Err(Error::BuildCancelled);
-        }
-
-        let item_indices = self.item_indices(wtxn)?;
+        self.pre_process_items(wtxn, options)?;
+        let item_indices = self.item_indices(wtxn, options)?;
         let n_items = item_indices.len();
+        let updated_items = self.reset_and_retrieve_updated_items(wtxn, options)?;
 
         if self.fit_in_descendant(options, item_indices.len()) {
-            tracing::debug!("We can fit every elements in a single descendant node, we can skip all the build process");
-            (options.progress)(WriterProgress {
-                main: MainStep::WritingTheDescendantsAndMetadata,
-                sub: None,
-            });
-            // No item left in the index, we can clear every tree
-
-            self.database.remap_data_type::<Bytes>().delete_range(
-                wtxn,
-                &(Key::tree(self.index, 0)..=Key::tree(self.index, ItemId::MAX)),
-            )?;
-
-            let mut roots = Vec::new();
-
-            if !item_indices.is_empty() {
-                // if we have more than 0 elements we need to create a descendant node
-
-                self.database.put(
-                    wtxn,
-                    &Key::tree(self.index, 0),
-                    &Node::Descendants(Descendants { descendants: Cow::Borrowed(&item_indices) }),
-                )?;
-                roots.push(0);
-            }
-
-            tracing::debug!("reset the updated items...");
-            let mut updated_iter = self
-                .database
-                .remap_types::<PrefixCodec, DecodeIgnore>()
-                .prefix_iter_mut(wtxn, &Prefix::updated(self.index))?
-                .remap_key_type::<KeyCodec>();
-            while updated_iter.next().transpose()?.is_some() {
-                // Safe because we don't hold any reference to the database currently
-                unsafe {
-                    updated_iter.del_current()?;
-                }
-            }
-            drop(updated_iter);
-
-            tracing::debug!("write the metadata...");
-            let metadata = Metadata {
-                dimensions: self.dimensions.try_into().unwrap(),
-                items: item_indices,
-                roots: ItemIds::from_slice(&roots),
-                distance: D::name(),
-            };
-            self.database.remap_data_type::<MetadataCodec>().put(
-                wtxn,
-                &Key::metadata(self.index),
-                &metadata,
-            )?;
-
-            tracing::debug!("write the version...");
-            let version = Version {
-                major: env!("CARGO_PKG_VERSION_MAJOR").parse().unwrap(),
-                minor: env!("CARGO_PKG_VERSION_MINOR").parse().unwrap(),
-                patch: env!("CARGO_PKG_VERSION_PATCH").parse().unwrap(),
-            };
-            self.database.remap_data_type::<VersionCodec>().put(
-                wtxn,
-                &Key::version(self.index),
-                &version,
-            )?;
-
-            return Ok(());
+            return self.clear_db_and_create_a_single_leaf(wtxn, options, item_indices);
         }
-
-        tracing::debug!("reset and retrieve the updated items...");
-        (options.progress)(WriterProgress { main: MainStep::RetrieveTheUpdatedItems, sub: None });
-        let mut updated_items = RoaringBitmap::new();
-        let mut updated_iter = self
-            .database
-            .remap_types::<PrefixCodec, DecodeIgnore>()
-            .prefix_iter_mut(wtxn, &Prefix::updated(self.index))?
-            .remap_key_type::<KeyCodec>();
-        while let Some((key, _)) = updated_iter.next().transpose()? {
-            let inserted = updated_items.push(key.node.item);
-            debug_assert!(inserted, "The keys should be sorted by LMDB");
-            // Safe because we don't hold any reference to the database currently
-            unsafe {
-                updated_iter.del_current()?;
-            }
-        }
-        drop(updated_iter);
 
         // while iterating on the nodes we want to delete all the modified element even if they are being inserted right after.
         let to_delete = &updated_items;
@@ -582,6 +483,8 @@ impl<D: Distance> Writer<D> {
             .get(wtxn, &Key::metadata(self.index))?;
         let mut roots =
             metadata.as_ref().map_or_else(Vec::new, |metadata| metadata.roots.iter().collect());
+        // we should not keep a reference to the metadata since they're going to be moved by LMDB
+        drop(metadata);
 
         tracing::debug!("Getting a reference to your {} items...", n_items);
 
@@ -591,76 +494,123 @@ impl<D: Distance> Writer<D> {
 
         let used_node_ids = self.used_tree_node(wtxn)?;
         let nb_tree_nodes = used_node_ids.len();
-
-        let (sub, nodes_extraction_progress) =
-            SubStep::new("nodes", item_indices.len() as u32 + nb_tree_nodes as u32);
-        (options.progress)(WriterProgress {
-            main: MainStep::RetrievingTheTreeAndItemNodes,
-            sub: Some(sub),
-        });
-
         let concurrent_node_ids = ConcurrentNodeIds::new(used_node_ids);
-        let frozzen_reader = FrozzenReader {
-            leafs: &ImmutableLeafs::new(
-                wtxn,
-                self.database,
-                self.index,
-                item_indices.len(),
-                &nodes_extraction_progress,
-            )?,
-            trees: &ImmutableTrees::new(
-                wtxn,
-                self.database,
-                self.index,
-                nb_tree_nodes,
-                &nodes_extraction_progress,
-            )?,
-            // The globally incrementing node ids that are shared between threads.
-            concurrent_node_ids: &concurrent_node_ids,
-        };
-        let two_means_candidates =
-            frozzen_reader.leafs.sample(options.available_memory.unwrap_or(usize::MAX), rng);
 
-        let mut nodes_to_write = Vec::new();
+        // === After this point, we're going to split the updated items into batches that fit in RAM and insert them batches after batches /!\ without creating new trees /!\
+        //     That means when a descendant becomes too big and should be split into a tree, we retrieve its ID and continue inserting items in it.
+        // Everything above this point will be updated in RAM to maintain consistency between the incremental updates we will do.
+        // Everything below this point must be re-computed because it keeps references to the database that will be invalidated after a write in the database.
 
-        // If there is metadata it means that we already have trees and we must update them
-        if let Some(ref metadata) = metadata {
-            tracing::debug!(
-                "started inserting new items {} in {} trees...",
+        loop {
+            let (sub, nodes_extraction_progress) =
+                SubStep::new("nodes", item_indices.len() as u32 + nb_tree_nodes as u32);
+            (options.progress)(WriterProgress {
+                main: MainStep::RetrievingTheTreeAndItemNodes,
+                sub: Some(sub),
+            });
+            // For the first batch of iterations we must extract:
+            // - All the tree nodes
+            // - Only the items we're going to insert
+            let frozzen_reader = FrozzenReader {
+                // TODO: Retrieve the maximum that fits in RAM / (2/3) because we also need space for the tree nodes
+                leafs: &ImmutableLeafs::new(
+                    wtxn,
+                    self.database,
+                    self.index,
+                    item_indices.len(),
+                    &nodes_extraction_progress,
+                )?,
+                // TODO: Retrieve everything
+                trees: &ImmutableTrees::new(
+                    wtxn,
+                    self.database,
+                    self.index,
+                    nb_tree_nodes,
+                    &nodes_extraction_progress,
+                )?,
+                // The globally incrementing node ids that are shared between threads.
+                concurrent_node_ids,
+            };
+
+            self.indexing_step(
+                wtxn,
+                rng,
+                options,
+                &item_indices,
                 n_items,
-                metadata.roots.len()
-            );
-            let (sub, trees_progress) = SubStep::new("trees", metadata.roots.len() as u32);
+                to_delete,
+                &to_insert,
+                &mut roots,
+                nb_tree_nodes,
+                &concurrent_node_ids,
+            )?;
+        }
+
+        tracing::debug!("write the metadata...");
+        (options.progress)(WriterProgress { main: MainStep::WriteTheMetadata, sub: None });
+        let metadata = Metadata {
+            dimensions: self.dimensions.try_into().unwrap(),
+            items: item_indices,
+            roots: ItemIds::from_slice(&roots),
+            distance: D::name(),
+        };
+        match self.database.remap_data_type::<MetadataCodec>().put(
+            wtxn,
+            &Key::metadata(self.index),
+            &metadata,
+        ) {
+            Ok(_) => Ok(()),
+            Err(e) => Err(e.into()),
+        }
+    }
+
+    /// Make one indexing step with all the vectors specified
+    /// - Update all the trees specified without exploding the descendant into subtrees
+    /// - Build the new trees if we need to
+    /// - Remove trees if we have too many
+    /// - Write everything to database
+    /// - Return the list of descendants that became too big and must be exploded into subtrees
+    #[allow(clippy::too_many_arguments)]
+    fn indexing_step<R: Rng + SeedableRng>(
+        &self,
+        wtxn: &mut RwTxn,
+        rng: &mut R,
+        options: &BuildOption,
+        item_indices: &RoaringBitmap,
+        n_items: u64,
+        to_delete: &RoaringBitmap,
+        to_insert: &RoaringBitmap,
+        roots: &mut Vec<u32>,
+        nb_tree_nodes: u64,
+        concurrent_node_ids: &ConcurrentNodeIds,
+        frozen_reader: &FrozzenReader<D>,
+    ) -> Result<(), Error> {
+        let two_means_candidates =
+            frozen_reader.leafs.sample(options.available_memory.unwrap_or(usize::MAX), rng);
+        let mut nodes_to_write = Vec::new();
+        if !roots.is_empty() {
+            tracing::debug!("started inserting new items {} in {} trees...", n_items, roots.len());
+            let (sub, trees_progress) = SubStep::new("trees", roots.len() as u32);
             (options.progress)(WriterProgress { main: MainStep::UpdatingTheTrees, sub: Some(sub) });
             let (new_roots, mut tmp_nodes_reader) = self.update_trees(
                 options,
                 rng,
-                metadata,
-                &to_insert,
+                &*roots,
+                to_insert,
                 to_delete,
                 &two_means_candidates,
-                &frozzen_reader,
+                &frozen_reader,
                 &trees_progress,
             )?;
             nodes_to_write.append(&mut tmp_nodes_reader);
-            roots = new_roots;
+            *roots = new_roots;
         }
-
         tracing::debug!("started building trees for {} items...", n_items);
         tracing::debug!(
             "running {} parallel tree building...",
             options.n_trees.map_or_else(|| "an unknown number of".to_string(), |n| n.to_string())
         );
-        // Once we updated the current trees we also need to create the new missing trees
-        // So we can run the normal path of building trees from scratch.
-        let n_trees_to_build = options
-            .n_trees
-            .zip(metadata)
-            .map(|(n_trees, metadata)| n_trees.saturating_sub(metadata.roots.len()))
-            .or(options.n_trees);
-
-        // If we don't have both the metadata and the number of tree to build specified we can't create the substep.
-        // But to make the code easier to read, we're going to update an atomic in `build_trees` even if it's not linked to anything.
+        let n_trees_to_build = options.n_trees.map(|n_trees| n_trees.saturating_sub(roots.len()));
         let trees_progress = Arc::new(AtomicU32::new(0));
         let sub = n_trees_to_build.map(|trees_to_build| SubStep {
             unit: "trees",
@@ -668,18 +618,16 @@ impl<D: Distance> Writer<D> {
             max: trees_to_build as u32,
         });
         (options.progress)(WriterProgress { main: MainStep::CreateNewTrees, sub });
-
         let (mut thread_roots, mut tmp_nodes) = self.build_trees(
             options,
             rng,
             n_trees_to_build,
-            &item_indices,
+            item_indices,
             &two_means_candidates,
-            &frozzen_reader,
+            &frozen_reader,
             &trees_progress,
         )?;
         nodes_to_write.append(&mut tmp_nodes);
-
         tracing::debug!("started updating the tree nodes of {} trees...", tmp_nodes.len());
         let (sub, nodes_written_progress) =
             SubStep::new("nodes written", nodes_to_write.len() as u32);
@@ -707,7 +655,6 @@ impl<D: Distance> Writer<D> {
 
             nodes_written_progress.fetch_add(1, Ordering::Relaxed);
         }
-
         if thread_roots.is_empty() {
             // we may have too many nodes
             tracing::debug!("Deleting the extraneous trees if there is some...");
@@ -715,7 +662,7 @@ impl<D: Distance> Writer<D> {
             self.delete_extra_trees(
                 wtxn,
                 options,
-                &mut roots,
+                roots,
                 options.n_trees,
                 concurrent_node_ids.used(),
                 n_items,
@@ -723,23 +670,101 @@ impl<D: Distance> Writer<D> {
         } else {
             roots.append(&mut thread_roots);
         }
+        Ok(())
+    }
 
+    fn reset_and_retrieve_updated_items(
+        &self,
+        wtxn: &mut RwTxn,
+        options: &BuildOption,
+    ) -> Result<RoaringBitmap, Error> {
+        tracing::debug!("reset and retrieve the updated items...");
+        (options.progress)(WriterProgress { main: MainStep::RetrieveTheUpdatedItems, sub: None });
+        let mut updated_items = RoaringBitmap::new();
+        let mut updated_iter = self
+            .database
+            .remap_types::<PrefixCodec, DecodeIgnore>()
+            .prefix_iter_mut(wtxn, &Prefix::updated(self.index))?
+            .remap_key_type::<KeyCodec>();
+        while let Some((key, _)) = updated_iter.next().transpose()? {
+            let inserted = updated_items.push(key.node.item);
+            debug_assert!(inserted, "The keys should be sorted by LMDB");
+            // Safe because we don't hold any reference to the database currently
+            unsafe {
+                updated_iter.del_current()?;
+            }
+        }
+        Ok(updated_items)
+    }
+
+    fn clear_db_and_create_a_single_leaf(
+        &self,
+        wtxn: &mut RwTxn,
+        options: &BuildOption,
+        item_indices: RoaringBitmap,
+    ) -> Result<(), Error> {
+        tracing::debug!("We can fit every elements in a single descendant node, we can skip all the build process");
+        (options.progress)(WriterProgress {
+            main: MainStep::WritingTheDescendantsAndMetadata,
+            sub: None,
+        });
+        self.database
+            .remap_data_type::<Bytes>()
+            .delete_range(wtxn, &(Key::tree(self.index, 0)..=Key::tree(self.index, ItemId::MAX)))?;
+        let mut roots = Vec::new();
+        if !item_indices.is_empty() {
+            // if we have more than 0 elements we need to create a descendant node
+
+            self.database.put(
+                wtxn,
+                &Key::tree(self.index, 0),
+                &Node::Descendants(Descendants { descendants: Cow::Borrowed(&item_indices) }),
+            )?;
+            roots.push(0);
+        }
         tracing::debug!("write the metadata...");
-        (options.progress)(WriterProgress { main: MainStep::WriteTheMetadata, sub: None });
         let metadata = Metadata {
             dimensions: self.dimensions.try_into().unwrap(),
             items: item_indices,
             roots: ItemIds::from_slice(&roots),
             distance: D::name(),
         };
-        match self.database.remap_data_type::<MetadataCodec>().put(
+        self.database.remap_data_type::<MetadataCodec>().put(
             wtxn,
             &Key::metadata(self.index),
             &metadata,
-        ) {
-            Ok(_) => Ok(()),
-            Err(e) => Err(e.into()),
+        )?;
+        tracing::debug!("write the version...");
+        let version = Version {
+            major: env!("CARGO_PKG_VERSION_MAJOR").parse().unwrap(),
+            minor: env!("CARGO_PKG_VERSION_MINOR").parse().unwrap(),
+            patch: env!("CARGO_PKG_VERSION_PATCH").parse().unwrap(),
+        };
+        self.database.remap_data_type::<VersionCodec>().put(
+            wtxn,
+            &Key::version(self.index),
+            &version,
+        )?;
+        Ok(())
+    }
+
+    fn pre_process_items(&self, wtxn: &mut RwTxn, options: &BuildOption) -> Result<(), Error> {
+        tracing::debug!("started preprocessing the items...");
+        (options.progress)(WriterProgress { main: MainStep::PreProcessingTheItems, sub: None });
+        if (options.cancel)() {
+            return Err(Error::BuildCancelled);
         }
+        D::preprocess(wtxn, |wtxn| {
+            Ok(self
+                .database
+                .remap_key_type::<PrefixCodec>()
+                .prefix_iter_mut(wtxn, &Prefix::item(self.index))?
+                .remap_key_type::<KeyCodec>())
+        })?;
+        if (options.cancel)() {
+            return Err(Error::BuildCancelled);
+        };
+        Ok(())
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -747,25 +772,23 @@ impl<D: Distance> Writer<D> {
         &self,
         opt: &BuildOption,
         rng: &mut R,
-        metadata: &Metadata,
+        roots: &[u32],
         to_insert: &RoaringBitmap,
         to_delete: &RoaringBitmap,
         two_means_candidates: &RoaringBitmap,
         frozen_reader: &FrozzenReader<D>,
         trees_progress: &AtomicU32,
     ) -> Result<(Vec<ItemId>, Vec<TmpNodesReader>)> {
-        let roots: Vec<_> = metadata.roots.iter().collect();
-
-        repeatn(rng.next_u64(), metadata.roots.len())
+        repeatn(rng.next_u64(), roots.len())
             .zip(roots)
             .map(|(seed, root)| {
                 tracing::debug!("started updating tree {root:X}...");
-                let mut rng = R::seed_from_u64(seed.wrapping_add(root as u64));
+                let mut rng = R::seed_from_u64(seed.wrapping_add(*root as u64));
                 let mut tmp_nodes: TmpNodes<NodeCodec<D>> = match self.tmpdir.as_ref() {
                     Some(path) => TmpNodes::new_in(path)?,
                     None => TmpNodes::new()?,
                 };
-                let root_node = NodeId::tree(root);
+                let root_node = NodeId::tree(*root);
                 let (node_id, _items) = self.update_nodes_in_file(
                     opt,
                     frozen_reader,
@@ -1178,7 +1201,10 @@ impl<D: Distance> Writer<D> {
     }
 
     // Fetches the item's ids, not the tree nodes ones.
-    fn item_indices(&self, wtxn: &mut RwTxn<'_>) -> heed::Result<RoaringBitmap> {
+    fn item_indices(&self, wtxn: &mut RwTxn, options: &BuildOption) -> heed::Result<RoaringBitmap> {
+        tracing::debug!("started retrieving all the items ids...");
+        (options.progress)(WriterProgress { main: MainStep::RetrievingTheItemsIds, sub: None });
+
         let mut indices = RoaringBitmap::new();
         for result in self
             .database
