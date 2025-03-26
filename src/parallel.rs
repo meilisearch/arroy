@@ -8,13 +8,13 @@ use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering};
 use heed::types::Bytes;
 use heed::{BytesDecode, BytesEncode, RoTxn};
 use memmap2::Mmap;
-use nohash::{BuildNoHashHasher, IntMap};
+use nohash::{BuildNoHashHasher, IntMap, IntSet};
 use rand::seq::index;
 use rand::Rng;
 use roaring::{RoaringBitmap, RoaringTreemap};
 
 use crate::internals::{KeyCodec, Leaf, NodeCodec};
-use crate::key::{Prefix, PrefixCodec};
+use crate::key::{Key, Prefix, PrefixCodec};
 use crate::node::Node;
 use crate::{Database, Distance, Error, ItemId, Result};
 
@@ -180,6 +180,7 @@ impl ConcurrentNodeIds {
 /// It is safe to share between threads as the pointer are pointing
 /// in the mmapped file and the transaction is kept here and therefore
 /// no longer touches the database.
+// TODO: Rename to immutable Items since it doesn't contains descendants
 pub struct ImmutableLeafs<'t, D> {
     leafs: IntMap<ItemId, *const u8>,
     constant_length: Option<usize>,
@@ -189,31 +190,58 @@ pub struct ImmutableLeafs<'t, D> {
 impl<'t, D: Distance> ImmutableLeafs<'t, D> {
     /// Creates the structure by fetching all the leaf pointers
     /// and keeping the transaction making the pointers valid.
+    /// Do not take more items than memory allows.
+    /// Remove from the list of candidates all the items that were selected and return them.
     pub fn new(
         rtxn: &'t RoTxn,
         database: Database<D>,
         index: u16,
-        nb_leafs: u64,
-        progress: &AtomicU32,
-    ) -> heed::Result<Self> {
-        let mut leafs =
-            IntMap::with_capacity_and_hasher(nb_leafs as usize, BuildNoHashHasher::default());
+        candidates: &mut RoaringBitmap,
+        memory: usize,
+    ) -> heed::Result<(Self, RoaringBitmap)> {
+        let page_size = page_size::get();
+        let nb_page_allowed = (memory as f64 / page_size as f64).floor() as usize;
+
+        let mut leafs = IntMap::with_capacity_and_hasher(
+            candidates.len() as usize,
+            BuildNoHashHasher::default(),
+        );
+        let mut pages_used =
+            IntSet::with_capacity_and_hasher(nb_page_allowed, BuildNoHashHasher::default());
+        let mut selected_items = RoaringBitmap::new();
         let mut constant_length = None;
 
-        let iter = database
-            .remap_types::<PrefixCodec, Bytes>()
-            .prefix_iter(rtxn, &Prefix::item(index))?
-            .remap_key_type::<KeyCodec>();
-
-        for result in iter {
-            let (key, bytes) = result?;
-            let item_id = key.node.unwrap_item();
+        while let Some(item_id) = candidates.select(0) {
+            let bytes = database
+                .remap_types::<KeyCodec, Bytes>()
+                .get(rtxn, &Key::item(index, item_id))?
+                .unwrap();
             assert_eq!(*constant_length.get_or_insert(bytes.len()), bytes.len());
-            leafs.insert(item_id, bytes.as_ptr());
-            progress.fetch_add(1, Ordering::Relaxed);
+
+            let ptr = bytes.as_ptr();
+            let addr = ptr as usize;
+            let start = addr / page_size;
+            let end = (addr + bytes.len()) / page_size;
+
+            pages_used.insert(start);
+            if start != end {
+                pages_used.insert(end);
+            }
+
+            if pages_used.len() >= nb_page_allowed && leafs.len() >= 200 {
+                break;
+            }
+
+            // Safe because the items comes from another roaring bitmap
+            selected_items.push(item_id);
+            candidates.remove_smallest(1);
+            leafs.insert(item_id, ptr);
         }
 
-        Ok(ImmutableLeafs { leafs, constant_length, _marker: marker::PhantomData })
+        Ok((
+            ImmutableLeafs { leafs, constant_length, _marker: marker::PhantomData },
+            selected_items,
+        ))
     }
 
     /// Returns the leafs identified by the given ID.
@@ -409,7 +437,6 @@ impl<'t, D: Distance> ImmutableTrees<'t, D> {
         database: Database<D>,
         index: u16,
         nb_trees: u64,
-        progress: &AtomicU32,
     ) -> heed::Result<Self> {
         let mut trees =
             IntMap::with_capacity_and_hasher(nb_trees as usize, BuildNoHashHasher::default());
@@ -423,7 +450,6 @@ impl<'t, D: Distance> ImmutableTrees<'t, D> {
             let (key, bytes) = result?;
             let tree_id = key.node.unwrap_tree();
             trees.insert(tree_id, (bytes.len(), bytes.as_ptr()));
-            progress.fetch_add(1, Ordering::Relaxed);
         }
 
         Ok(ImmutableTrees { trees, _marker: marker::PhantomData })
