@@ -224,11 +224,13 @@ impl<'t, D: Distance> ImmutableLeafs<'t, D> {
         let nb_page_allowed = (memory as f64 / page_size as f64).floor() as usize;
 
         let mut leafs = IntMap::with_capacity_and_hasher(
-            candidates.len() as usize,
+            candidates.len() as usize, // TODO: could be reduced a lot
             BuildNoHashHasher::default(),
         );
-        let mut pages_used =
-            IntSet::with_capacity_and_hasher(nb_page_allowed, BuildNoHashHasher::default());
+        let mut pages_used = IntSet::with_capacity_and_hasher(
+            nb_page_allowed.min(candidates.len() as usize),
+            BuildNoHashHasher::default(),
+        );
         let mut selected_items = RoaringBitmap::new();
         let mut constant_length = None;
 
