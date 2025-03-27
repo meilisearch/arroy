@@ -18,9 +18,9 @@ pub enum Node<'a, D: Distance> {
     SplitPlaneNormal(SplitPlaneNormal<'a, D>),
 }
 
-const LEAF_TAG: u8 = 0;
-const DESCENDANTS_TAG: u8 = 1;
-const SPLIT_PLANE_NORMAL_TAG: u8 = 2;
+pub const LEAF_TAG: u8 = 0;
+pub const DESCENDANTS_TAG: u8 = 1;
+pub const SPLIT_PLANE_NORMAL_TAG: u8 = 2;
 
 impl<'a, D: Distance> Node<'a, D> {
     pub fn leaf(self) -> Option<Leaf<'a, D>> {

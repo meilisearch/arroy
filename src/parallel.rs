@@ -15,7 +15,8 @@ use roaring::{RoaringBitmap, RoaringTreemap};
 
 use crate::internals::{KeyCodec, Leaf, NodeCodec};
 use crate::key::{Key, Prefix, PrefixCodec};
-use crate::node::Node;
+use crate::node::{Node, SplitPlaneNormal, LEAF_TAG};
+use crate::node_id::NodeMode;
 use crate::{Database, Distance, Error, ItemId, Result};
 
 /// A structure to store the tree nodes out of the heed database.
@@ -24,6 +25,7 @@ pub struct TmpNodes<DE> {
     ids: Vec<ItemId>,
     bounds: Vec<usize>,
     deleted: RoaringBitmap,
+    remap_ids: IntMap<ItemId, ItemId>,
     _marker: marker::PhantomData<DE>,
 }
 
@@ -35,6 +37,7 @@ impl<'a, DE: BytesEncode<'a>> TmpNodes<DE> {
             ids: Vec::new(),
             bounds: vec![0],
             deleted: RoaringBitmap::new(),
+            remap_ids: IntMap::default(),
             _marker: marker::PhantomData,
         })
     }
@@ -46,6 +49,7 @@ impl<'a, DE: BytesEncode<'a>> TmpNodes<DE> {
             ids: Vec::new(),
             bounds: vec![0],
             deleted: RoaringBitmap::new(),
+            remap_ids: IntMap::default(),
             _marker: marker::PhantomData,
         })
     }
@@ -71,6 +75,12 @@ impl<'a, DE: BytesEncode<'a>> TmpNodes<DE> {
         Ok(())
     }
 
+    /// Remap the item id of an already inserted node to another node.
+    /// Only apply to the nodes to insert. Won't interact with the to_delete nodes.
+    pub fn remap(&mut self, current: ItemId, new: ItemId) {
+        self.remap_ids.insert(current, new);
+    }
+
     /// Delete the tmp_nodes and the node in the database.
     pub fn remove(&mut self, item: ItemId) {
         let deleted = self.deleted.insert(item);
@@ -84,7 +94,13 @@ impl<'a, DE: BytesEncode<'a>> TmpNodes<DE> {
         let mmap = unsafe { Mmap::map(&file)? };
         #[cfg(unix)]
         mmap.advise(memmap2::Advice::Sequential)?;
-        Ok(TmpNodesReader { mmap, ids: self.ids, bounds: self.bounds, deleted: self.deleted })
+        Ok(TmpNodesReader {
+            mmap,
+            ids: self.ids,
+            bounds: self.bounds,
+            deleted: self.deleted,
+            remap_ids: self.remap_ids,
+        })
     }
 }
 
@@ -94,6 +110,7 @@ pub struct TmpNodesReader {
     ids: Vec<ItemId>,
     bounds: Vec<usize>,
     deleted: RoaringBitmap,
+    remap_ids: IntMap<ItemId, ItemId>,
 }
 
 impl TmpNodesReader {
@@ -112,6 +129,10 @@ impl TmpNodesReader {
             .iter()
             .zip(self.bounds.windows(2))
             .filter(|(&id, _)| !self.deleted.contains(id))
+            .map(|(id, bounds)| match self.remap_ids.get(id) {
+                Some(new_id) => (new_id, bounds),
+                None => (id, bounds),
+            })
             .map(|(id, bounds)| {
                 let [start, end] = [bounds[0], bounds[1]];
                 (*id, &self.mmap[start..end])
@@ -453,6 +474,43 @@ impl<'t, D: Distance> ImmutableTrees<'t, D> {
         }
 
         Ok(ImmutableTrees { trees, _marker: marker::PhantomData })
+    }
+
+    pub fn sub_tree_from_id(
+        rtxn: &'t RoTxn,
+        database: Database<D>,
+        index: u16,
+        start: ItemId,
+    ) -> Result<Self> {
+        let mut trees = IntMap::default();
+        let mut explore = vec![start];
+        while let Some(current) = explore.pop() {
+            let bytes =
+                database.remap_data_type::<Bytes>().get(rtxn, &Key::tree(index, current))?.unwrap();
+            let node: Node<'_, D> = NodeCodec::bytes_decode(bytes).unwrap();
+            match node {
+                Node::Leaf(_leaf) => unreachable!(),
+                Node::Descendants(_descendants) => {
+                    trees.insert(current, (bytes.len(), bytes.as_ptr()));
+                }
+                Node::SplitPlaneNormal(SplitPlaneNormal { left, right, normal: _ }) => {
+                    trees.insert(current, (bytes.len(), bytes.as_ptr()));
+                    // We must avoid the items and only push the tree nodes
+                    if left.mode == NodeMode::Tree {
+                        explore.push(left.item);
+                    }
+                    if right.mode == NodeMode::Tree {
+                        explore.push(right.item);
+                    }
+                }
+            }
+        }
+
+        Ok(Self { trees, _marker: marker::PhantomData })
+    }
+
+    pub fn empty() -> Self {
+        Self { trees: IntMap::default(), _marker: marker::PhantomData }
     }
 
     /// Returns the tree node identified by the given ID.
