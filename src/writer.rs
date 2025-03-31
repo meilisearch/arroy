@@ -74,13 +74,11 @@ impl SubStep {
 pub enum MainStep {
     PreProcessingTheItems,
     RetrievingTheItemsIds,
-    WritingTheDescendantsAndMetadata,
     RetrieveTheUpdatedItems,
-    RetrievingTheTreeAndItemNodes,
-    UpdatingTheTrees,
-    CreateNewTrees,
-    WritingNodesToDatabase,
-    DeleteExtraneousTrees,
+    WritingTheDescendantsAndMetadata,
+    RemoveItems,
+    InsertItemsInCurrentTrees,
+    IncrementalIndexLargeDescendants,
     WriteTheMetadata,
 }
 
@@ -494,7 +492,7 @@ impl<D: Distance> Writer<D> {
         }
 
         // Before taking any references on the DB, remove all the items we must remove.
-        self.scan_tree_nodes_and_delete_items(wtxn, &to_delete)?;
+        self.scan_tree_nodes_and_delete_items(wtxn, options, &to_delete)?;
 
         let used_node_ids = self.used_tree_node(wtxn)?;
         let nb_tree_nodes = used_node_ids.len();
@@ -548,14 +546,13 @@ impl<D: Distance> Writer<D> {
             roots: ItemIds::from_slice(&roots),
             distance: D::name(),
         };
-        match self.database.remap_data_type::<MetadataCodec>().put(
+        self.database.remap_data_type::<MetadataCodec>().put(
             wtxn,
             &Key::metadata(self.index),
             &metadata,
-        ) {
-            Ok(_) => Ok(()),
-            Err(e) => Err(e.into()),
-        }
+        )?;
+
+        Ok(())
     }
 
     /// Loop over the list of large descendants and split them into sub trees with respect to the available memory.
@@ -567,6 +564,11 @@ impl<D: Distance> Writer<D> {
         concurrent_node_ids: ConcurrentNodeIds,
         mut descendants_too_big: RoaringBitmap,
     ) -> Result<(), Error> {
+        (options.progress)(WriterProgress {
+            main: MainStep::IncrementalIndexLargeDescendants,
+            sub: None,
+        });
+
         while let Some(descendant_id) = descendants_too_big.select(0) {
             descendants_too_big.remove_smallest(1);
             let node = self.database.get(wtxn, &Key::tree(self.index, descendant_id))?.unwrap();
@@ -666,6 +668,8 @@ impl<D: Distance> Writer<D> {
         nb_tree_nodes: u64,
         concurrent_node_ids: &ConcurrentNodeIds,
     ) -> Result<RoaringBitmap> {
+        (options.progress)(WriterProgress { main: MainStep::InsertItemsInCurrentTrees, sub: None });
+
         let mut descendants_too_big = RoaringBitmap::new();
 
         if roots.is_empty() {
@@ -810,8 +814,10 @@ impl<D: Distance> Writer<D> {
     fn scan_tree_nodes_and_delete_items(
         &self,
         wtxn: &mut RwTxn,
+        options: &BuildOption,
         to_delete: &RoaringBitmap,
     ) -> Result<()> {
+        (options.progress)(WriterProgress { main: MainStep::RemoveItems, sub: None });
         let mut iter = self
             .database
             .remap_key_type::<PrefixCodec>()
@@ -820,6 +826,7 @@ impl<D: Distance> Writer<D> {
 
         while let Some(entry) = iter.next() {
             let (key, value) = entry?;
+            // TODO: If the item is located in a split node we must handle it as well
             if let Node::Descendants(Descendants { descendants }) = value {
                 let len = descendants.len();
                 let new_descendants = descendants.into_owned() - to_delete;
