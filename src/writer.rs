@@ -532,8 +532,42 @@ impl<D: Distance> Writer<D> {
             )?;
         }
 
-        while !descendants_too_big.is_empty() {
-            let descendant_id = descendants_too_big.select(0).unwrap();
+        self.incremental_index_large_descendants(
+            wtxn,
+            rng,
+            options,
+            concurrent_node_ids,
+            descendants_too_big,
+        )?;
+
+        tracing::debug!("write the metadata...");
+        (options.progress)(WriterProgress { main: MainStep::WriteTheMetadata, sub: None });
+        let metadata = Metadata {
+            dimensions: self.dimensions.try_into().unwrap(),
+            items: item_indices,
+            roots: ItemIds::from_slice(&roots),
+            distance: D::name(),
+        };
+        match self.database.remap_data_type::<MetadataCodec>().put(
+            wtxn,
+            &Key::metadata(self.index),
+            &metadata,
+        ) {
+            Ok(_) => Ok(()),
+            Err(e) => Err(e.into()),
+        }
+    }
+
+    /// Loop over the list of large descendants and split them into sub trees with respect to the available memory.
+    fn incremental_index_large_descendants<R: Rng + SeedableRng>(
+        &self,
+        wtxn: &mut RwTxn<'_>,
+        rng: &mut R,
+        options: &BuildOption<'_>,
+        concurrent_node_ids: ConcurrentNodeIds,
+        mut descendants_too_big: RoaringBitmap,
+    ) -> Result<(), Error> {
+        while let Some(descendant_id) = descendants_too_big.select(0) {
             descendants_too_big.remove_smallest(1);
             let node = self.database.get(wtxn, &Key::tree(self.index, descendant_id))?.unwrap();
             let Node::Descendants(Descendants { descendants }) = node else { unreachable!() };
@@ -618,30 +652,7 @@ impl<D: Distance> Writer<D> {
             }
         }
 
-        // TODO: We should now go over the whole list of descendants that are too big
-        //      + create new « too big descendant » containing all the items if we need to create extra tree
-        //       and call build trees on all of that.
-        // If a descendant is too big to fit in memory on itself we call a first build_tree on as many items as
-        // possible. Then update tree with the specific candidates in this descendant + a new build tree
-        //
-        // Finally once all of this is done we should remove the extra trees we have
-
-        tracing::debug!("write the metadata...");
-        (options.progress)(WriterProgress { main: MainStep::WriteTheMetadata, sub: None });
-        let metadata = Metadata {
-            dimensions: self.dimensions.try_into().unwrap(),
-            items: item_indices,
-            roots: ItemIds::from_slice(&roots),
-            distance: D::name(),
-        };
-        match self.database.remap_data_type::<MetadataCodec>().put(
-            wtxn,
-            &Key::metadata(self.index),
-            &metadata,
-        ) {
-            Ok(_) => Ok(()),
-            Err(e) => Err(e.into()),
-        }
+        Ok(())
     }
 
     #[allow(clippy::too_many_arguments)]
