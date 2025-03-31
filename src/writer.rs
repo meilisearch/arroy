@@ -520,7 +520,7 @@ impl<D: Distance> Writer<D> {
             }
         };
         // Create a new descendant that contains all items for every missing trees
-        let nb_missing_trees = roots.len().saturating_sub(target_n_trees);
+        let nb_missing_trees = target_n_trees.saturating_sub(roots.len());
         for _ in 0..nb_missing_trees {
             let new_id = concurrent_node_ids.next()?;
             roots.push(new_id);
@@ -657,7 +657,11 @@ impl<D: Distance> Writer<D> {
     ) -> Result<RoaringBitmap> {
         let mut descendants_too_big = RoaringBitmap::new();
 
-        while !to_insert.is_empty() || !roots.is_empty() {
+        if roots.is_empty() {
+            return Ok(descendants_too_big);
+        }
+
+        while !to_insert.is_empty() {
             let immutable_tree_nodes =
                 ImmutableTrees::new(wtxn, self.database, self.index, nb_tree_nodes)?;
             let (leafs, to_insert) = ImmutableLeafs::new(
