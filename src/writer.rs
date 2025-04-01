@@ -1,6 +1,5 @@
 use std::any::TypeId;
 use std::borrow::Cow;
-use std::mem;
 use std::path::PathBuf;
 use std::sync::atomic::AtomicU32;
 use std::sync::Arc;
@@ -495,49 +494,20 @@ impl<D: Distance> Writer<D> {
         let nb_tree_nodes = used_node_ids.len();
         let concurrent_node_ids = ConcurrentNodeIds::new(used_node_ids);
 
-        let target_n_trees = match options.n_trees {
-            Some(n) => n,
-            // In the case we never made any tree we can roughly guess how many trees we want to build in total
-            None if roots.is_empty() => {
-                // Full Binary Tree Theorem: The number of leaves in a non-empty full binary tree is one more than the number of internal nodes.
-                // Source: https://opendsa-server.cs.vt.edu/ODSA/Books/CS3/html/BinaryTreeFullThm.html
-                //
-                // That means we can exactly find the minimal number of tree node required to hold all the items
-                // 1. How many descendants do we need:
-                let descendant_required = n_items / self.dimensions as u64;
-                // 2. Find the number of tree nodes required per trees
-                let tree_nodes_per_tree = descendant_required + 1;
-                // 3. Find the number of tree required to get as many tree nodes as item:
-                let nb_trees = n_items / tree_nodes_per_tree;
-
-                nb_trees as usize + 1
-            }
-            None =>
-            // By looking at the number of tree_node per tree with the previous number of items
-            // we can guess how many tree we'll need with the new number of items.
-            {
-                // 1. Estimate the number of nodes per tree; the division is safe because we ensured there was at least one root node above.
-                let nodes_per_tree = nb_tree_nodes / roots.len() as u64;
-                // 2. Estimate the number of tree we need to have AT LEAST as much tree-nodes than items
-                //    /!\ We must use the old number of items here
-                let old_n_items = (&item_indices - updated_items).union_len(&to_delete);
-                (old_n_items / nodes_per_tree) as usize
-            }
-        };
-        let extraneous_tree = roots.len().saturating_sub(target_n_trees);
-        for _ in 0..extraneous_tree {
-            if roots.is_empty() {
-                break;
-            }
-            // We want to remove the oldest tree first
-            let root = roots.swap_remove(0);
-            self.delete_tree(wtxn, NodeId::tree(root))?;
-        }
+        let target_n_trees = self.target_n_trees(
+            options,
+            &item_indices,
+            updated_items,
+            &to_delete,
+            &roots,
+            nb_tree_nodes,
+        );
+        self.delete_extra_trees(wtxn, &mut roots, target_n_trees)?;
 
         // Before taking any references on the DB, remove all the items we must remove.
-        self.scan_trees_and_delete_items(wtxn, options, &mut roots, &to_delete)?;
+        self.delete_items_from_trees(wtxn, options, &mut roots, &to_delete)?;
 
-        let mut descendants_too_big = self.insert_items_in_current_trees(
+        let mut large_descendants = self.insert_items_in_current_trees(
             wtxn,
             rng,
             options,
@@ -551,7 +521,7 @@ impl<D: Distance> Writer<D> {
         for _ in 0..nb_missing_trees {
             let new_id = concurrent_node_ids.next()?;
             roots.push(new_id);
-            descendants_too_big.insert(new_id);
+            large_descendants.insert(new_id);
             self.database.put(
                 wtxn,
                 &Key::tree(self.index, new_id),
@@ -564,7 +534,7 @@ impl<D: Distance> Writer<D> {
             rng,
             options,
             concurrent_node_ids,
-            descendants_too_big,
+            large_descendants,
         )?;
 
         tracing::debug!("write the metadata...");
@@ -584,6 +554,67 @@ impl<D: Distance> Writer<D> {
         Ok(())
     }
 
+    /// Remove extraneous trees if any
+    fn delete_extra_trees(
+        &self,
+        wtxn: &mut RwTxn,
+        roots: &mut Vec<u32>,
+        target_n_trees: usize,
+    ) -> Result<(), Error> {
+        let extraneous_tree = roots.len().saturating_sub(target_n_trees);
+
+        for _ in 0..extraneous_tree {
+            if roots.is_empty() {
+                break;
+            }
+            // We want to remove the oldest trees first
+            let root = roots.swap_remove(0);
+            self.delete_tree(wtxn, NodeId::tree(root))?;
+        }
+
+        Ok(())
+    }
+
+    fn target_n_trees(
+        &self,
+        options: &BuildOption,
+        item_indices: &RoaringBitmap,
+        updated_items: RoaringBitmap,
+        to_delete: &RoaringBitmap,
+        roots: &[u32],
+        nb_tree_nodes: u64,
+    ) -> usize {
+        match options.n_trees {
+            Some(n) => n,
+            // In the case we never made any tree we can roughly guess how many trees we want to build in total
+            None if roots.is_empty() => {
+                // Full Binary Tree Theorem: The number of leaves in a non-empty full binary tree is one more than the number of internal nodes.
+                // Source: https://opendsa-server.cs.vt.edu/ODSA/Books/CS3/html/BinaryTreeFullThm.html
+                //
+                // That means we can exactly find the minimal number of tree node required to hold all the items
+                // 1. How many descendants do we need:
+                let descendant_required = item_indices.len() / self.dimensions as u64;
+                // 2. Find the number of tree nodes required per trees
+                let tree_nodes_per_tree = descendant_required + 1;
+                // 3. Find the number of tree required to get as many tree nodes as item:
+                let nb_trees = item_indices.len() / tree_nodes_per_tree;
+
+                nb_trees as usize + 1
+            }
+            None =>
+            // By looking at the number of tree_node per tree with the previous number of items
+            // we can guess how many tree we'll need with the new number of items.
+            {
+                // 1. Estimate the number of nodes per tree; the division is safe because we ensured there was at least one root node above.
+                let nodes_per_tree = nb_tree_nodes / roots.len() as u64;
+                // 2. Estimate the number of tree we need to have AT LEAST as much tree-nodes than items
+                //    /!\ We must use the old number of items here
+                let old_n_items = (item_indices - updated_items).union_len(to_delete);
+                (old_n_items / nodes_per_tree) as usize
+            }
+        }
+    }
+
     /// Loop over the list of large descendants and split them into sub trees with respect to the available memory.
     fn incremental_index_large_descendants<R: Rng + SeedableRng>(
         &self,
@@ -591,15 +622,15 @@ impl<D: Distance> Writer<D> {
         rng: &mut R,
         options: &BuildOption<'_>,
         concurrent_node_ids: ConcurrentNodeIds,
-        mut descendants_too_big: RoaringBitmap,
+        mut large_descendants: RoaringBitmap,
     ) -> Result<(), Error> {
         (options.progress)(WriterProgress {
             main: MainStep::IncrementalIndexLargeDescendants,
             sub: None,
         });
 
-        while let Some(descendant_id) = descendants_too_big.select(0) {
-            descendants_too_big.remove_smallest(1);
+        while let Some(descendant_id) = large_descendants.select(0) {
+            large_descendants.remove_smallest(1);
             let node = self.database.get(wtxn, &Key::tree(self.index, descendant_id))?.unwrap();
             let Node::Descendants(Descendants { descendants }) = node else { unreachable!() };
             let mut descendants = descendants.into_owned();
@@ -634,7 +665,7 @@ impl<D: Distance> Writer<D> {
                 let key = Key::tree(self.index, item_id);
                 self.database.remap_data_type::<Bytes>().put(wtxn, &key, item_bytes)?;
             }
-            let mut descendants_became_too_big = RoaringBitmap::new();
+            let mut descendants_became_too_large = RoaringBitmap::new();
             while !descendants.is_empty() {
                 let mut tmp_nodes = match self.tmpdir.as_ref() {
                     Some(path) => TmpNodes::new_in(path)?,
@@ -669,7 +700,7 @@ impl<D: Distance> Writer<D> {
                     rng,
                     NodeId::tree(descendant_id),
                     &to_insert,
-                    &mut descendants_became_too_big,
+                    &mut descendants_became_too_large,
                     &mut tmp_nodes,
                 )?;
 
@@ -701,10 +732,10 @@ impl<D: Distance> Writer<D> {
     ) -> Result<RoaringBitmap> {
         (options.progress)(WriterProgress { main: MainStep::InsertItemsInCurrentTrees, sub: None });
 
-        let mut descendants_too_big = RoaringBitmap::new();
+        let mut large_descendants = RoaringBitmap::new();
 
         if roots.is_empty() {
-            return Ok(descendants_too_big);
+            return Ok(large_descendants);
         }
 
         while !to_insert.is_empty() {
@@ -726,7 +757,7 @@ impl<D: Distance> Writer<D> {
                 self.insert_items_in_tree(options, rng, roots, &to_insert, &frozzen_reader)?;
 
             for (tmp_node, descendants) in tmp_descendant_to_write.iter() {
-                descendants_too_big |= descendants;
+                large_descendants |= descendants;
 
                 for item_id in tmp_node.to_delete() {
                     let key = Key::tree(self.index, item_id);
@@ -738,7 +769,7 @@ impl<D: Distance> Writer<D> {
                 }
             }
         }
-        Ok(descendants_too_big)
+        Ok(large_descendants)
     }
 
     fn reset_and_retrieve_updated_items(
@@ -837,7 +868,7 @@ impl<D: Distance> Writer<D> {
 
     // TODO: Should we return the list of empty descendants to double check at the very end of the indexing process if
     // they're still empty and should be removed?
-    fn scan_trees_and_delete_items(
+    fn delete_items_from_trees(
         &self,
         wtxn: &mut RwTxn,
         options: &BuildOption,
@@ -992,7 +1023,7 @@ impl<D: Distance> Writer<D> {
 
     /// Insert items in the specified trees without creating new tree.
     /// Return the list of nodes modified that must be inserted into the database and
-    /// the roaring bitmap of descendants that became too big in the process.
+    /// the roaring bitmap of descendants that became too large in the process.
     #[allow(clippy::too_many_arguments)]
     fn insert_items_in_tree<R: Rng + SeedableRng>(
         &self,
@@ -1012,19 +1043,19 @@ impl<D: Distance> Writer<D> {
                     None => TmpNodes::new()?,
                 };
                 let root_node = NodeId::tree(*root);
-                let mut descendants_too_big = RoaringBitmap::new();
+                let mut large_descendants = RoaringBitmap::new();
                 self.insert_items_in_file(
                     opt,
                     frozen_reader,
                     &mut rng,
                     root_node,
                     to_insert,
-                    &mut descendants_too_big,
+                    &mut large_descendants,
                     &mut tmp_descendant,
                 )?;
 
                 tracing::debug!("finished updating tree {root:X}");
-                Ok((tmp_descendant.into_bytes_reader()?, descendants_too_big))
+                Ok((tmp_descendant.into_bytes_reader()?, large_descendants))
             })
             .collect()
     }
@@ -1038,7 +1069,7 @@ impl<D: Distance> Writer<D> {
         rng: &mut R,
         current_node: NodeId,
         to_insert: &RoaringBitmap,
-        descendant_too_big: &mut RoaringBitmap,
+        large_descendants: &mut RoaringBitmap,
         tmp_nodes: &mut TmpNodes<NodeCodec<D>>,
     ) -> Result<ItemId> {
         if (opt.cancel)() {
@@ -1051,7 +1082,7 @@ impl<D: Distance> Writer<D> {
                 new_items |= to_insert;
 
                 if !self.fit_in_descendant(opt, new_items.len()) {
-                    descendant_too_big.insert(current_node.item);
+                    large_descendants.insert(current_node.item);
                 }
 
                 if new_items.len() > 1 {
@@ -1077,7 +1108,7 @@ impl<D: Distance> Writer<D> {
                         new_descendants |= to_insert;
 
                         if !self.fit_in_descendant(opt, new_descendants.len()) {
-                            descendant_too_big.insert(current_node.item);
+                            large_descendants.insert(current_node.item);
                         }
 
                         if descendants.as_ref() != &new_descendants {
@@ -1114,7 +1145,7 @@ impl<D: Distance> Writer<D> {
                             rng,
                             left,
                             &left_ids,
-                            descendant_too_big,
+                            large_descendants,
                             tmp_nodes,
                         )?;
                         let new_right = self.insert_items_in_file(
@@ -1123,7 +1154,7 @@ impl<D: Distance> Writer<D> {
                             rng,
                             right,
                             &right_ids,
-                            descendant_too_big,
+                            large_descendants,
                             tmp_nodes,
                         )?;
 
@@ -1227,50 +1258,6 @@ impl<D: Distance> Writer<D> {
         tmp_nodes.put(new_node_id, &Node::SplitPlaneNormal(normal))?;
 
         Ok(NodeId::tree(new_node_id))
-    }
-
-    /// Delete any extraneous trees.
-    fn delete_extra_trees(
-        &self,
-        wtxn: &mut RwTxn,
-        opt: &BuildOption,
-        roots: &mut Vec<ItemId>,
-        nb_trees: Option<usize>,
-        nb_tree_nodes: u64,
-        nb_items: u64,
-    ) -> Result<()> {
-        if roots.is_empty() {
-            return Ok(());
-        }
-        let nb_trees = match nb_trees {
-            Some(nb_trees) => nb_trees,
-            None => {
-                // 1. Estimate the number of nodes per tree; the division is safe because we ensured there was at least one root node above.
-                let nodes_per_tree = nb_tree_nodes / roots.len() as u64;
-                // 2. Estimate the number of tree we need to have AT LEAST as much tree-nodes than items
-                (nb_items / nodes_per_tree) as usize
-            }
-        };
-
-        if roots.len() > nb_trees {
-            // we have too many trees and must delete some of them
-            let to_delete = roots.len() - nb_trees;
-
-            // we want to delete the oldest tree first since they're probably
-            // the less precise one
-            let new_roots = roots.split_off(to_delete);
-            let to_delete = mem::replace(roots, new_roots);
-            tracing::debug!("Deleting {} trees", to_delete.len());
-
-            for tree in to_delete {
-                if (opt.cancel)() {
-                    return Err(Error::BuildCancelled);
-                }
-                self.delete_tree(wtxn, NodeId::tree(tree))?;
-            }
-        }
-
-        Ok(())
     }
 
     fn delete_tree(&self, wtxn: &mut RwTxn, node: NodeId) -> Result<()> {
