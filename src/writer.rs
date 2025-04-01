@@ -495,6 +495,45 @@ impl<D: Distance> Writer<D> {
         let nb_tree_nodes = used_node_ids.len();
         let concurrent_node_ids = ConcurrentNodeIds::new(used_node_ids);
 
+        let target_n_trees = match options.n_trees {
+            Some(n) => n,
+            // In the case we never made any tree we can roughly guess how many trees we want to build in total
+            None if roots.is_empty() => {
+                // Full Binary Tree Theorem: The number of leaves in a non-empty full binary tree is one more than the number of internal nodes.
+                // Source: https://opendsa-server.cs.vt.edu/ODSA/Books/CS3/html/BinaryTreeFullThm.html
+                //
+                // That means we can exactly find the minimal number of tree node required to hold all the items
+                // 1. How many descendants do we need:
+                let descendant_required = n_items / self.dimensions as u64;
+                // 2. Find the number of tree nodes required per trees
+                let tree_nodes_per_tree = descendant_required + 1;
+                // 3. Find the number of tree required to get as many tree nodes as item:
+                let nb_trees = n_items / tree_nodes_per_tree;
+
+                nb_trees as usize + 1
+            }
+            None =>
+            // By looking at the number of tree_node per tree with the previous number of items
+            // we can guess how many tree we'll need with the new number of items.
+            {
+                // 1. Estimate the number of nodes per tree; the division is safe because we ensured there was at least one root node above.
+                let nodes_per_tree = nb_tree_nodes / roots.len() as u64;
+                // 2. Estimate the number of tree we need to have AT LEAST as much tree-nodes than items
+                //    /!\ We must use the old number of items here
+                let old_n_items = (&item_indices - updated_items).union_len(&to_delete);
+                (old_n_items / nodes_per_tree) as usize
+            }
+        };
+        let extraneous_tree = roots.len().saturating_sub(target_n_trees);
+        for _ in 0..extraneous_tree {
+            if roots.is_empty() {
+                break;
+            }
+            // We want to remove the oldest tree first
+            let root = roots.swap_remove(0);
+            self.delete_tree(wtxn, NodeId::tree(root))?;
+        }
+
         // Before taking any references on the DB, remove all the items we must remove.
         self.scan_trees_and_delete_items(wtxn, options, &mut roots, &to_delete)?;
 
@@ -507,16 +546,6 @@ impl<D: Distance> Writer<D> {
             nb_tree_nodes,
             &concurrent_node_ids,
         )?;
-
-        let target_n_trees = match options.n_trees {
-            Some(n) => n,
-            None if roots.is_empty() => 350,
-            None =>
-            // TODO: We could guess how many trees we want to add
-            {
-                350
-            }
-        };
         // Create a new descendant that contains all items for every missing trees
         let nb_missing_trees = target_n_trees.saturating_sub(roots.len());
         for _ in 0..nb_missing_trees {
