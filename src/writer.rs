@@ -624,7 +624,9 @@ impl<D: Distance> Writer<D> {
                     self.database,
                     self.index,
                     &mut descendants,
-                    options.available_memory.unwrap_or(usize::MAX),
+                    options
+                        .available_memory
+                        .map_or(usize::MAX, |memory| (memory as f32 * 2.0 / 3.0).floor() as usize),
                 )?;
                 let frozen_reader = FrozzenReader {
                     leafs: &leafs,
