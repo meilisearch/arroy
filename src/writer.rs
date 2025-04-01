@@ -491,12 +491,12 @@ impl<D: Distance> Writer<D> {
             return Err(Error::BuildCancelled);
         }
 
-        // Before taking any references on the DB, remove all the items we must remove.
-        self.scan_tree_nodes_and_delete_items(wtxn, options, &to_delete)?;
-
         let used_node_ids = self.used_tree_node(wtxn)?;
         let nb_tree_nodes = used_node_ids.len();
         let concurrent_node_ids = ConcurrentNodeIds::new(used_node_ids);
+
+        // Before taking any references on the DB, remove all the items we must remove.
+        self.scan_trees_and_delete_items(wtxn, options, &roots, &to_delete)?;
 
         let mut descendants_too_big = self.insert_items_in_current_trees(
             wtxn,
@@ -696,11 +696,6 @@ impl<D: Distance> Writer<D> {
             let tmp_descendant_to_write =
                 self.insert_items_in_tree(options, rng, roots, &to_insert, &frozzen_reader)?;
 
-            // TODO: The only way to avoid this synchronization point is to forbid the use of item_id directly in the split nodes.
-            //       That would ensure we only ever overwrite descendant nodes and we could do the synchronization to the DB only
-            //       once after the whole loop.
-            //       Doing the synchronization after the loop means we would not need to retrieve the item_id for every iteration.
-            //       This requires making a new version of arroy.
             for (tmp_node, descendants) in tmp_descendant_to_write.iter() {
                 descendants_too_big |= descendants;
 
@@ -813,40 +808,140 @@ impl<D: Distance> Writer<D> {
 
     // TODO: Should we return the list of empty descendants to double check at the very end of the indexing process if
     // they're still empty and should be removed?
-    fn scan_tree_nodes_and_delete_items(
+    fn scan_trees_and_delete_items(
         &self,
         wtxn: &mut RwTxn,
         options: &BuildOption,
+        roots: &[u32],
         to_delete: &RoaringBitmap,
     ) -> Result<()> {
         (options.progress)(WriterProgress { main: MainStep::RemoveItems, sub: None });
-        let mut iter = self
-            .database
-            .remap_key_type::<PrefixCodec>()
-            .prefix_iter_mut(wtxn, &Prefix::tree(self.index))?
-            .remap_key_type::<KeyCodec>();
 
-        while let Some(entry) = iter.next() {
-            let (key, value) = entry?;
-            // TODO: If the item is located in a split node we must handle it as well
-            if let Node::Descendants(Descendants { descendants }) = value {
+        let mut tmp_nodes: TmpNodes<NodeCodec<D>> = match self.tmpdir.as_ref() {
+            Some(path) => TmpNodes::new_in(path)?,
+            None => TmpNodes::new()?,
+        };
+
+        // TODO: Parallelize
+        for root in roots.iter().copied() {
+            self.delete_items_in_file(options, wtxn, root, &mut tmp_nodes, to_delete)?;
+        }
+
+        let tmp_nodes = tmp_nodes.into_bytes_reader()?;
+        for item_id in tmp_nodes.to_delete() {
+            let key = Key::tree(self.index, item_id);
+            self.database.remap_data_type::<Bytes>().delete(wtxn, &key)?;
+        }
+        for (item_id, item_bytes) in tmp_nodes.to_insert() {
+            let key = Key::tree(self.index, item_id);
+            self.database.remap_data_type::<Bytes>().put(wtxn, &key, item_bytes)?;
+        }
+        Ok(())
+    }
+
+    /// Remove items in O(n). We must explore the whole list of items.
+    /// That could be reduced to O(log(n)) if we had a `RoTxn` of the previous state of the database.
+    fn delete_items_in_file(
+        &self,
+        opt: &BuildOption,
+        rtxn: &RoTxn,
+        current_node: ItemId,
+        tmp_nodes: &mut TmpNodes<NodeCodec<D>>,
+        to_delete: &RoaringBitmap,
+    ) -> Result<(ItemId, RoaringBitmap)> {
+        if (opt.cancel)() {
+            return Err(Error::BuildCancelled);
+        }
+        match self.database.get(rtxn, &Key::tree(self.index, current_node))?.unwrap() {
+            Node::Leaf(_) => unreachable!(),
+            Node::Descendants(Descendants { descendants }) => {
                 let len = descendants.len();
-                let new_descendants = descendants.into_owned() - to_delete;
+                let mut new_descendants = descendants.into_owned();
+                new_descendants -= to_delete;
+
                 if len != new_descendants.len() {
-                    // Safety: The key is copied and the roaring bitmap lives in RAM.
-                    unsafe {
-                        iter.put_current(
-                            &key,
-                            &Node::Descendants(Descendants {
-                                descendants: Cow::Owned(new_descendants),
+                    // update the descendants
+                    tmp_nodes.put(
+                        current_node,
+                        &Node::Descendants(Descendants {
+                            descendants: Cow::Borrowed(&new_descendants),
+                        }),
+                    )?;
+                }
+                Ok((current_node, new_descendants))
+            }
+            Node::SplitPlaneNormal(SplitPlaneNormal { normal, left, right }) => {
+                let (new_left, left_items) = match left.mode {
+                    NodeMode::Tree => {
+                        let (id, items) =
+                            self.delete_items_in_file(opt, rtxn, left.item, tmp_nodes, to_delete)?;
+                        (NodeId::tree(id), items)
+                    }
+                    NodeMode::Item => {
+                        if to_delete.contains(left.item) {
+                            (left, RoaringBitmap::new())
+                        } else {
+                            (left, RoaringBitmap::from_sorted_iter(Some(left.item)).unwrap())
+                        }
+                    }
+                    NodeMode::Metadata | NodeMode::Updated => unreachable!(),
+                };
+                let (new_right, right_items) = match right.mode {
+                    NodeMode::Tree => {
+                        let (id, items) =
+                            self.delete_items_in_file(opt, rtxn, right.item, tmp_nodes, to_delete)?;
+                        (NodeId::tree(id), items)
+                    }
+                    NodeMode::Item => {
+                        if to_delete.contains(right.item) {
+                            (right, RoaringBitmap::new())
+                        } else {
+                            (right, RoaringBitmap::from_sorted_iter(Some(right.item)).unwrap())
+                        }
+                    }
+                    NodeMode::Metadata | NodeMode::Updated => unreachable!(),
+                };
+
+                let total_items = left_items | right_items;
+
+                if self.fit_in_descendant(opt, total_items.len()) {
+                    // Since we're shrinking we KNOW that new_left and new_right are descendants
+                    // thus we can delete them directly knowing there is no sub-tree to look at.
+                    if new_left.mode == NodeMode::Tree {
+                        tmp_nodes.remove(new_left.item);
+                    }
+                    if new_right.mode == NodeMode::Tree {
+                        tmp_nodes.remove(new_right.item);
+                    }
+
+                    tmp_nodes.put(
+                        current_node,
+                        &Node::Descendants(Descendants {
+                            descendants: Cow::Owned(total_items.clone()),
+                        }),
+                    )?;
+
+                    // we should merge both branch and update ourselves to be a single descendant node
+                    Ok((current_node, total_items))
+                } else {
+                    // if either the left or the right changed we must update ourselves inplace
+                    if new_left != left || new_right != right {
+                        tmp_nodes.put(
+                            current_node,
+                            &Node::SplitPlaneNormal(SplitPlaneNormal {
+                                normal,
+                                left: new_left,
+                                right: new_right,
                             }),
                         )?;
                     }
+
+                    // TODO: Should we update the normals if something changed?
+
+                    Ok((current_node, total_items))
                 }
             }
         }
-
-        Ok(())
     }
 
     /// Insert items in the specified trees without creating new tree.
