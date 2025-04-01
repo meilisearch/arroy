@@ -15,7 +15,7 @@ use roaring::{RoaringBitmap, RoaringTreemap};
 
 use crate::internals::{KeyCodec, Leaf, NodeCodec};
 use crate::key::{Key, Prefix, PrefixCodec};
-use crate::node::{Node, SplitPlaneNormal, LEAF_TAG};
+use crate::node::{Node, SplitPlaneNormal};
 use crate::node_id::NodeMode;
 use crate::{Database, Distance, Error, ItemId, Result};
 
@@ -84,7 +84,7 @@ impl<'a, DE: BytesEncode<'a>> TmpNodes<DE> {
     /// Delete the tmp_nodes and the node in the database.
     pub fn remove(&mut self, item: ItemId) {
         let deleted = self.deleted.insert(item);
-        debug_assert!(deleted);
+        debug_assert!(deleted, "Removed the same item with id {item} twice");
     }
 
     /// Converts it into a readers to read the nodes.

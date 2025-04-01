@@ -496,7 +496,7 @@ impl<D: Distance> Writer<D> {
         let concurrent_node_ids = ConcurrentNodeIds::new(used_node_ids);
 
         // Before taking any references on the DB, remove all the items we must remove.
-        self.scan_trees_and_delete_items(wtxn, options, &roots, &to_delete)?;
+        self.scan_trees_and_delete_items(wtxn, options, &mut roots, &to_delete)?;
 
         let mut descendants_too_big = self.insert_items_in_current_trees(
             wtxn,
@@ -812,7 +812,7 @@ impl<D: Distance> Writer<D> {
         &self,
         wtxn: &mut RwTxn,
         options: &BuildOption,
-        roots: &[u32],
+        roots: &mut [u32],
         to_delete: &RoaringBitmap,
     ) -> Result<()> {
         (options.progress)(WriterProgress { main: MainStep::RemoveItems, sub: None });
@@ -823,9 +823,12 @@ impl<D: Distance> Writer<D> {
         };
 
         // TODO: Parallelize
-        for root in roots.iter().copied() {
-            self.delete_items_in_file(options, wtxn, root, &mut tmp_nodes, to_delete)?;
+        for root in roots.iter_mut() {
+            let (new_root, _) =
+                self.delete_items_in_file(options, wtxn, *root, &mut tmp_nodes, to_delete)?;
+            *root = new_root;
         }
+        roots.sort_unstable();
 
         let tmp_nodes = tmp_nodes.into_bytes_reader()?;
         for item_id in tmp_nodes.to_delete() {
@@ -902,7 +905,7 @@ impl<D: Distance> Writer<D> {
                     NodeMode::Metadata | NodeMode::Updated => unreachable!(),
                 };
 
-                let total_items = left_items | right_items;
+                let total_items = &left_items | &right_items;
 
                 if self.fit_in_descendant(opt, total_items.len()) {
                     // Since we're shrinking we KNOW that new_left and new_right are descendants
@@ -923,6 +926,20 @@ impl<D: Distance> Writer<D> {
 
                     // we should merge both branch and update ourselves to be a single descendant node
                     Ok((current_node, total_items))
+
+                // If we don't have any items in either the left or right we can delete ourselves and point directly to our child
+                } else if left_items.is_empty() {
+                    if new_left.mode == NodeMode::Tree {
+                        tmp_nodes.remove(new_left.item);
+                    }
+                    tmp_nodes.remove(current_node);
+                    Ok((new_right.item, total_items))
+                } else if right_items.is_empty() {
+                    if new_right.mode == NodeMode::Tree {
+                        tmp_nodes.remove(new_right.item);
+                    }
+                    tmp_nodes.remove(current_node);
+                    Ok((new_left.item, total_items))
                 } else {
                     // if either the left or the right changed we must update ourselves inplace
                     if new_left != left || new_right != right {
