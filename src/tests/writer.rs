@@ -4,10 +4,107 @@ use heed::EnvOpenOptions;
 use insta::assert_snapshot;
 use rand::seq::SliceRandom;
 use rand::Rng;
+use roaring::RoaringBitmap;
 
 use super::{create_database, rng};
 use crate::distance::{BinaryQuantizedCosine, Cosine, DotProduct, Euclidean};
+use crate::writer::{target_n_trees, BuildOption};
 use crate::{Database, Reader, Writer};
+
+#[test]
+fn guess_right_number_of_tree_use_specified_number_of_trees() {
+    let quick_target = |n_tree| {
+        target_n_trees(
+            &BuildOption { n_trees: Some(n_tree), ..BuildOption::default() },
+            768,
+            &RoaringBitmap::from_sorted_iter(0..100).unwrap(),
+            &[0, 1, 2],
+        )
+    };
+
+    assert_snapshot!(quick_target(1), @"1");
+    assert_snapshot!(quick_target(10), @"10");
+    assert_snapshot!(quick_target(100), @"100");
+}
+
+#[test]
+fn guess_right_number_of_tree_while_growing() {
+    // Generating the bitmap takes a lot of time that's why we cache them.
+    // Without optimization the test was taking minutes to run and is now taking 2s.
+    let b1 = RoaringBitmap::from_sorted_iter(0..1).unwrap();
+    let b10 = RoaringBitmap::from_sorted_iter(0..10).unwrap();
+    let b100 = RoaringBitmap::from_sorted_iter(0..100).unwrap();
+    let b1000 = RoaringBitmap::from_sorted_iter(0..1000).unwrap();
+    let b10_000 = RoaringBitmap::from_sorted_iter(0..10_000).unwrap();
+    let mut b100_000 = b10_000.clone();
+    b100_000.extend(10_000..100_000);
+    let mut b1_000_000 = b100_000.clone();
+    b1_000_000.extend(100_000..1_000_000);
+    let mut b10_000_000 = b1_000_000.clone();
+    b10_000_000.extend(1_000_000..10_000_000);
+    let mut b100_000_000 = b10_000_000.clone();
+    b100_000_000.extend(10_000_000..100_000_000);
+
+    let quick_target = |dim, bitmap| target_n_trees(&BuildOption::default(), dim, bitmap, &[]);
+
+    assert_snapshot!(quick_target(768, &b1), @"2");
+    assert_snapshot!(quick_target(768, &b10), @"11");
+    assert_snapshot!(quick_target(768, &b100), @"101");
+    assert_snapshot!(quick_target(768, &b1000), @"501");
+    assert_snapshot!(quick_target(768, &b10_000), @"715");
+    assert_snapshot!(quick_target(768, &b100_000), @"764");
+    assert_snapshot!(quick_target(768, &b1_000_000), @"768");
+    assert_snapshot!(quick_target(768, &b10_000_000), @"768");
+    assert_snapshot!(quick_target(768, &b100_000_000), @"768");
+
+    assert_snapshot!(quick_target(1512, &b1), @"2");
+    assert_snapshot!(quick_target(1512, &b10), @"11");
+    assert_snapshot!(quick_target(1512, &b100), @"101");
+    assert_snapshot!(quick_target(1512, &b1000), @"1001");
+    assert_snapshot!(quick_target(1512, &b10_000), @"1429");
+    assert_snapshot!(quick_target(1512, &b100_000), @"1493");
+    assert_snapshot!(quick_target(1512, &b1_000_000), @"1511");
+    assert_snapshot!(quick_target(1512, &b10_000_000), @"1512");
+    assert_snapshot!(quick_target(1512, &b100_000_000), @"1512");
+
+    assert_snapshot!(quick_target(3072, &b1), @"2");
+    assert_snapshot!(quick_target(3072, &b10), @"11");
+    assert_snapshot!(quick_target(3072, &b100), @"101");
+    assert_snapshot!(quick_target(3072, &b1000), @"1001");
+    assert_snapshot!(quick_target(3072, &b10_000), @"2501");
+    assert_snapshot!(quick_target(3072, &b100_000), @"3031");
+    assert_snapshot!(quick_target(3072, &b1_000_000), @"3068");
+    assert_snapshot!(quick_target(3072, &b10_000_000), @"3072");
+    assert_snapshot!(quick_target(3072, &b100_000_000), @"3072");
+}
+
+#[test]
+fn guess_right_number_of_tree_while_shrinking() {
+    let b1000 = RoaringBitmap::from_sorted_iter(0..1000).unwrap();
+    let b10_000 = RoaringBitmap::from_sorted_iter(0..10_000).unwrap();
+
+    let quick_target = |dim, bitmap, nb_roots| {
+        target_n_trees(&BuildOption::default(), dim, bitmap, &(0..nb_roots).collect::<Vec<_>>())
+    };
+
+    assert_snapshot!(quick_target(768, &b1000, 300), @"500");
+    assert_snapshot!(quick_target(768, &b1000, 499), @"500"); // add trees to reach 500 even though we're within the 20% threshold
+    assert_snapshot!(quick_target(768, &b1000, 520), @"520"); // do not shrink
+    assert_snapshot!(quick_target(768, &b1000, 800), @"500");
+    assert_snapshot!(quick_target(768, &b10_000, 500), @"714");
+    assert_snapshot!(quick_target(768, &b10_000, 700), @"714");
+    assert_snapshot!(quick_target(768, &b10_000, 800), @"800"); // do not shrink
+    assert_snapshot!(quick_target(768, &b10_000, 1000), @"714");
+
+    assert_snapshot!(quick_target(1512, &b1000, 100), @"1000");
+    assert_snapshot!(quick_target(1512, &b1000, 999), @"1000"); // add trees to reach 500 even though we're within the 20% threshold
+    assert_snapshot!(quick_target(1512, &b1000, 1150), @"1150"); // do not shrink
+    assert_snapshot!(quick_target(1512, &b1000, 2000), @"1000");
+    assert_snapshot!(quick_target(1512, &b10_000, 1000), @"1428");
+    assert_snapshot!(quick_target(1512, &b10_000, 1400), @"1428");
+    assert_snapshot!(quick_target(1512, &b10_000, 1600), @"1600"); // do not shrink
+    assert_snapshot!(quick_target(1512, &b10_000, 2000), @"1428");
+}
 
 #[test]
 fn clear_small_database() {

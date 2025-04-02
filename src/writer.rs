@@ -82,12 +82,12 @@ pub enum MainStep {
 }
 
 /// The options available when building the arroy database.
-struct BuildOption<'a> {
-    n_trees: Option<usize>,
-    split_after: Option<usize>,
-    available_memory: Option<usize>,
-    cancel: Box<dyn Fn() -> bool + 'a + Sync + Send>,
-    progress: Box<dyn Fn(WriterProgress) + 'a + Sync + Send>,
+pub(crate) struct BuildOption<'a> {
+    pub(crate) n_trees: Option<usize>,
+    pub(crate) split_after: Option<usize>,
+    pub(crate) available_memory: Option<usize>,
+    pub(crate) cancel: Box<dyn Fn() -> bool + 'a + Sync + Send>,
+    pub(crate) progress: Box<dyn Fn(WriterProgress) + 'a + Sync + Send>,
 }
 
 impl Default for BuildOption<'_> {
@@ -493,14 +493,7 @@ impl<D: Distance> Writer<D> {
         let nb_tree_nodes = used_node_ids.len();
         let concurrent_node_ids = ConcurrentNodeIds::new(used_node_ids);
 
-        let target_n_trees = self.target_n_trees(
-            options,
-            &item_indices,
-            updated_items,
-            &to_delete,
-            &roots,
-            nb_tree_nodes,
-        );
+        let target_n_trees = target_n_trees(options, self.dimensions as u64, &item_indices, &roots);
         self.delete_extra_trees(wtxn, &mut roots, target_n_trees)?;
 
         // Before taking any references on the DB, remove all the items we must remove.
@@ -516,7 +509,7 @@ impl<D: Distance> Writer<D> {
             &concurrent_node_ids,
         )?;
         // Create a new descendant that contains all items for every missing trees
-        let nb_missing_trees = target_n_trees.saturating_sub(roots.len());
+        let nb_missing_trees = target_n_trees.saturating_sub(roots.len() as u64);
         for _ in 0..nb_missing_trees {
             let new_id = concurrent_node_ids.next()?;
             roots.push(new_id);
@@ -558,9 +551,9 @@ impl<D: Distance> Writer<D> {
         &self,
         wtxn: &mut RwTxn,
         roots: &mut Vec<u32>,
-        target_n_trees: usize,
+        target_n_trees: u64,
     ) -> Result<(), Error> {
-        let extraneous_tree = roots.len().saturating_sub(target_n_trees);
+        let extraneous_tree = roots.len().saturating_sub(target_n_trees as usize);
 
         for _ in 0..extraneous_tree {
             if roots.is_empty() {
@@ -572,48 +565,6 @@ impl<D: Distance> Writer<D> {
         }
 
         Ok(())
-    }
-
-    fn target_n_trees(
-        &self,
-        options: &BuildOption,
-        item_indices: &RoaringBitmap,
-        updated_items: RoaringBitmap,
-        to_delete: &RoaringBitmap,
-        roots: &[u32],
-        nb_tree_nodes: u64,
-    ) -> usize {
-        match options.n_trees {
-            Some(n) => n,
-            // In the case we never made any tree we can roughly guess how many trees we want to build in total
-            None if roots.is_empty() => {
-                // Full Binary Tree Theorem: The number of leaves in a non-empty full binary tree is one more than the number of internal nodes.
-                // Source: https://opendsa-server.cs.vt.edu/ODSA/Books/CS3/html/BinaryTreeFullThm.html
-                //
-                // That means we can exactly find the minimal number of tree node required to hold all the items
-                // 1. How many descendants do we need:
-                let descendant_required = item_indices.len() / self.dimensions as u64;
-                // 2. Find the number of tree nodes required per trees
-                let tree_nodes_per_tree = descendant_required + 1;
-                // 3. Find the number of tree required to get as many tree nodes as item:
-                let nb_trees = item_indices.len() / tree_nodes_per_tree;
-
-                nb_trees as usize + 1
-            }
-            None =>
-            // By looking at the number of tree_node per tree with the previous number of items
-            // we can guess how many tree we'll need with the new number of items.
-            {
-                // 1. Estimate the number of nodes per tree; the division is safe because we ensured there was at least one root node above.
-                let nodes_per_tree = nb_tree_nodes / roots.len() as u64;
-                // 2. Estimate the number of tree we need to have AT LEAST as much tree-nodes than items
-                //    /!\ We must use the old number of items here
-                let old_n_items = (item_indices - updated_items).union_len(to_delete);
-
-                // TODO: check that again
-                (old_n_items / nodes_per_tree) as usize
-            }
-        }
     }
 
     /// Loop over the list of large descendants and split them into sub trees with respect to the available memory.
@@ -1311,4 +1262,39 @@ fn split_imbalance(left_indices_len: u64, right_indices_len: u64) -> f64 {
     let rs = right_indices_len as f64;
     let f = ls / (ls + rs + f64::EPSILON); // Avoid 0/0
     f.max(1.0 - f)
+}
+
+pub(crate) fn target_n_trees(
+    options: &BuildOption,
+    dimensions: u64,
+    item_indices: &RoaringBitmap,
+    roots: &[u32],
+) -> u64 {
+    match options.n_trees {
+        Some(n) => n as u64,
+        // In the case we never made any tree we can roughly guess how many trees we want to build in total
+        None => {
+            // Full Binary Tree Theorem: The number of leaves in a non-empty full binary tree is one more than the number of internal nodes.
+            // Source: https://opendsa-server.cs.vt.edu/ODSA/Books/CS3/html/BinaryTreeFullThm.html
+            //
+            // That means we can exactly find the minimal number of tree node required to hold all the items
+            // 1. How many descendants do we need:
+            let descendant_required = item_indices.len() / dimensions;
+            // 2. Find the number of tree nodes required per trees
+            let tree_nodes_per_tree = descendant_required + 1;
+            // 3. Find the number of tree required to get as many tree nodes as item:
+            let mut nb_trees = item_indices.len() / tree_nodes_per_tree;
+
+            // 4. We don't want to shrink too quickly when a user remove some documents.
+            //    We're only going to shrink if we should remove more than 20% of our trees.
+            if (roots.len() as u64) > nb_trees {
+                let tree_to_remove = roots.len() as u64 - nb_trees;
+                if (tree_to_remove as f64 / nb_trees as f64) < 0.20 {
+                    nb_trees = roots.len() as u64;
+                }
+            }
+
+            nb_trees
+        }
+    }
 }
