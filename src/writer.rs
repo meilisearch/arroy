@@ -102,6 +102,16 @@ impl Default for BuildOption<'_> {
     }
 }
 
+impl BuildOption<'_> {
+    pub(crate) fn cancelled(&self) -> Result<(), Error> {
+        if (self.cancel)() {
+            Err(Error::BuildCancelled)
+        } else {
+            Ok(())
+        }
+    }
+}
+
 impl<'a, D: Distance, R: Rng + SeedableRng> ArroyBuilder<'a, D, R> {
     /// The number of trees to build. If not set arroy will determine the best amount to build for your number of vectors by itself.
     ///
@@ -430,13 +440,14 @@ impl<D: Distance> Writer<D> {
         Ok(())
     }
 
-    fn used_tree_node(&self, rtxn: &RoTxn) -> Result<RoaringBitmap> {
+    fn used_tree_node(&self, rtxn: &RoTxn, options: &BuildOption) -> Result<RoaringBitmap> {
         Ok(self
             .database
             .remap_key_type::<PrefixCodec>()
             .prefix_iter(rtxn, &Prefix::tree(self.index))?
             .remap_types::<KeyCodec, DecodeIgnore>()
             .try_fold(RoaringBitmap::new(), |mut bitmap, used| -> Result<RoaringBitmap> {
+                options.cancelled()?;
                 bitmap.insert(used?.0.node.item);
                 Ok(bitmap)
             })
@@ -485,16 +496,12 @@ impl<D: Distance> Writer<D> {
 
         tracing::debug!("Getting a reference to your {} items...", n_items);
 
-        if (options.cancel)() {
-            return Err(Error::BuildCancelled);
-        }
-
-        let used_node_ids = self.used_tree_node(wtxn)?;
+        let used_node_ids = self.used_tree_node(wtxn, options)?;
         let nb_tree_nodes = used_node_ids.len();
         let concurrent_node_ids = ConcurrentNodeIds::new(used_node_ids);
 
         let target_n_trees = target_n_trees(options, self.dimensions as u64, &item_indices, &roots);
-        self.delete_extra_trees(wtxn, &mut roots, target_n_trees)?;
+        self.delete_extra_trees(wtxn, options, &mut roots, target_n_trees)?;
 
         // Before taking any references on the DB, remove all the items we must remove.
         self.delete_items_from_trees(wtxn, options, &mut roots, &to_delete)?;
@@ -550,12 +557,14 @@ impl<D: Distance> Writer<D> {
     fn delete_extra_trees(
         &self,
         wtxn: &mut RwTxn,
+        options: &BuildOption,
         roots: &mut Vec<u32>,
         target_n_trees: u64,
     ) -> Result<(), Error> {
         let extraneous_tree = roots.len().saturating_sub(target_n_trees as usize);
 
         for _ in 0..extraneous_tree {
+            options.cancelled()?;
             if roots.is_empty() {
                 break;
             }
@@ -583,6 +592,7 @@ impl<D: Distance> Writer<D> {
 
         while let Some(descendant_id) = large_descendants.select(0) {
             large_descendants.remove_smallest(1);
+            options.cancelled()?;
             let node = self.database.get(wtxn, &Key::tree(self.index, descendant_id))?.unwrap();
             let Node::Descendants(Descendants { descendants }) = node else { unreachable!() };
             let mut descendants = descendants.into_owned();
@@ -614,6 +624,7 @@ impl<D: Distance> Writer<D> {
             let tmp_nodes = tmp_nodes.into_bytes_reader()?;
             // We never delete anything while building trees
             for (item_id, item_bytes) in tmp_nodes.to_insert() {
+                options.cancelled()?;
                 let key = Key::tree(self.index, item_id);
                 self.database.remap_data_type::<Bytes>().put(wtxn, &key, item_bytes)?;
             }
@@ -653,6 +664,7 @@ impl<D: Distance> Writer<D> {
         }
 
         while !to_insert.is_empty() {
+            options.cancelled()?;
             let immutable_tree_nodes =
                 ImmutableTrees::new(wtxn, self.database, self.index, nb_tree_nodes)?;
             let (leafs, to_insert) = ImmutableLeafs::new(
@@ -674,10 +686,12 @@ impl<D: Distance> Writer<D> {
                 large_descendants |= descendants;
 
                 for item_id in tmp_node.to_delete() {
+                    options.cancelled()?;
                     let key = Key::tree(self.index, item_id);
                     self.database.remap_data_type::<Bytes>().delete(wtxn, &key)?;
                 }
                 for (item_id, item_bytes) in tmp_node.to_insert() {
+                    options.cancelled()?;
                     let key = Key::tree(self.index, item_id);
                     self.database.remap_data_type::<Bytes>().put(wtxn, &key, item_bytes)?;
                 }
@@ -700,6 +714,7 @@ impl<D: Distance> Writer<D> {
             .prefix_iter_mut(wtxn, &Prefix::updated(self.index))?
             .remap_key_type::<KeyCodec>();
         while let Some((key, _)) = updated_iter.next().transpose()? {
+            options.cancelled()?;
             let inserted = updated_items.push(key.node.item);
             debug_assert!(inserted, "The keys should be sorted by LMDB");
             // Safe because we don't hold any reference to the database currently
@@ -735,6 +750,7 @@ impl<D: Distance> Writer<D> {
             )?;
             roots.push(0);
         }
+        options.cancelled()?;
         tracing::debug!("write the metadata...");
         let metadata = Metadata {
             dimensions: self.dimensions.try_into().unwrap(),
@@ -764,9 +780,7 @@ impl<D: Distance> Writer<D> {
     fn pre_process_items(&self, wtxn: &mut RwTxn, options: &BuildOption) -> Result<(), Error> {
         tracing::debug!("started preprocessing the items...");
         (options.progress)(WriterProgress { main: MainStep::PreProcessingTheItems, sub: None });
-        if (options.cancel)() {
-            return Err(Error::BuildCancelled);
-        }
+        options.cancelled()?;
         D::preprocess(wtxn, |wtxn| {
             Ok(self
                 .database
@@ -774,9 +788,6 @@ impl<D: Distance> Writer<D> {
                 .prefix_iter_mut(wtxn, &Prefix::item(self.index))?
                 .remap_key_type::<KeyCodec>())
         })?;
-        if (options.cancel)() {
-            return Err(Error::BuildCancelled);
-        };
         Ok(())
     }
 
@@ -798,6 +809,7 @@ impl<D: Distance> Writer<D> {
 
         // TODO: Parallelize
         for root in roots.iter_mut() {
+            options.cancelled()?;
             let (new_root, _) =
                 self.delete_items_in_file(options, wtxn, *root, &mut tmp_nodes, to_delete)?;
             *root = new_root;
@@ -806,10 +818,12 @@ impl<D: Distance> Writer<D> {
 
         let tmp_nodes = tmp_nodes.into_bytes_reader()?;
         for item_id in tmp_nodes.to_delete() {
+            options.cancelled()?;
             let key = Key::tree(self.index, item_id);
             self.database.remap_data_type::<Bytes>().delete(wtxn, &key)?;
         }
         for (item_id, item_bytes) in tmp_nodes.to_insert() {
+            options.cancelled()?;
             let key = Key::tree(self.index, item_id);
             self.database.remap_data_type::<Bytes>().put(wtxn, &key, item_bytes)?;
         }
@@ -820,15 +834,13 @@ impl<D: Distance> Writer<D> {
     /// That could be reduced to O(log(n)) if we had a `RoTxn` of the previous state of the database.
     fn delete_items_in_file(
         &self,
-        opt: &BuildOption,
+        options: &BuildOption,
         rtxn: &RoTxn,
         current_node: ItemId,
         tmp_nodes: &mut TmpNodes<NodeCodec<D>>,
         to_delete: &RoaringBitmap,
     ) -> Result<(ItemId, RoaringBitmap)> {
-        if (opt.cancel)() {
-            return Err(Error::BuildCancelled);
-        }
+        options.cancelled()?;
         match self.database.get(rtxn, &Key::tree(self.index, current_node))?.unwrap() {
             Node::Leaf(_) => unreachable!(),
             Node::Descendants(Descendants { descendants }) => {
@@ -850,8 +862,8 @@ impl<D: Distance> Writer<D> {
             Node::SplitPlaneNormal(SplitPlaneNormal { normal, left, right }) => {
                 let (new_left, left_items) = match left.mode {
                     NodeMode::Tree => {
-                        let (id, items) =
-                            self.delete_items_in_file(opt, rtxn, left.item, tmp_nodes, to_delete)?;
+                        let (id, items) = self
+                            .delete_items_in_file(options, rtxn, left.item, tmp_nodes, to_delete)?;
                         (NodeId::tree(id), items)
                     }
                     NodeMode::Item => {
@@ -865,8 +877,9 @@ impl<D: Distance> Writer<D> {
                 };
                 let (new_right, right_items) = match right.mode {
                     NodeMode::Tree => {
-                        let (id, items) =
-                            self.delete_items_in_file(opt, rtxn, right.item, tmp_nodes, to_delete)?;
+                        let (id, items) = self.delete_items_in_file(
+                            options, rtxn, right.item, tmp_nodes, to_delete,
+                        )?;
                         (NodeId::tree(id), items)
                     }
                     NodeMode::Item => {
@@ -881,7 +894,7 @@ impl<D: Distance> Writer<D> {
 
                 let total_items = &left_items | &right_items;
 
-                if self.fit_in_descendant(opt, total_items.len()) {
+                if self.fit_in_descendant(options, total_items.len()) {
                     // Since we're shrinking we KNOW that new_left and new_right are descendants
                     // thus we can delete them directly knowing there is no sub-tree to look at.
                     if new_left.mode == NodeMode::Tree {
@@ -950,6 +963,7 @@ impl<D: Distance> Writer<D> {
         repeatn(rng.next_u64(), roots.len())
             .zip(roots)
             .map(|(seed, root)| {
+                opt.cancelled()?;
                 tracing::debug!("started updating tree {root:X}...");
                 let mut rng = R::seed_from_u64(seed.wrapping_add(*root as u64));
                 let mut tmp_descendant: TmpNodes<NodeCodec<D>> = match self.tmpdir.as_ref() {
@@ -986,9 +1000,7 @@ impl<D: Distance> Writer<D> {
         large_descendants: &mut RoaringBitmap,
         tmp_nodes: &mut TmpNodes<NodeCodec<D>>,
     ) -> Result<ItemId> {
-        if (opt.cancel)() {
-            return Err(Error::BuildCancelled);
-        }
+        opt.cancelled()?;
         match current_node.mode {
             NodeMode::Item => {
                 // We were called on a specific item, we should create a descendants node
@@ -1105,9 +1117,7 @@ impl<D: Distance> Writer<D> {
         item_indices: &RoaringBitmap,
         tmp_nodes: &mut TmpNodes<NodeCodec<D>>,
     ) -> Result<(NodeId, u64)> {
-        if (opt.cancel)() {
-            return Err(Error::BuildCancelled);
-        }
+        opt.cancelled()?;
         if item_indices.len() == 1 {
             return Ok((NodeId::item(item_indices.min().unwrap()), 0));
         }
@@ -1125,6 +1135,7 @@ impl<D: Distance> Writer<D> {
         let mut remaining_attempts = 3;
 
         let mut normal = loop {
+            opt.cancelled()?;
             children_left.clear();
             children_right.clear();
 
@@ -1190,7 +1201,7 @@ impl<D: Distance> Writer<D> {
     }
 
     // Fetches the item's ids, not the tree nodes ones.
-    fn item_indices(&self, wtxn: &mut RwTxn, options: &BuildOption) -> heed::Result<RoaringBitmap> {
+    fn item_indices(&self, wtxn: &mut RwTxn, options: &BuildOption) -> Result<RoaringBitmap> {
         tracing::debug!("started retrieving all the items ids...");
         (options.progress)(WriterProgress { main: MainStep::RetrievingTheItemsIds, sub: None });
 
@@ -1201,6 +1212,7 @@ impl<D: Distance> Writer<D> {
             .prefix_iter(wtxn, &Prefix::item(self.index))?
             .remap_key_type::<KeyCodec>()
         {
+            options.cancelled()?;
             let (i, _) = result?;
             indices.push(i.node.unwrap_item());
         }
