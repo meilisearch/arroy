@@ -75,7 +75,9 @@ pub enum MainStep {
     RetrievingTheItemsIds,
     RetrieveTheUpdatedItems,
     WritingTheDescendantsAndMetadata,
-    RemoveItems,
+    RetrievingTheUsedTreeNodes,
+    DeletingExtraTrees,
+    RemoveItemsFromExistingTrees,
     InsertItemsInCurrentTrees,
     IncrementalIndexLargeDescendants,
     WriteTheMetadata,
@@ -441,6 +443,10 @@ impl<D: Distance> Writer<D> {
     }
 
     fn used_tree_node(&self, rtxn: &RoTxn, options: &BuildOption) -> Result<RoaringBitmap> {
+        (options.progress)(WriterProgress {
+            main: MainStep::RetrievingTheUsedTreeNodes,
+            sub: None,
+        });
         Ok(self
             .database
             .remap_key_type::<PrefixCodec>()
@@ -506,6 +512,8 @@ impl<D: Distance> Writer<D> {
         // Before taking any references on the DB, remove all the items we must remove.
         self.delete_items_from_trees(wtxn, options, &mut roots, &to_delete)?;
 
+        // The next method is called from multiple place so we have to update the progress here
+        (options.progress)(WriterProgress { main: MainStep::InsertItemsInCurrentTrees, sub: None });
         let mut large_descendants = self.insert_items_in_current_trees(
             wtxn,
             rng,
@@ -561,6 +569,7 @@ impl<D: Distance> Writer<D> {
         roots: &mut Vec<u32>,
         target_n_trees: u64,
     ) -> Result<(), Error> {
+        (options.progress)(WriterProgress { main: MainStep::DeletingExtraTrees, sub: None });
         let extraneous_tree = roots.len().saturating_sub(target_n_trees as usize);
 
         for _ in 0..extraneous_tree {
@@ -655,8 +664,6 @@ impl<D: Distance> Writer<D> {
         nb_tree_nodes: u64,
         concurrent_node_ids: &ConcurrentNodeIds,
     ) -> Result<RoaringBitmap> {
-        (options.progress)(WriterProgress { main: MainStep::InsertItemsInCurrentTrees, sub: None });
-
         let mut large_descendants = RoaringBitmap::new();
 
         if roots.is_empty() {
@@ -800,7 +807,10 @@ impl<D: Distance> Writer<D> {
         roots: &mut [u32],
         to_delete: &RoaringBitmap,
     ) -> Result<()> {
-        (options.progress)(WriterProgress { main: MainStep::RemoveItems, sub: None });
+        (options.progress)(WriterProgress {
+            main: MainStep::RemoveItemsFromExistingTrees,
+            sub: None,
+        });
 
         let mut tmp_nodes: TmpNodes<NodeCodec<D>> = match self.tmpdir.as_ref() {
             Some(path) => TmpNodes::new_in(path)?,
