@@ -56,6 +56,7 @@ pub struct SubStep {
 }
 
 impl SubStep {
+    #[allow(unused)] // Keeping this method because we'll need it once the code is parallelized
     fn new(unit: &'static str, max: u32) -> (Self, Arc<AtomicU32>) {
         let current = Arc::new(AtomicU32::new(0));
         (Self { unit, current: current.clone(), max }, current)
@@ -672,8 +673,12 @@ impl<D: Distance> Writer<D> {
 
         while !to_insert.is_empty() {
             options.cancelled()?;
-            let immutable_tree_nodes =
-                ImmutableTrees::new(wtxn, self.database, self.index, nb_tree_nodes)?;
+
+            let immutable_tree_nodes = if roots.len() == 1 {
+                ImmutableTrees::sub_tree_from_id(wtxn, self.database, self.index, roots[0])?
+            } else {
+                ImmutableTrees::new(wtxn, self.database, self.index, nb_tree_nodes)?
+            };
             let (leafs, to_insert) = ImmutableLeafs::new(
                 wtxn,
                 self.database,

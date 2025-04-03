@@ -114,11 +114,6 @@ pub struct TmpNodesReader {
 }
 
 impl TmpNodesReader {
-    /// The number of nodes stored in this file.
-    pub fn len(&self) -> usize {
-        self.ids.len()
-    }
-
     pub fn to_delete(&self) -> impl Iterator<Item = ItemId> + '_ {
         self.deleted.iter()
     }
@@ -188,11 +183,6 @@ impl ConcurrentNodeIds {
         } else {
             Ok(self.current.fetch_add(1, Ordering::Relaxed))
         }
-    }
-
-    /// Returns the number of used ids in total.
-    pub fn used(&self) -> u64 {
-        self.used.load(Ordering::Relaxed)
     }
 }
 
