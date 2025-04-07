@@ -275,7 +275,7 @@ impl<D: Distance> Writer<D> {
                 .remap_key_type::<PrefixCodec>()
                 .prefix_iter_mut(wtxn, &Prefix::item(self.index))?
                 .remap_key_type::<KeyCodec>();
-            while let Some((item_id, node)) = cursor.next().transpose()? {
+            while let Ok(Some((item_id, node))) = cursor.next().transpose() {
                 match node {
                     Node::Leaf(Leaf { header: _, vector }) => {
                         let vector = vector.to_vec();
@@ -562,7 +562,7 @@ impl<D: Distance> Writer<D> {
             .remap_types::<PrefixCodec, DecodeIgnore>()
             .prefix_iter_mut(wtxn, &Prefix::updated(self.index))?
             .remap_key_type::<KeyCodec>();
-        while let Some((key, _)) = updated_iter.next().transpose()? {
+        while let Ok(Some((key, _))) = updated_iter.next().transpose() {
             let inserted = updated_items.push(key.node.item);
             debug_assert!(inserted, "The keys should be sorted by LMDB");
             // Safe because we don't hold any reference to the database currently
@@ -889,16 +889,21 @@ impl<D: Distance> Writer<D> {
                         let mut left_ids = RoaringBitmap::new();
                         let mut right_ids = RoaringBitmap::new();
 
-                        if normal.is_zero() {
-                            randomly_split_children(rng, to_insert, &mut left_ids, &mut right_ids);
-                        } else {
-                            for leaf in to_insert {
-                                let node = frozen_reader.leafs.get(leaf)?.unwrap();
-                                match D::side(&normal, &node, rng) {
-                                    Side::Left => left_ids.insert(leaf),
-                                    Side::Right => right_ids.insert(leaf),
-                                };
+                        if let Some(ref n) = normal {
+                            if n.is_zero() {
+                                randomly_split_children(rng, to_insert, &mut left_ids, &mut right_ids);
+                            } else {
+                                for item_id in to_insert {
+                                    let node = frozen_reader.leafs.get(item_id)?.unwrap();
+                                    match D::side(n, &node, rng) {
+                                        Side::Left => left_ids.insert(item_id),
+                                        Side::Right => right_ids.insert(item_id),
+                                    };
+                                }
                             }
+                        } else {
+                            // No normal vector (null normal), randomly split
+                            randomly_split_children(rng, to_insert, &mut left_ids, &mut right_ids);
                         }
 
                         let (new_left, left_items) = self.update_nodes_in_file(
@@ -949,7 +954,7 @@ impl<D: Distance> Writer<D> {
                                 tmp_nodes.put(
                                     current_node.item,
                                     &Node::SplitPlaneNormal(SplitPlaneNormal {
-                                        normal,
+                                        normal: normal.clone(),
                                         left: new_left,
                                         right: new_right,
                                     }),
@@ -1028,7 +1033,11 @@ impl<D: Distance> Writer<D> {
             return Err(Error::BuildCancelled);
         }
         if item_indices.len() == 1 {
-            return Ok(NodeId::item(item_indices.min().unwrap()));
+            // We need to create an intermediary Descendants node instead of returning the item directly
+            let item_id = reader.concurrent_node_ids.next()?;
+            let item = Node::Descendants(Descendants { descendants: Cow::Borrowed(item_indices) });
+            tmp_nodes.put(item_id, &item)?;
+            return Ok(NodeId::tree(item_id));
         }
 
         if self.fit_in_descendant(opt, item_indices.len()) {
@@ -1092,7 +1101,7 @@ impl<D: Distance> Writer<D> {
             };
 
         let normal = SplitPlaneNormal {
-            normal,
+            normal: Some(normal),
             left: self.make_tree_in_file(
                 opt,
                 reader,
