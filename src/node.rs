@@ -115,7 +115,7 @@ impl fmt::Debug for ItemIds<'_> {
 pub struct SplitPlaneNormal<'a, D: Distance> {
     pub left: NodeId,
     pub right: NodeId,
-    pub normal: Cow<'a, UnalignedVector<D::VectorCodec>>,
+    pub normal: Option<Cow<'a, UnalignedVector<D::VectorCodec>>>,
 }
 
 impl<D: Distance> fmt::Debug for SplitPlaneNormal<'_, D> {
@@ -131,7 +131,11 @@ impl<D: Distance> fmt::Debug for SplitPlaneNormal<'_, D> {
 
 impl<D: Distance> Clone for SplitPlaneNormal<'_, D> {
     fn clone(&self) -> Self {
-        Self { left: self.left, right: self.right, normal: self.normal.clone() }
+        Self { 
+            left: self.left, 
+            right: self.right, 
+            normal: self.normal.clone() 
+        }
     }
 }
 
@@ -153,7 +157,9 @@ impl<'a, D: Distance> BytesEncode<'a> for NodeCodec<D> {
                 bytes.push(SPLIT_PLANE_NORMAL_TAG);
                 bytes.extend_from_slice(&left.to_bytes());
                 bytes.extend_from_slice(&right.to_bytes());
-                bytes.extend_from_slice(normal.as_bytes());
+                if let Some(normal) = normal {
+                    bytes.extend_from_slice(normal.as_bytes());
+                }
             }
             Node::Descendants(Descendants { descendants }) => {
                 bytes.push(DESCENDANTS_TAG);
@@ -179,8 +185,13 @@ impl<'a, D: Distance> BytesDecode<'a> for NodeCodec<D> {
             [SPLIT_PLANE_NORMAL_TAG, bytes @ ..] => {
                 let (left, bytes) = NodeId::from_bytes(bytes);
                 let (right, bytes) = NodeId::from_bytes(bytes);
+                let normal = if bytes.is_empty() {
+                    None
+                } else {
+                    Some(UnalignedVector::<D::VectorCodec>::from_bytes(bytes)?)
+                };
                 Ok(Node::SplitPlaneNormal(SplitPlaneNormal {
-                    normal: UnalignedVector::<D::VectorCodec>::from_bytes(bytes)?,
+                    normal,
                     left,
                     right,
                 }))

@@ -286,7 +286,7 @@ impl<D: Distance> Writer<D> {
                 .remap_key_type::<PrefixCodec>()
                 .prefix_iter_mut(wtxn, &Prefix::item(self.index))?
                 .remap_key_type::<KeyCodec>();
-            while let Some((item_id, node)) = cursor.next().transpose()? {
+            while let Ok(Some((item_id, node))) = cursor.next().transpose() {
                 match node {
                     Node::Leaf(Leaf { header: _, vector }) => {
                         let vector = vector.to_vec();
@@ -728,7 +728,6 @@ impl<D: Distance> Writer<D> {
             .prefix_iter_mut(wtxn, &Prefix::updated(self.index))?
             .remap_key_type::<KeyCodec>();
         while let Some((key, _)) = updated_iter.next().transpose()? {
-            options.cancelled()?;
             let inserted = updated_items.push(key.node.item);
             debug_assert!(inserted, "The keys should be sorted by LMDB");
             // Safe because we don't hold any reference to the database currently
@@ -1067,16 +1066,21 @@ impl<D: Distance> Writer<D> {
                         let mut left_ids = RoaringBitmap::new();
                         let mut right_ids = RoaringBitmap::new();
 
-                        if normal.is_zero() {
-                            randomly_split_children(rng, to_insert, &mut left_ids, &mut right_ids);
-                        } else {
-                            for leaf in to_insert {
-                                let node = frozen_reader.leafs.get(leaf)?.unwrap();
-                                match D::side(&normal, &node, rng) {
-                                    Side::Left => left_ids.insert(leaf),
-                                    Side::Right => right_ids.insert(leaf),
-                                };
+                        if let Some(ref n) = normal {
+                            if n.is_zero() {
+                                randomly_split_children(rng, to_insert, &mut left_ids, &mut right_ids);
+                            } else {
+                                for item_id in to_insert {
+                                    let node = frozen_reader.leafs.get(item_id)?.unwrap();
+                                    match D::side(n, &node, rng) {
+                                        Side::Left => left_ids.insert(item_id),
+                                        Side::Right => right_ids.insert(item_id),
+                                    };
+                                }
                             }
+                        } else {
+                            // No normal vector (null normal), randomly split
+                            randomly_split_children(rng, to_insert, &mut left_ids, &mut right_ids);
                         }
 
                         let new_left = self.insert_items_in_file(
@@ -1098,18 +1102,43 @@ impl<D: Distance> Writer<D> {
                             tmp_nodes,
                         )?;
 
-                        if new_left != left.item || new_right != right.item {
+                        let total_items = left_items | right_items;
+
+                        if self.fit_in_descendant(opt, total_items.len()) {
+                            // Since we're shrinking we KNOW that new_left and new_right are descendants
+                            // thus we can delete them directly knowing there is no sub-tree to look at.
+                            if new_left.mode == NodeMode::Tree {
+                                tmp_nodes.remove(new_left.item);
+                            }
+                            if new_right.mode == NodeMode::Tree {
+                                tmp_nodes.remove(new_right.item);
+                            }
+
                             tmp_nodes.put(
                                 current_node.item,
-                                &Node::SplitPlaneNormal(SplitPlaneNormal {
-                                    normal,
-                                    left: NodeId::item(new_left),
-                                    right: NodeId::item(new_right),
+                                &Node::Descendants(Descendants {
+                                    descendants: Cow::Owned(total_items.clone()),
                                 }),
                             )?;
-                            Ok(current_node.item)
+
+                            // we should merge both branch and update ourselves to be a single descendant node
+                            Ok((current_node, total_items))
                         } else {
-                            Ok(current_node.item)
+                            // if either the left or the right changed we must update ourselves inplace
+                            if new_left != left || new_right != right {
+                                tmp_nodes.put(
+                                    current_node.item,
+                                    &Node::SplitPlaneNormal(SplitPlaneNormal {
+                                        normal,
+                                        left: new_left,
+                                        right: new_right,
+                                    }),
+                                )?;
+                            }
+
+                            // TODO: Should we update the normals if something changed?
+
+                            Ok((current_node, total_items))
                         }
                     }
                 }
@@ -1133,7 +1162,7 @@ impl<D: Distance> Writer<D> {
     ) -> Result<(NodeId, u64)> {
         opt.cancelled()?;
         if item_indices.len() == 1 {
-            return Ok((NodeId::item(item_indices.min().unwrap()), 0));
+            return Ok(NodeId::item(item_indices.min().unwrap()));
         }
 
         if self.fit_in_descendant(opt, item_indices.len()) {
@@ -1188,9 +1217,25 @@ impl<D: Distance> Writer<D> {
                 )
             };
 
-        let (left, l) = self.make_tree_in_file(opt, reader, rng, &children_left, tmp_nodes)?;
-        let (right, r) = self.make_tree_in_file(opt, reader, rng, &children_right, tmp_nodes)?;
-        let normal = SplitPlaneNormal { normal, left, right };
+        let normal = SplitPlaneNormal {
+            normal,
+            left: self.make_tree_in_file(
+                opt,
+                reader,
+                rng,
+                &children_left,
+                two_means_candidates,
+                tmp_nodes,
+            )?,
+            right: self.make_tree_in_file(
+                opt,
+                reader,
+                rng,
+                &children_right,
+                two_means_candidates,
+                tmp_nodes,
+            )?,
+        };
 
         let new_node_id = reader.concurrent_node_ids.next()?;
         tmp_nodes.put(new_node_id, &Node::SplitPlaneNormal(normal))?;
