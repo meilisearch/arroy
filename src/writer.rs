@@ -803,8 +803,6 @@ impl<D: Distance> Writer<D> {
         Ok(())
     }
 
-    // TODO: Should we return the list of empty descendants to double check at the very end of the indexing process if
-    // they're still empty and should be removed?
     fn delete_items_from_trees(
         &self,
         wtxn: &mut RwTxn,
@@ -882,6 +880,7 @@ impl<D: Distance> Writer<D> {
                         (NodeId::tree(id), items)
                     }
                     NodeMode::Item => {
+                        // TODO: Should never happen
                         if to_delete.contains(left.item) {
                             (left, RoaringBitmap::new())
                         } else {
@@ -898,6 +897,7 @@ impl<D: Distance> Writer<D> {
                         (NodeId::tree(id), items)
                     }
                     NodeMode::Item => {
+                        // TODO: Should never happen
                         if to_delete.contains(right.item) {
                             (right, RoaringBitmap::new())
                         } else {
@@ -1133,9 +1133,6 @@ impl<D: Distance> Writer<D> {
         tmp_nodes: &mut TmpNodes<NodeCodec<D>>,
     ) -> Result<(NodeId, u64)> {
         opt.cancelled()?;
-        if item_indices.len() == 1 {
-            return Ok((NodeId::item(item_indices.min().unwrap()), 0));
-        }
 
         if self.fit_in_descendant(opt, item_indices.len()) {
             let item_id = reader.concurrent_node_ids.next()?;
