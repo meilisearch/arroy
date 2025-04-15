@@ -965,7 +965,7 @@ impl<D: Distance> Writer<D> {
         }
     }
 
-    /// Insert items in the specified trees without creating new tree.
+    /// Insert items in the specified trees without creating new tree nodes.
     /// Return the list of nodes modified that must be inserted into the database and
     /// the roaring bitmap of descendants that became too large in the process.
     #[allow(clippy::too_many_arguments)]
