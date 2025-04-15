@@ -674,6 +674,8 @@ impl<D: Distance> Writer<D> {
         while !to_insert.is_empty() {
             options.cancelled()?;
 
+            // If we have only one roots it means we're splitting a large descendants.
+            // Otherwise it means we're updating the whole database and will need all the tree nodes.
             let immutable_tree_nodes = if roots.len() == 1 {
                 ImmutableTrees::sub_tree_from_id(wtxn, self.database, self.index, roots[0])?
             } else {
