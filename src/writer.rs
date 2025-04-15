@@ -1054,7 +1054,8 @@ impl<D: Distance> Writer<D> {
                             large_descendants.insert(current_node.item);
                         }
 
-                        if descendants.as_ref() != &new_descendants {
+                        // If the number of descendant changed it means we inserted new items and must overwrite the node
+                        if descendants.len() != new_descendants.len() {
                             // otherwise we can just update our descendants
                             tmp_nodes.put(
                                 current_node.item,

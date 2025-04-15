@@ -78,7 +78,9 @@ impl<'a, DE: BytesEncode<'a>> TmpNodes<DE> {
     /// Remap the item id of an already inserted node to another node.
     /// Only apply to the nodes to insert. Won't interact with the to_delete nodes.
     pub fn remap(&mut self, current: ItemId, new: ItemId) {
-        self.remap_ids.insert(current, new);
+        if current != new {
+            self.remap_ids.insert(current, new);
+        }
     }
 
     /// Delete the tmp_nodes and the node in the database.
@@ -214,7 +216,7 @@ impl<'t, D: Distance> ImmutableLeafs<'t, D> {
         let nb_page_allowed = (memory as f64 / page_size as f64).floor() as usize;
 
         let mut leafs = IntMap::with_capacity_and_hasher(
-            candidates.len() as usize, // TODO: could be reduced a lot
+            nb_page_allowed.min(candidates.len() as usize), // We cannot approximate the capacity better because we don't know yet the size of an item
             BuildNoHashHasher::default(),
         );
         let mut pages_used = IntSet::with_capacity_and_hasher(
@@ -468,6 +470,8 @@ impl<'t, D: Distance> ImmutableTrees<'t, D> {
         Ok(ImmutableTrees { trees, _marker: marker::PhantomData })
     }
 
+    /// Creates the structure by fetching all the children of the `start`ing tree nodes specified.
+    /// Keeps a reference to the transaction to ensure the pointers stays valid.
     pub fn sub_tree_from_id(
         rtxn: &'t RoTxn,
         database: Database<D>,
