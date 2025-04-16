@@ -501,7 +501,7 @@ impl<D: Distance> Writer<D> {
         // we should not keep a reference to the metadata since they're going to be moved by LMDB
         drop(metadata);
 
-        tracing::debug!("Getting a reference to your {} items...", n_items);
+        tracing::debug!("Getting a reference to your {n_items} items...");
 
         let used_node_ids = self.used_tree_node(wtxn, options)?;
         let nb_tree_nodes = used_node_ids.len();

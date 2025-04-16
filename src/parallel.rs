@@ -76,7 +76,8 @@ impl<'a, DE: BytesEncode<'a>> TmpNodes<DE> {
     }
 
     /// Remap the item id of an already inserted node to another node.
-    /// Only apply to the nodes to insert. Won't interact with the to_delete nodes.
+    ///
+    /// Only applies to the nodes to insert. It won't interact with the to_delete nodes.
     pub fn remap(&mut self, current: ItemId, new: ItemId) {
         if current != new {
             self.remap_ids.insert(current, new);
@@ -193,7 +194,6 @@ impl ConcurrentNodeIds {
 /// It is safe to share between threads as the pointer are pointing
 /// in the mmapped file and the transaction is kept here and therefore
 /// no longer touches the database.
-// TODO: Rename to immutable Items since it doesn't contains descendants
 pub struct ImmutableLeafs<'t, D> {
     leafs: IntMap<ItemId, *const u8>,
     constant_length: Option<usize>,
@@ -228,7 +228,7 @@ impl<'t, D: Distance> ImmutableLeafs<'t, D> {
 
         while let Some(item_id) = candidates.select(0) {
             let bytes = database
-                .remap_types::<KeyCodec, Bytes>()
+                .remap_key_type::<Bytes>()
                 .get(rtxn, &Key::item(index, item_id))?
                 .unwrap();
             assert_eq!(*constant_length.get_or_insert(bytes.len()), bytes.len());
