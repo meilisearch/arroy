@@ -227,10 +227,8 @@ impl<'t, D: Distance> ImmutableLeafs<'t, D> {
         let mut constant_length = None;
 
         while let Some(item_id) = candidates.select(0) {
-            let bytes = database
-                .remap_key_type::<Bytes>()
-                .get(rtxn, &Key::item(index, item_id))?
-                .unwrap();
+            let bytes =
+                database.remap_data_type::<Bytes>().get(rtxn, &Key::item(index, item_id))?.unwrap();
             assert_eq!(*constant_length.get_or_insert(bytes.len()), bytes.len());
 
             let ptr = bytes.as_ptr();
