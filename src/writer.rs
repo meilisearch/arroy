@@ -1,8 +1,7 @@
 use std::any::TypeId;
 use std::borrow::Cow;
-use std::mem;
 use std::path::PathBuf;
-use std::sync::atomic::{AtomicU32, Ordering};
+use std::sync::atomic::AtomicU32;
 use std::sync::Arc;
 
 use heed::types::{Bytes, DecodeIgnore, Unit};
@@ -57,6 +56,7 @@ pub struct SubStep {
 }
 
 impl SubStep {
+    #[allow(unused)] // Keeping this method because we'll need it once the code is parallelized
     fn new(unit: &'static str, max: u32) -> (Self, Arc<AtomicU32>) {
         let current = Arc::new(AtomicU32::new(0));
         (Self { unit, current: current.clone(), max }, current)
@@ -73,23 +73,24 @@ impl SubStep {
 #[allow(missing_docs)]
 pub enum MainStep {
     PreProcessingTheItems,
-    WritingTheDescendantsAndMetadata,
+    RetrievingTheItemsIds,
     RetrieveTheUpdatedItems,
-    RetrievingTheTreeAndItemNodes,
-    UpdatingTheTrees,
-    CreateNewTrees,
-    WritingNodesToDatabase,
-    DeleteExtraneousTrees,
+    WritingTheDescendantsAndMetadata,
+    RetrievingTheUsedTreeNodes,
+    DeletingExtraTrees,
+    RemoveItemsFromExistingTrees,
+    InsertItemsInCurrentTrees,
+    IncrementalIndexLargeDescendants,
     WriteTheMetadata,
 }
 
 /// The options available when building the arroy database.
-struct BuildOption<'a> {
-    n_trees: Option<usize>,
-    split_after: Option<usize>,
-    available_memory: Option<usize>,
-    cancel: Box<dyn Fn() -> bool + 'a + Sync + Send>,
-    progress: Box<dyn Fn(WriterProgress) + 'a + Sync + Send>,
+pub(crate) struct BuildOption<'a> {
+    pub(crate) n_trees: Option<usize>,
+    pub(crate) split_after: Option<usize>,
+    pub(crate) available_memory: Option<usize>,
+    pub(crate) cancel: Box<dyn Fn() -> bool + 'a + Sync + Send>,
+    pub(crate) progress: Box<dyn Fn(WriterProgress) + 'a + Sync + Send>,
 }
 
 impl Default for BuildOption<'_> {
@@ -100,6 +101,16 @@ impl Default for BuildOption<'_> {
             available_memory: None,
             cancel: Box::new(|| false),
             progress: Box::new(|_| ()),
+        }
+    }
+}
+
+impl BuildOption<'_> {
+    pub(crate) fn cancelled(&self) -> Result<(), Error> {
+        if (self.cancel)() {
+            Err(Error::BuildCancelled)
+        } else {
+            Ok(())
         }
     }
 }
@@ -432,13 +443,18 @@ impl<D: Distance> Writer<D> {
         Ok(())
     }
 
-    fn used_tree_node(&self, rtxn: &RoTxn) -> Result<RoaringBitmap> {
+    fn used_tree_node(&self, rtxn: &RoTxn, options: &BuildOption) -> Result<RoaringBitmap> {
+        (options.progress)(WriterProgress {
+            main: MainStep::RetrievingTheUsedTreeNodes,
+            sub: None,
+        });
         Ok(self
             .database
             .remap_key_type::<PrefixCodec>()
             .prefix_iter(rtxn, &Prefix::tree(self.index))?
             .remap_types::<KeyCodec, DecodeIgnore>()
             .try_fold(RoaringBitmap::new(), |mut bitmap, used| -> Result<RoaringBitmap> {
+                options.cancelled()?;
                 bitmap.insert(used?.0.node.item);
                 Ok(bitmap)
             })
@@ -463,117 +479,17 @@ impl<D: Distance> Writer<D> {
         rng: &mut R,
         options: &BuildOption,
     ) -> Result<()> {
-        tracing::debug!("started preprocessing the items...");
-
-        (options.progress)(WriterProgress { main: MainStep::PreProcessingTheItems, sub: None });
-
-        if (options.cancel)() {
-            return Err(Error::BuildCancelled);
-        }
-
-        D::preprocess(wtxn, |wtxn| {
-            Ok(self
-                .database
-                .remap_key_type::<PrefixCodec>()
-                .prefix_iter_mut(wtxn, &Prefix::item(self.index))?
-                .remap_key_type::<KeyCodec>())
-        })?;
-
-        if (options.cancel)() {
-            return Err(Error::BuildCancelled);
-        }
-
-        let item_indices = self.item_indices(wtxn)?;
+        self.pre_process_items(wtxn, options)?;
+        let item_indices = self.item_indices(wtxn, options)?;
         let n_items = item_indices.len();
+        // updated items can be an update, an addition or a removed item
+        let updated_items = self.reset_and_retrieve_updated_items(wtxn, options)?;
 
         if self.fit_in_descendant(options, item_indices.len()) {
-            tracing::debug!("We can fit every elements in a single descendant node, we can skip all the build process");
-            (options.progress)(WriterProgress {
-                main: MainStep::WritingTheDescendantsAndMetadata,
-                sub: None,
-            });
-            // No item left in the index, we can clear every tree
-
-            self.database.remap_data_type::<Bytes>().delete_range(
-                wtxn,
-                &(Key::tree(self.index, 0)..=Key::tree(self.index, ItemId::MAX)),
-            )?;
-
-            let mut roots = Vec::new();
-
-            if !item_indices.is_empty() {
-                // if we have more than 0 elements we need to create a descendant node
-
-                self.database.put(
-                    wtxn,
-                    &Key::tree(self.index, 0),
-                    &Node::Descendants(Descendants { descendants: Cow::Borrowed(&item_indices) }),
-                )?;
-                roots.push(0);
-            }
-
-            tracing::debug!("reset the updated items...");
-            let mut updated_iter = self
-                .database
-                .remap_types::<PrefixCodec, DecodeIgnore>()
-                .prefix_iter_mut(wtxn, &Prefix::updated(self.index))?
-                .remap_key_type::<KeyCodec>();
-            while updated_iter.next().transpose()?.is_some() {
-                // Safe because we don't hold any reference to the database currently
-                unsafe {
-                    updated_iter.del_current()?;
-                }
-            }
-            drop(updated_iter);
-
-            tracing::debug!("write the metadata...");
-            let metadata = Metadata {
-                dimensions: self.dimensions.try_into().unwrap(),
-                items: item_indices,
-                roots: ItemIds::from_slice(&roots),
-                distance: D::name(),
-            };
-            self.database.remap_data_type::<MetadataCodec>().put(
-                wtxn,
-                &Key::metadata(self.index),
-                &metadata,
-            )?;
-
-            tracing::debug!("write the version...");
-            let version = Version {
-                major: env!("CARGO_PKG_VERSION_MAJOR").parse().unwrap(),
-                minor: env!("CARGO_PKG_VERSION_MINOR").parse().unwrap(),
-                patch: env!("CARGO_PKG_VERSION_PATCH").parse().unwrap(),
-            };
-            self.database.remap_data_type::<VersionCodec>().put(
-                wtxn,
-                &Key::version(self.index),
-                &version,
-            )?;
-
-            return Ok(());
+            return self.clear_db_and_create_a_single_leaf(wtxn, options, item_indices);
         }
 
-        tracing::debug!("reset and retrieve the updated items...");
-        (options.progress)(WriterProgress { main: MainStep::RetrieveTheUpdatedItems, sub: None });
-        let mut updated_items = RoaringBitmap::new();
-        let mut updated_iter = self
-            .database
-            .remap_types::<PrefixCodec, DecodeIgnore>()
-            .prefix_iter_mut(wtxn, &Prefix::updated(self.index))?
-            .remap_key_type::<KeyCodec>();
-        while let Some((key, _)) = updated_iter.next().transpose()? {
-            let inserted = updated_items.push(key.node.item);
-            debug_assert!(inserted, "The keys should be sorted by LMDB");
-            // Safe because we don't hold any reference to the database currently
-            unsafe {
-                updated_iter.del_current()?;
-            }
-        }
-        drop(updated_iter);
-
-        // while iterating on the nodes we want to delete all the modified element even if they are being inserted right after.
-        let to_delete = &updated_items;
+        let to_delete = updated_items.clone();
         let to_insert = &item_indices & &updated_items;
 
         let metadata = self
@@ -582,147 +498,52 @@ impl<D: Distance> Writer<D> {
             .get(wtxn, &Key::metadata(self.index))?;
         let mut roots =
             metadata.as_ref().map_or_else(Vec::new, |metadata| metadata.roots.iter().collect());
+        // we should not keep a reference to the metadata since they're going to be moved by LMDB
+        drop(metadata);
 
-        tracing::debug!("Getting a reference to your {} items...", n_items);
+        tracing::debug!("Getting a reference to your {n_items} items...");
 
-        if (options.cancel)() {
-            return Err(Error::BuildCancelled);
-        }
-
-        let used_node_ids = self.used_tree_node(wtxn)?;
+        let used_node_ids = self.used_tree_node(wtxn, options)?;
         let nb_tree_nodes = used_node_ids.len();
-
-        let (sub, nodes_extraction_progress) =
-            SubStep::new("nodes", item_indices.len() as u32 + nb_tree_nodes as u32);
-        (options.progress)(WriterProgress {
-            main: MainStep::RetrievingTheTreeAndItemNodes,
-            sub: Some(sub),
-        });
-
         let concurrent_node_ids = ConcurrentNodeIds::new(used_node_ids);
-        let frozzen_reader = FrozzenReader {
-            leafs: &ImmutableLeafs::new(
-                wtxn,
-                self.database,
-                self.index,
-                item_indices.len(),
-                &nodes_extraction_progress,
-            )?,
-            trees: &ImmutableTrees::new(
-                wtxn,
-                self.database,
-                self.index,
-                nb_tree_nodes,
-                &nodes_extraction_progress,
-            )?,
-            // The globally incrementing node ids that are shared between threads.
-            concurrent_node_ids: &concurrent_node_ids,
-        };
-        let two_means_candidates =
-            frozzen_reader.leafs.sample(options.available_memory.unwrap_or(usize::MAX), rng);
 
-        let mut nodes_to_write = Vec::new();
+        let target_n_trees = target_n_trees(options, self.dimensions as u64, &item_indices, &roots);
+        self.delete_extra_trees(wtxn, options, &mut roots, target_n_trees)?;
 
-        // If there is metadata it means that we already have trees and we must update them
-        if let Some(ref metadata) = metadata {
-            tracing::debug!(
-                "started inserting new items {} in {} trees...",
-                n_items,
-                metadata.roots.len()
-            );
-            let (sub, trees_progress) = SubStep::new("trees", metadata.roots.len() as u32);
-            (options.progress)(WriterProgress { main: MainStep::UpdatingTheTrees, sub: Some(sub) });
-            let (new_roots, mut tmp_nodes_reader) = self.update_trees(
-                options,
-                rng,
-                metadata,
-                &to_insert,
-                to_delete,
-                &two_means_candidates,
-                &frozzen_reader,
-                &trees_progress,
-            )?;
-            nodes_to_write.append(&mut tmp_nodes_reader);
-            roots = new_roots;
-        }
+        // Before taking any references on the DB, remove all the items we must remove.
+        self.delete_items_from_trees(wtxn, options, &mut roots, &to_delete)?;
 
-        tracing::debug!("started building trees for {} items...", n_items);
-        tracing::debug!(
-            "running {} parallel tree building...",
-            options.n_trees.map_or_else(|| "an unknown number of".to_string(), |n| n.to_string())
-        );
-        // Once we updated the current trees we also need to create the new missing trees
-        // So we can run the normal path of building trees from scratch.
-        let n_trees_to_build = options
-            .n_trees
-            .zip(metadata)
-            .map(|(n_trees, metadata)| n_trees.saturating_sub(metadata.roots.len()))
-            .or(options.n_trees);
-
-        // If we don't have both the metadata and the number of tree to build specified we can't create the substep.
-        // But to make the code easier to read, we're going to update an atomic in `build_trees` even if it's not linked to anything.
-        let trees_progress = Arc::new(AtomicU32::new(0));
-        let sub = n_trees_to_build.map(|trees_to_build| SubStep {
-            unit: "trees",
-            current: trees_progress.clone(),
-            max: trees_to_build as u32,
-        });
-        (options.progress)(WriterProgress { main: MainStep::CreateNewTrees, sub });
-
-        let (mut thread_roots, mut tmp_nodes) = self.build_trees(
-            options,
+        // The next method is called from multiple place so we have to update the progress here
+        (options.progress)(WriterProgress { main: MainStep::InsertItemsInCurrentTrees, sub: None });
+        let mut large_descendants = self.insert_items_in_current_trees(
+            wtxn,
             rng,
-            n_trees_to_build,
-            &item_indices,
-            &two_means_candidates,
-            &frozzen_reader,
-            &trees_progress,
+            options,
+            to_insert,
+            &roots,
+            nb_tree_nodes,
+            &concurrent_node_ids,
         )?;
-        nodes_to_write.append(&mut tmp_nodes);
-
-        tracing::debug!("started updating the tree nodes of {} trees...", tmp_nodes.len());
-        let (sub, nodes_written_progress) =
-            SubStep::new("nodes written", nodes_to_write.len() as u32);
-        (options.progress)(WriterProgress {
-            main: MainStep::WritingNodesToDatabase,
-            sub: Some(sub),
-        });
-        for (i, tmp_node) in nodes_to_write.iter().enumerate() {
-            tracing::debug!(
-                "started deleting the {} tree nodes of the {i}nth trees...",
-                tmp_node.len()
-            );
-            for item_id in tmp_node.to_delete() {
-                let key = Key::tree(self.index, item_id);
-                self.database.remap_data_type::<Bytes>().delete(wtxn, &key)?;
-            }
-            tracing::debug!(
-                "started inserting the {} tree nodes of the {i}nth trees...",
-                tmp_node.len()
-            );
-            for (item_id, item_bytes) in tmp_node.to_insert() {
-                let key = Key::tree(self.index, item_id);
-                self.database.remap_data_type::<Bytes>().put(wtxn, &key, item_bytes)?;
-            }
-
-            nodes_written_progress.fetch_add(1, Ordering::Relaxed);
-        }
-
-        if thread_roots.is_empty() {
-            // we may have too many nodes
-            tracing::debug!("Deleting the extraneous trees if there is some...");
-            (options.progress)(WriterProgress { main: MainStep::DeleteExtraneousTrees, sub: None });
-            self.delete_extra_trees(
+        // Create a new descendant that contains all items for every missing trees
+        let nb_missing_trees = target_n_trees.saturating_sub(roots.len() as u64);
+        for _ in 0..nb_missing_trees {
+            let new_id = concurrent_node_ids.next()?;
+            roots.push(new_id);
+            large_descendants.insert(new_id);
+            self.database.put(
                 wtxn,
-                options,
-                &mut roots,
-                options.n_trees,
-                concurrent_node_ids.used(),
-                n_items,
+                &Key::tree(self.index, new_id),
+                &Node::Descendants(Descendants { descendants: Cow::Borrowed(&item_indices) }),
             )?;
-        } else {
-            roots.append(&mut thread_roots);
         }
+
+        self.incremental_index_large_descendants(
+            wtxn,
+            rng,
+            options,
+            concurrent_node_ids,
+            large_descendants,
+        )?;
 
         tracing::debug!("write the metadata...");
         (options.progress)(WriterProgress { main: MainStep::WriteTheMetadata, sub: None });
@@ -732,94 +553,478 @@ impl<D: Distance> Writer<D> {
             roots: ItemIds::from_slice(&roots),
             distance: D::name(),
         };
-        match self.database.remap_data_type::<MetadataCodec>().put(
+        self.database.remap_data_type::<MetadataCodec>().put(
             wtxn,
             &Key::metadata(self.index),
             &metadata,
-        ) {
-            Ok(_) => Ok(()),
-            Err(e) => Err(e.into()),
+        )?;
+
+        Ok(())
+    }
+
+    /// Remove extraneous trees if any
+    fn delete_extra_trees(
+        &self,
+        wtxn: &mut RwTxn,
+        options: &BuildOption,
+        roots: &mut Vec<u32>,
+        target_n_trees: u64,
+    ) -> Result<(), Error> {
+        (options.progress)(WriterProgress { main: MainStep::DeletingExtraTrees, sub: None });
+        let extraneous_tree = roots.len().saturating_sub(target_n_trees as usize);
+
+        for _ in 0..extraneous_tree {
+            options.cancelled()?;
+            if roots.is_empty() {
+                break;
+            }
+            // We want to remove the oldest trees first
+            let root = roots.swap_remove(0);
+            self.delete_tree(wtxn, NodeId::tree(root))?;
         }
+
+        Ok(())
+    }
+
+    /// Loop over the list of large descendants and split them into sub trees with respect to the available memory.
+    fn incremental_index_large_descendants<R: Rng + SeedableRng>(
+        &self,
+        wtxn: &mut RwTxn,
+        rng: &mut R,
+        options: &BuildOption,
+        concurrent_node_ids: ConcurrentNodeIds,
+        mut large_descendants: RoaringBitmap,
+    ) -> Result<(), Error> {
+        (options.progress)(WriterProgress {
+            main: MainStep::IncrementalIndexLargeDescendants,
+            sub: None,
+        });
+
+        while let Some(descendant_id) = large_descendants.select(0) {
+            large_descendants.remove_smallest(1);
+            options.cancelled()?;
+            let node = self.database.get(wtxn, &Key::tree(self.index, descendant_id))?.unwrap();
+            let Node::Descendants(Descendants { descendants }) = node else { unreachable!() };
+            let mut descendants = descendants.into_owned();
+
+            // For each steps of the loop we starts by creating a new sub-tree with as many items as possible
+            // and then insert all the remaining items that couldn't be selected into this new created tree.
+            let (leafs, to_insert) = ImmutableLeafs::new(
+                wtxn,
+                self.database,
+                self.index,
+                &mut descendants,
+                options.available_memory.unwrap_or(usize::MAX),
+            )?;
+            let frozen_reader = FrozzenReader {
+                leafs: &leafs,
+                trees: &ImmutableTrees::empty(),
+                concurrent_node_ids: &concurrent_node_ids,
+            };
+
+            let mut tmp_nodes = match self.tmpdir.as_ref() {
+                Some(path) => TmpNodes::new_in(path)?,
+                None => TmpNodes::new()?,
+            };
+            let (root_id, nb_new_tree_nodes) =
+                self.make_tree_in_file(options, &frozen_reader, rng, &to_insert, &mut tmp_nodes)?;
+            // We cannot update our father so we're going to overwrite the new root node as ourselves.
+            tmp_nodes.remap(root_id.item, descendant_id);
+
+            let tmp_nodes = tmp_nodes.into_bytes_reader()?;
+            // We never delete anything while building trees
+            for (item_id, item_bytes) in tmp_nodes.to_insert() {
+                options.cancelled()?;
+                let key = Key::tree(self.index, item_id);
+                self.database.remap_data_type::<Bytes>().put(wtxn, &key, item_bytes)?;
+            }
+
+            let descendants_became_too_large = self.insert_items_in_current_trees(
+                wtxn,
+                rng,
+                options,
+                descendants,
+                &[descendant_id],
+                nb_new_tree_nodes,
+                &concurrent_node_ids,
+            )?;
+            large_descendants |= descendants_became_too_large;
+        }
+
+        Ok(())
     }
 
     #[allow(clippy::too_many_arguments)]
-    fn update_trees<R: Rng + SeedableRng>(
+    fn insert_items_in_current_trees<R: Rng + SeedableRng>(
+        &self,
+        wtxn: &mut RwTxn,
+        rng: &mut R,
+        options: &BuildOption,
+        mut to_insert: RoaringBitmap,
+        roots: &[u32],
+        nb_tree_nodes: u64,
+        concurrent_node_ids: &ConcurrentNodeIds,
+    ) -> Result<RoaringBitmap> {
+        let mut large_descendants = RoaringBitmap::new();
+
+        if roots.is_empty() {
+            return Ok(large_descendants);
+        }
+
+        while !to_insert.is_empty() {
+            options.cancelled()?;
+
+            // If we have only one roots it means we're splitting a large descendants.
+            // Otherwise it means we're updating the whole database and will need all the tree nodes.
+            let immutable_tree_nodes = if roots.len() == 1 {
+                ImmutableTrees::sub_tree_from_id(wtxn, self.database, self.index, roots[0])?
+            } else {
+                ImmutableTrees::new(wtxn, self.database, self.index, nb_tree_nodes)?
+            };
+            let (leafs, to_insert) = ImmutableLeafs::new(
+                wtxn,
+                self.database,
+                self.index,
+                &mut to_insert,
+                // We let the indexing process uses 2/3 of the memory for the items and the last third for the tree.
+                options
+                    .available_memory
+                    .map_or(usize::MAX, |memory| (memory as f64 * 2.0 / 3.0).floor() as usize),
+            )?;
+            let frozzen_reader =
+                FrozzenReader { leafs: &leafs, trees: &immutable_tree_nodes, concurrent_node_ids };
+            let tmp_descendant_to_write =
+                self.insert_items_in_tree(options, rng, roots, &to_insert, &frozzen_reader)?;
+
+            for (tmp_node, descendants) in tmp_descendant_to_write.iter() {
+                large_descendants |= descendants;
+
+                for item_id in tmp_node.to_delete() {
+                    options.cancelled()?;
+                    let key = Key::tree(self.index, item_id);
+                    self.database.remap_data_type::<Bytes>().delete(wtxn, &key)?;
+                }
+                for (item_id, item_bytes) in tmp_node.to_insert() {
+                    options.cancelled()?;
+                    let key = Key::tree(self.index, item_id);
+                    self.database.remap_data_type::<Bytes>().put(wtxn, &key, item_bytes)?;
+                }
+            }
+        }
+        Ok(large_descendants)
+    }
+
+    fn reset_and_retrieve_updated_items(
+        &self,
+        wtxn: &mut RwTxn,
+        options: &BuildOption,
+    ) -> Result<RoaringBitmap, Error> {
+        tracing::debug!("reset and retrieve the updated items...");
+        (options.progress)(WriterProgress { main: MainStep::RetrieveTheUpdatedItems, sub: None });
+        let mut updated_items = RoaringBitmap::new();
+        let mut updated_iter = self
+            .database
+            .remap_types::<PrefixCodec, DecodeIgnore>()
+            .prefix_iter_mut(wtxn, &Prefix::updated(self.index))?
+            .remap_key_type::<KeyCodec>();
+        while let Some((key, _)) = updated_iter.next().transpose()? {
+            options.cancelled()?;
+            let inserted = updated_items.push(key.node.item);
+            debug_assert!(inserted, "The keys should be sorted by LMDB");
+            // Safe because we don't hold any reference to the database currently
+            unsafe {
+                updated_iter.del_current()?;
+            }
+        }
+        Ok(updated_items)
+    }
+
+    fn clear_db_and_create_a_single_leaf(
+        &self,
+        wtxn: &mut RwTxn,
+        options: &BuildOption,
+        item_indices: RoaringBitmap,
+    ) -> Result<(), Error> {
+        tracing::debug!("We can fit every elements in a single descendant node, we can skip all the build process");
+        (options.progress)(WriterProgress {
+            main: MainStep::WritingTheDescendantsAndMetadata,
+            sub: None,
+        });
+        self.database
+            .remap_data_type::<Bytes>()
+            .delete_range(wtxn, &(Key::tree(self.index, 0)..=Key::tree(self.index, ItemId::MAX)))?;
+        let mut roots = Vec::new();
+        if !item_indices.is_empty() {
+            // if we have more than 0 elements we need to create a descendant node
+
+            self.database.put(
+                wtxn,
+                &Key::tree(self.index, 0),
+                &Node::Descendants(Descendants { descendants: Cow::Borrowed(&item_indices) }),
+            )?;
+            roots.push(0);
+        }
+        options.cancelled()?;
+        tracing::debug!("write the metadata...");
+        let metadata = Metadata {
+            dimensions: self.dimensions.try_into().unwrap(),
+            items: item_indices,
+            roots: ItemIds::from_slice(&roots),
+            distance: D::name(),
+        };
+        self.database.remap_data_type::<MetadataCodec>().put(
+            wtxn,
+            &Key::metadata(self.index),
+            &metadata,
+        )?;
+        tracing::debug!("write the version...");
+        let version = Version {
+            major: env!("CARGO_PKG_VERSION_MAJOR").parse().unwrap(),
+            minor: env!("CARGO_PKG_VERSION_MINOR").parse().unwrap(),
+            patch: env!("CARGO_PKG_VERSION_PATCH").parse().unwrap(),
+        };
+        self.database.remap_data_type::<VersionCodec>().put(
+            wtxn,
+            &Key::version(self.index),
+            &version,
+        )?;
+        Ok(())
+    }
+
+    fn pre_process_items(&self, wtxn: &mut RwTxn, options: &BuildOption) -> Result<(), Error> {
+        tracing::debug!("started preprocessing the items...");
+        (options.progress)(WriterProgress { main: MainStep::PreProcessingTheItems, sub: None });
+        options.cancelled()?;
+        D::preprocess(wtxn, |wtxn| {
+            Ok(self
+                .database
+                .remap_key_type::<PrefixCodec>()
+                .prefix_iter_mut(wtxn, &Prefix::item(self.index))?
+                .remap_key_type::<KeyCodec>())
+        })?;
+        Ok(())
+    }
+
+    fn delete_items_from_trees(
+        &self,
+        wtxn: &mut RwTxn,
+        options: &BuildOption,
+        roots: &mut [u32],
+        to_delete: &RoaringBitmap,
+    ) -> Result<()> {
+        (options.progress)(WriterProgress {
+            main: MainStep::RemoveItemsFromExistingTrees,
+            sub: None,
+        });
+
+        let mut tmp_nodes: TmpNodes<NodeCodec<D>> = match self.tmpdir.as_ref() {
+            Some(path) => TmpNodes::new_in(path)?,
+            None => TmpNodes::new()?,
+        };
+
+        // TODO: Parallelize
+        for root in roots.iter_mut() {
+            options.cancelled()?;
+            let (new_root, _) =
+                self.delete_items_in_file(options, wtxn, *root, &mut tmp_nodes, to_delete)?;
+            *root = new_root;
+        }
+        roots.sort_unstable();
+
+        let tmp_nodes = tmp_nodes.into_bytes_reader()?;
+        for item_id in tmp_nodes.to_delete() {
+            options.cancelled()?;
+            let key = Key::tree(self.index, item_id);
+            self.database.remap_data_type::<Bytes>().delete(wtxn, &key)?;
+        }
+        for (item_id, item_bytes) in tmp_nodes.to_insert() {
+            options.cancelled()?;
+            let key = Key::tree(self.index, item_id);
+            self.database.remap_data_type::<Bytes>().put(wtxn, &key, item_bytes)?;
+        }
+        Ok(())
+    }
+
+    /// Remove items in O(n). We must explore the whole list of items.
+    /// That could be reduced to O(log(n)) if we had a `RoTxn` of the previous state of the database.
+    fn delete_items_in_file(
+        &self,
+        options: &BuildOption,
+        rtxn: &RoTxn,
+        current_node: ItemId,
+        tmp_nodes: &mut TmpNodes<NodeCodec<D>>,
+        to_delete: &RoaringBitmap,
+    ) -> Result<(ItemId, RoaringBitmap)> {
+        options.cancelled()?;
+        match self.database.get(rtxn, &Key::tree(self.index, current_node))?.unwrap() {
+            Node::Leaf(_) => unreachable!(),
+            Node::Descendants(Descendants { descendants }) => {
+                let len = descendants.len();
+                let mut new_descendants = descendants.into_owned();
+                new_descendants -= to_delete;
+
+                if len != new_descendants.len() {
+                    // update the descendants
+                    tmp_nodes.put(
+                        current_node,
+                        &Node::Descendants(Descendants {
+                            descendants: Cow::Borrowed(&new_descendants),
+                        }),
+                    )?;
+                }
+                Ok((current_node, new_descendants))
+            }
+            Node::SplitPlaneNormal(SplitPlaneNormal { normal, left, right }) => {
+                let (new_left, left_items) = match left.mode {
+                    NodeMode::Tree => {
+                        let (id, items) = self
+                            .delete_items_in_file(options, rtxn, left.item, tmp_nodes, to_delete)?;
+                        (NodeId::tree(id), items)
+                    }
+                    NodeMode::Item => {
+                        if to_delete.contains(left.item) {
+                            (left, RoaringBitmap::new())
+                        } else {
+                            (left, RoaringBitmap::from_sorted_iter(Some(left.item)).unwrap())
+                        }
+                    }
+                    NodeMode::Metadata | NodeMode::Updated => unreachable!(),
+                };
+                let (new_right, right_items) = match right.mode {
+                    NodeMode::Tree => {
+                        let (id, items) = self.delete_items_in_file(
+                            options, rtxn, right.item, tmp_nodes, to_delete,
+                        )?;
+                        (NodeId::tree(id), items)
+                    }
+                    NodeMode::Item => {
+                        if to_delete.contains(right.item) {
+                            (right, RoaringBitmap::new())
+                        } else {
+                            (right, RoaringBitmap::from_sorted_iter(Some(right.item)).unwrap())
+                        }
+                    }
+                    NodeMode::Metadata | NodeMode::Updated => unreachable!(),
+                };
+
+                let total_items = &left_items | &right_items;
+
+                if self.fit_in_descendant(options, total_items.len()) {
+                    // Since we're shrinking we KNOW that new_left and new_right are descendants
+                    // thus we can delete them directly knowing there is no sub-tree to look at.
+                    if new_left.mode == NodeMode::Tree {
+                        tmp_nodes.remove(new_left.item);
+                    }
+                    if new_right.mode == NodeMode::Tree {
+                        tmp_nodes.remove(new_right.item);
+                    }
+
+                    tmp_nodes.put(
+                        current_node,
+                        &Node::Descendants(Descendants {
+                            descendants: Cow::Owned(total_items.clone()),
+                        }),
+                    )?;
+
+                    // we should merge both branch and update ourselves to be a single descendant node
+                    Ok((current_node, total_items))
+
+                // If we don't have any items in either the left or right we can delete ourselves and point directly to our child
+                } else if left_items.is_empty() {
+                    if new_left.mode == NodeMode::Tree {
+                        tmp_nodes.remove(new_left.item);
+                    }
+                    tmp_nodes.remove(current_node);
+                    Ok((new_right.item, total_items))
+                } else if right_items.is_empty() {
+                    if new_right.mode == NodeMode::Tree {
+                        tmp_nodes.remove(new_right.item);
+                    }
+                    tmp_nodes.remove(current_node);
+                    Ok((new_left.item, total_items))
+                } else {
+                    // if either the left or the right changed we must update ourselves inplace
+                    if new_left != left || new_right != right {
+                        tmp_nodes.put(
+                            current_node,
+                            &Node::SplitPlaneNormal(SplitPlaneNormal {
+                                normal,
+                                left: new_left,
+                                right: new_right,
+                            }),
+                        )?;
+                    }
+
+                    Ok((current_node, total_items))
+                }
+            }
+        }
+    }
+
+    /// Insert items in the specified trees without creating new tree nodes.
+    /// Return the list of nodes modified that must be inserted into the database and
+    /// the roaring bitmap of descendants that became too large in the process.
+    #[allow(clippy::too_many_arguments)]
+    fn insert_items_in_tree<R: Rng + SeedableRng>(
         &self,
         opt: &BuildOption,
         rng: &mut R,
-        metadata: &Metadata,
+        roots: &[u32],
         to_insert: &RoaringBitmap,
-        to_delete: &RoaringBitmap,
-        two_means_candidates: &RoaringBitmap,
         frozen_reader: &FrozzenReader<D>,
-        trees_progress: &AtomicU32,
-    ) -> Result<(Vec<ItemId>, Vec<TmpNodesReader>)> {
-        let roots: Vec<_> = metadata.roots.iter().collect();
-
-        repeatn(rng.next_u64(), metadata.roots.len())
+    ) -> Result<Vec<(TmpNodesReader, RoaringBitmap)>> {
+        repeatn(rng.next_u64(), roots.len())
             .zip(roots)
             .map(|(seed, root)| {
+                opt.cancelled()?;
                 tracing::debug!("started updating tree {root:X}...");
-                let mut rng = R::seed_from_u64(seed.wrapping_add(root as u64));
-                let mut tmp_nodes: TmpNodes<NodeCodec<D>> = match self.tmpdir.as_ref() {
+                let mut rng = R::seed_from_u64(seed.wrapping_add(*root as u64));
+                let mut tmp_descendant: TmpNodes<NodeCodec<D>> = match self.tmpdir.as_ref() {
                     Some(path) => TmpNodes::new_in(path)?,
                     None => TmpNodes::new()?,
                 };
-                let root_node = NodeId::tree(root);
-                let (node_id, _items) = self.update_nodes_in_file(
+                let root_node = NodeId::tree(*root);
+                let mut large_descendants = RoaringBitmap::new();
+                self.insert_items_in_file(
                     opt,
                     frozen_reader,
                     &mut rng,
                     root_node,
                     to_insert,
-                    to_delete,
-                    two_means_candidates,
-                    &mut tmp_nodes,
+                    &mut large_descendants,
+                    &mut tmp_descendant,
                 )?;
-                assert!(node_id.mode != NodeMode::Item, "update_nodes_in_file returned an item even though there was more than a single element");
-
-                trees_progress.fetch_add(1, Ordering::Relaxed);
 
                 tracing::debug!("finished updating tree {root:X}");
-                Ok((node_id.unwrap_tree(), tmp_nodes.into_bytes_reader()?))
+                Ok((tmp_descendant.into_bytes_reader()?, large_descendants))
             })
             .collect()
     }
 
-    /// Update the nodes that changed and delete the deleted nodes all at once.
-    /// Run in O(n) on the total number of nodes. Return a tuple containing the
-    /// node ID you should use instead of the current_node and the number of
-    /// items in the subtree.
+    /// Find all the descendants that matches the list of items to insert and write them to a file
     #[allow(clippy::too_many_arguments)]
-    fn update_nodes_in_file<R: Rng>(
+    fn insert_items_in_file<R: Rng>(
         &self,
         opt: &BuildOption,
         frozen_reader: &FrozzenReader<D>,
         rng: &mut R,
         current_node: NodeId,
         to_insert: &RoaringBitmap,
-        to_delete: &RoaringBitmap,
-        two_means_candidates: &RoaringBitmap,
+        large_descendants: &mut RoaringBitmap,
         tmp_nodes: &mut TmpNodes<NodeCodec<D>>,
-    ) -> Result<(NodeId, RoaringBitmap)> {
-        if (opt.cancel)() {
-            return Err(Error::BuildCancelled);
-        }
+    ) -> Result<ItemId> {
+        opt.cancelled()?;
         match current_node.mode {
             NodeMode::Item => {
                 // We were called on a specific item, we should create a descendants node
                 let mut new_items = RoaringBitmap::from_iter([current_node.item]);
-                new_items -= to_delete;
                 new_items |= to_insert;
 
-                if new_items.len() == 1 {
-                    let item_id = new_items.iter().next().unwrap();
-                    if item_id == current_node.item {
-                        Ok((current_node, new_items))
-                    } else {
-                        Ok((NodeId::item(item_id), new_items))
-                    }
-                } else if self.fit_in_descendant(opt, new_items.len()) {
+                if !self.fit_in_descendant(opt, new_items.len()) {
+                    large_descendants.insert(current_node.item);
+                }
+
+                if new_items.len() > 1 {
                     let node_id = frozen_reader.concurrent_node_ids.next()?;
                     let node_id = NodeId::tree(node_id);
                     tmp_nodes.put(
@@ -828,18 +1033,9 @@ impl<D: Distance> Writer<D> {
                             descendants: Cow::Owned(new_items.clone()),
                         }),
                     )?;
-                    Ok((node_id, new_items))
+                    Ok(node_id.item)
                 } else {
-                    let new_id = self.make_tree_in_file(
-                        opt,
-                        frozen_reader,
-                        rng,
-                        &new_items,
-                        two_means_candidates,
-                        tmp_nodes,
-                    )?;
-
-                    return Ok((new_id, new_items));
+                    Ok(current_node.item)
                 }
             }
             NodeMode::Tree => {
@@ -847,33 +1043,15 @@ impl<D: Distance> Writer<D> {
                     Node::Leaf(_) => unreachable!(),
                     Node::Descendants(Descendants { descendants }) => {
                         let mut new_descendants = descendants.clone().into_owned();
-                        // remove all the deleted IDs before inserting the new elements.
-                        new_descendants -= to_delete;
-
                         // insert all of our IDs in the descendants
                         new_descendants |= to_insert;
 
-                        if descendants.as_ref() == &new_descendants {
-                            // if nothing changed, do nothing
-                            Ok((current_node, descendants.into_owned()))
-                        } else if !self.fit_in_descendant(opt, new_descendants.len()) {
-                            // if it doesn't fit in one descendent we need to craft a new whole subtree
-                            tmp_nodes.remove(current_node.item);
-                            let new_id = self.make_tree_in_file(
-                                opt,
-                                frozen_reader,
-                                rng,
-                                &new_descendants,
-                                two_means_candidates,
-                                tmp_nodes,
-                            )?;
+                        if !self.fit_in_descendant(opt, new_descendants.len()) {
+                            large_descendants.insert(current_node.item);
+                        }
 
-                            Ok((new_id, new_descendants))
-                        } else if new_descendants.len() == 1 {
-                            tmp_nodes.remove(current_node.item);
-                            let item = new_descendants.iter().next().unwrap();
-                            Ok((NodeId::item(item), new_descendants))
-                        } else {
+                        // If the number of descendant changed it means we inserted new items and must overwrite the node
+                        if descendants.len() != new_descendants.len() {
                             // otherwise we can just update our descendants
                             tmp_nodes.put(
                                 current_node.item,
@@ -881,8 +1059,8 @@ impl<D: Distance> Writer<D> {
                                     descendants: Cow::Owned(new_descendants.clone()),
                                 }),
                             )?;
-                            Ok((current_node, new_descendants))
                         }
+                        Ok(current_node.item)
                     }
                     Node::SplitPlaneNormal(SplitPlaneNormal { normal, left, right }) => {
                         // Split the to_insert into two bitmaps on the left and right of this normal
@@ -901,158 +1079,77 @@ impl<D: Distance> Writer<D> {
                             }
                         }
 
-                        let (new_left, left_items) = self.update_nodes_in_file(
+                        let new_left = self.insert_items_in_file(
                             opt,
                             frozen_reader,
                             rng,
                             left,
                             &left_ids,
-                            to_delete,
-                            two_means_candidates,
+                            large_descendants,
                             tmp_nodes,
                         )?;
-                        let (new_right, right_items) = self.update_nodes_in_file(
+                        let new_right = self.insert_items_in_file(
                             opt,
                             frozen_reader,
                             rng,
                             right,
                             &right_ids,
-                            to_delete,
-                            two_means_candidates,
+                            large_descendants,
                             tmp_nodes,
                         )?;
 
-                        let total_items = left_items | right_items;
-
-                        if self.fit_in_descendant(opt, total_items.len()) {
-                            // Since we're shrinking we KNOW that new_left and new_right are descendants
-                            // thus we can delete them directly knowing there is no sub-tree to look at.
-                            if new_left.mode == NodeMode::Tree {
-                                tmp_nodes.remove(new_left.item);
-                            }
-                            if new_right.mode == NodeMode::Tree {
-                                tmp_nodes.remove(new_right.item);
-                            }
-
+                        if new_left != left.item || new_right != right.item {
                             tmp_nodes.put(
                                 current_node.item,
-                                &Node::Descendants(Descendants {
-                                    descendants: Cow::Owned(total_items.clone()),
+                                &Node::SplitPlaneNormal(SplitPlaneNormal {
+                                    normal,
+                                    left: NodeId::item(new_left),
+                                    right: NodeId::item(new_right),
                                 }),
                             )?;
-
-                            // we should merge both branch and update ourselves to be a single descendant node
-                            Ok((current_node, total_items))
+                            Ok(current_node.item)
                         } else {
-                            // if either the left or the right changed we must update ourselves inplace
-                            if new_left != left || new_right != right {
-                                tmp_nodes.put(
-                                    current_node.item,
-                                    &Node::SplitPlaneNormal(SplitPlaneNormal {
-                                        normal,
-                                        left: new_left,
-                                        right: new_right,
-                                    }),
-                                )?;
-                            }
-
-                            // TODO: Should we update the normals if something changed?
-
-                            Ok((current_node, total_items))
+                            Ok(current_node.item)
                         }
                     }
                 }
             }
             NodeMode::Metadata => unreachable!(),
-            NodeMode::Updated => todo!(),
+            NodeMode::Updated => unreachable!(),
         }
-    }
-
-    #[allow(clippy::too_many_arguments)]
-    fn build_trees<R: Rng + SeedableRng>(
-        &self,
-        opt: &BuildOption,
-        rng: &mut R,
-        n_trees: Option<usize>,
-        item_indices: &RoaringBitmap,
-        two_means_candidates: &RoaringBitmap,
-        frozen_reader: &FrozzenReader<D>,
-        progress: &AtomicU32,
-    ) -> Result<(Vec<ItemId>, Vec<TmpNodesReader>)> {
-        let n_items = item_indices.len();
-        let concurrent_node_ids = frozen_reader.concurrent_node_ids;
-
-        repeatn(rng.next_u64(), n_trees.unwrap_or(usize::MAX))
-            .enumerate()
-            // Stop generating trees once the specified number of tree nodes are generated
-            // but continue to generate trees if the number of trees is unspecified
-            .take_any_while(|_| match n_trees {
-                Some(_) => true,
-                None => concurrent_node_ids.used() < n_items,
-            })
-            .map(|(i, seed)| {
-                tracing::debug!("started generating tree {i:X}...");
-                let mut rng = R::seed_from_u64(seed.wrapping_add(i as u64));
-                let mut tmp_nodes = match self.tmpdir.as_ref() {
-                    Some(path) => TmpNodes::new_in(path)?,
-                    None => TmpNodes::new()?,
-                };
-                let root_id =
-                    self.make_tree_in_file(opt, frozen_reader, &mut rng, item_indices, two_means_candidates, &mut tmp_nodes)?;
-                assert!(
-                    root_id.mode != NodeMode::Item,
-                    "make_tree_in_file returned an item even though there was more than a single element"
-                );
-                tracing::debug!("finished generating tree {i:X}");
-                progress.fetch_add(1, Ordering::Relaxed);
-
-                // make_tree will NEVER return a leaf when called as root
-                Ok((root_id.unwrap_tree(), tmp_nodes.into_bytes_reader()?))
-            })
-            .collect()
     }
 
     /// Creates a tree of nodes from the frozzen items that lives
     /// in the database and generates descendants, split normal
     /// and root nodes in files that will be stored in the database later.
+    /// Return the root node + the total number of tree node generated.
     fn make_tree_in_file<R: Rng>(
         &self,
         opt: &BuildOption,
         reader: &FrozzenReader<D>,
         rng: &mut R,
         item_indices: &RoaringBitmap,
-        two_means_candidates: &RoaringBitmap,
         tmp_nodes: &mut TmpNodes<NodeCodec<D>>,
-    ) -> Result<NodeId> {
-        if (opt.cancel)() {
-            return Err(Error::BuildCancelled);
-        }
+    ) -> Result<(NodeId, u64)> {
+        opt.cancelled()?;
         if item_indices.len() == 1 {
-            return Ok(NodeId::item(item_indices.min().unwrap()));
+            return Ok((NodeId::item(item_indices.min().unwrap()), 0));
         }
 
         if self.fit_in_descendant(opt, item_indices.len()) {
             let item_id = reader.concurrent_node_ids.next()?;
             let item = Node::Descendants(Descendants { descendants: Cow::Borrowed(item_indices) });
             tmp_nodes.put(item_id, &item)?;
-            return Ok(NodeId::tree(item_id));
+            return Ok((NodeId::tree(item_id), 1));
         }
 
-        // If we don't have at least two vectors in common between the item_indices and the two_means_candidates
-        // we're going to use the whole list of two_means_candidates to create the split node.
-        let intersection_len = two_means_candidates.intersection_len(item_indices);
-        let two_means_candidates = if intersection_len >= 2 {
-            &(two_means_candidates & item_indices)
-        } else {
-            two_means_candidates
-        };
-
-        let children = ImmutableSubsetLeafs::from_item_ids(reader.leafs, two_means_candidates);
+        let children = ImmutableSubsetLeafs::from_item_ids(reader.leafs, item_indices);
         let mut children_left = Vec::with_capacity(children.len() as usize);
         let mut children_right = Vec::with_capacity(children.len() as usize);
         let mut remaining_attempts = 3;
 
         let mut normal = loop {
+            opt.cancelled()?;
             children_left.clear();
             children_right.clear();
 
@@ -1091,74 +1188,14 @@ impl<D: Distance> Writer<D> {
                 )
             };
 
-        let normal = SplitPlaneNormal {
-            normal,
-            left: self.make_tree_in_file(
-                opt,
-                reader,
-                rng,
-                &children_left,
-                two_means_candidates,
-                tmp_nodes,
-            )?,
-            right: self.make_tree_in_file(
-                opt,
-                reader,
-                rng,
-                &children_right,
-                two_means_candidates,
-                tmp_nodes,
-            )?,
-        };
+        let (left, l) = self.make_tree_in_file(opt, reader, rng, &children_left, tmp_nodes)?;
+        let (right, r) = self.make_tree_in_file(opt, reader, rng, &children_right, tmp_nodes)?;
+        let normal = SplitPlaneNormal { normal, left, right };
 
         let new_node_id = reader.concurrent_node_ids.next()?;
         tmp_nodes.put(new_node_id, &Node::SplitPlaneNormal(normal))?;
 
-        Ok(NodeId::tree(new_node_id))
-    }
-
-    /// Delete any extraneous trees.
-    fn delete_extra_trees(
-        &self,
-        wtxn: &mut RwTxn,
-        opt: &BuildOption,
-        roots: &mut Vec<ItemId>,
-        nb_trees: Option<usize>,
-        nb_tree_nodes: u64,
-        nb_items: u64,
-    ) -> Result<()> {
-        if roots.is_empty() {
-            return Ok(());
-        }
-        let nb_trees = match nb_trees {
-            Some(nb_trees) => nb_trees,
-            None => {
-                // 1. Estimate the number of nodes per tree; the division is safe because we ensured there was at least one root node above.
-                let nodes_per_tree = nb_tree_nodes / roots.len() as u64;
-                // 2. Estimate the number of tree we need to have AT LEAST as much tree-nodes than items
-                (nb_items / nodes_per_tree) as usize
-            }
-        };
-
-        if roots.len() > nb_trees {
-            // we have too many trees and must delete some of them
-            let to_delete = roots.len() - nb_trees;
-
-            // we want to delete the oldest tree first since they're probably
-            // the less precise one
-            let new_roots = roots.split_off(to_delete);
-            let to_delete = mem::replace(roots, new_roots);
-            tracing::debug!("Deleting {} trees", to_delete.len());
-
-            for tree in to_delete {
-                if (opt.cancel)() {
-                    return Err(Error::BuildCancelled);
-                }
-                self.delete_tree(wtxn, NodeId::tree(tree))?;
-            }
-        }
-
-        Ok(())
+        Ok((NodeId::tree(new_node_id), l + r + 1))
     }
 
     fn delete_tree(&self, wtxn: &mut RwTxn, node: NodeId) -> Result<()> {
@@ -1178,7 +1215,10 @@ impl<D: Distance> Writer<D> {
     }
 
     // Fetches the item's ids, not the tree nodes ones.
-    fn item_indices(&self, wtxn: &mut RwTxn<'_>) -> heed::Result<RoaringBitmap> {
+    fn item_indices(&self, wtxn: &mut RwTxn, options: &BuildOption) -> Result<RoaringBitmap> {
+        tracing::debug!("started retrieving all the items ids...");
+        (options.progress)(WriterProgress { main: MainStep::RetrievingTheItemsIds, sub: None });
+
         let mut indices = RoaringBitmap::new();
         for result in self
             .database
@@ -1186,6 +1226,7 @@ impl<D: Distance> Writer<D> {
             .prefix_iter(wtxn, &Prefix::item(self.index))?
             .remap_key_type::<KeyCodec>()
         {
+            options.cancelled()?;
             let (i, _) = result?;
             indices.push(i.node.unwrap_item());
         }
@@ -1247,4 +1288,42 @@ fn split_imbalance(left_indices_len: u64, right_indices_len: u64) -> f64 {
     let rs = right_indices_len as f64;
     let f = ls / (ls + rs + f64::EPSILON); // Avoid 0/0
     f.max(1.0 - f)
+}
+
+/// Return the number of trees we should have at the end of the indexing process.
+/// The number may be bigger or smaller than the current number of trees in the database
+/// but won't shrink too quickly if the number of items slightly decreases.
+pub(crate) fn target_n_trees(
+    options: &BuildOption,
+    dimensions: u64,
+    item_indices: &RoaringBitmap,
+    roots: &[u32],
+) -> u64 {
+    match options.n_trees {
+        Some(n) => n as u64,
+        // In the case we never made any tree we can roughly guess how many trees we want to build in total
+        None => {
+            // Full Binary Tree Theorem: The number of leaves in a non-empty full binary tree is one more than the number of internal nodes.
+            // Source: https://opendsa-server.cs.vt.edu/ODSA/Books/CS3/html/BinaryTreeFullThm.html
+            //
+            // That means we can exactly find the minimal number of tree node required to hold all the items
+            // 1. How many descendants do we need:
+            let descendant_required = item_indices.len() / dimensions;
+            // 2. Find the number of tree nodes required per trees
+            let tree_nodes_per_tree = descendant_required + 1;
+            // 3. Find the number of tree required to get as many tree nodes as item:
+            let mut nb_trees = item_indices.len() / tree_nodes_per_tree;
+
+            // 4. We don't want to shrink too quickly when a user remove some documents.
+            //    We're only going to shrink if we should remove more than 20% of our trees.
+            if (roots.len() as u64) > nb_trees {
+                let tree_to_remove = roots.len() as u64 - nb_trees;
+                if (tree_to_remove as f64 / nb_trees as f64) < 0.20 {
+                    nb_trees = roots.len() as u64;
+                }
+            }
+
+            nb_trees
+        }
+    }
 }

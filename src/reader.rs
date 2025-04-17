@@ -500,7 +500,11 @@ impl<'t, D: Distance> Reader<'t, D> {
         rtxn: &RoTxn,
         node_id: NodeId,
     ) -> Result<(RoaringBitmap, RoaringBitmap)> {
-        match self.database.get(rtxn, &Key::new(self.index, node_id))?.unwrap() {
+        match self
+            .database
+            .get(rtxn, &Key::new(self.index, node_id))?
+            .unwrap_or_else(|| panic!("Could not find {node_id:?} in index {}", self.index))
+        {
             Node::Leaf(_) => Ok((
                 RoaringBitmap::new(),
                 RoaringBitmap::from_sorted_iter(Some(node_id.item)).unwrap(),
