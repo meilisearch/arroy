@@ -955,8 +955,6 @@ impl<D: Distance> Writer<D> {
                         )?;
                     }
 
-                    // TODO: Should we update the normals if something changed?
-
                     Ok((current_node, total_items))
                 }
             }
