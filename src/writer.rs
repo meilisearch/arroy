@@ -1292,6 +1292,9 @@ fn split_imbalance(left_indices_len: u64, right_indices_len: u64) -> f64 {
     f.max(1.0 - f)
 }
 
+/// Return the number of trees we should have at the end of the indexing process.
+/// The number may be bigger or smaller than the current number of trees in the database
+/// but won't shrink too quickly if the number of items slightly decreases.
 pub(crate) fn target_n_trees(
     options: &BuildOption,
     dimensions: u64,
