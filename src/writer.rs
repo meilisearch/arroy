@@ -805,8 +805,6 @@ impl<D: Distance> Writer<D> {
         Ok(())
     }
 
-    // TODO: Should we return the list of empty descendants to double check at the very end of the indexing process if
-    // they're still empty and should be removed?
     fn delete_items_from_trees(
         &self,
         wtxn: &mut RwTxn,
