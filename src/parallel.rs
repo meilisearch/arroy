@@ -8,7 +8,6 @@ use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering};
 use heed::types::Bytes;
 use heed::{BytesDecode, BytesEncode, RoTxn};
 use memmap2::Mmap;
-use nohash::{BuildNoHashHasher, IntMap, IntSet};
 use rand::seq::index;
 use rand::Rng;
 use roaring::{RoaringBitmap, RoaringTreemap};
@@ -17,6 +16,7 @@ use crate::internals::{KeyCodec, Leaf, NodeCodec};
 use crate::key::{Key, Prefix, PrefixCodec};
 use crate::node::{Node, SplitPlaneNormal};
 use crate::node_id::NodeMode;
+use crate::nohash_hasher::{BuildNoHashHasher, IntMap, IntSet};
 use crate::{Database, Distance, Error, ItemId, Result};
 
 /// A structure to store the tree nodes out of the heed database.
