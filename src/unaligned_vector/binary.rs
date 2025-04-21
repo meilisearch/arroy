@@ -144,7 +144,7 @@ unsafe fn from_slice_neon(slice: &[f32]) -> Vec<u8> {
         for r in slice[slice.len() - remaining..].iter().rev() {
             rem <<= 1;
             bits = r.to_bits();
-            let r = (bits < 0x8000_0000 && bits > 0x0000_0000);
+            let r = bits < 0x8000_0000 && bits > 0x0000_0000;
             rem |= r as u8;
         }
         ret[iterations] = rem;
@@ -167,7 +167,7 @@ unsafe fn to_vec_neon(vec: &UnalignedVector<Binary>) -> Vec<f32> {
     let low_mask = [0b_0000_0001, 0b_0000_0010, 0b_0000_0100, 0b_0000_1000];
     let high_mask = [0b_0001_0000, 0b_0010_0000, 0b_0100_0000, 0b_1000_0000];
     let ones = unsafe { vld1q_dup_f32(&1.0) };
-    let minus = unsafe { vld1q_dup_f32(&-1.0) };
+    let zeros = unsafe { vld1q_dup_f32(&0.0) };
 
     for (current_byte, base) in bytes.iter().enumerate() {
         unsafe {
@@ -177,8 +177,8 @@ unsafe fn to_vec_neon(vec: &UnalignedVector<Binary>) -> Vec<f32> {
                 let mask = vld1q_u32(mask.as_ptr());
                 let mask = vandq_u32(base, mask);
                 // 0xffffffff if equal to zero and 0x00000000 otherwise
-                let mask = vceqzq_u32(mask);
-                let lane = vbslq_f32(mask, minus, ones);
+                let mask = vcgtq_u32(mask, vdupq_n_u32(0));
+                let lane = vbslq_f32(mask, ones, zeros);
                 let offset = output_ptr.add(current_byte * 8 + i * 4);
                 vst1q_f32(offset, lane);
             }
@@ -198,6 +198,7 @@ unsafe fn to_vec_sse(vec: &UnalignedVector<Binary>) -> Vec<f32> {
     let low_mask = [0b_0000_0001, 0b_0000_0010, 0b_0000_0100, 0b_0000_1000];
     let high_mask = [0b_0001_0000, 0b_0010_0000, 0b_0100_0000, 0b_1000_0000];
     let ones = unsafe { _mm_set1_ps(1.0) };
+    let zeros = unsafe{ _mm_setzero_ps() };
 
     for (current_byte, base) in bytes.iter().enumerate() {
         unsafe {
@@ -207,7 +208,7 @@ unsafe fn to_vec_sse(vec: &UnalignedVector<Binary>) -> Vec<f32> {
                 let mask = _mm_and_si128(base, mask);
                 // 0xffffffff if equal to zero and 0x00000000 otherwise
                 let mask = _mm_cmpeq_epi32(mask, _mm_setzero_si128());
-                let lane = _mm_blendv_ps(ones, _mm_setzero_ps(), _mm_castsi128_ps(mask));
+                let lane = _mm_blendv_ps(ones, zeros, _mm_castsi128_ps(mask));
                 let offset = output_ptr.add(current_byte * 8 + i * 4);
                 _mm_store_ps(offset, lane);
             }
