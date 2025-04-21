@@ -81,10 +81,10 @@ pub(super) fn from_slice_non_optimized(slice: &[f32]) -> Vec<u8> {
         for scalar in chunk.iter().rev() {
             word <<= 1;
             bits = scalar.to_bits();
-            // scalar>0.0_f32 => 1 else 0
+            // scalar > 0.0 => 1, otherwise 0
             word += (bits < 0x8000_0000 && bits > 0x0000_0000) as BitPackedWord;
         }
-        output.extend_from_slice(&word.to_ne_bytes()); //  u64 into [u8;8] ?
+        output.extend_from_slice(&word.to_ne_bytes());
     }
     output
 }

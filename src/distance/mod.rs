@@ -15,6 +15,7 @@ pub use euclidean::{Euclidean, NodeHeaderEuclidean};
 use heed::{RwPrefix, RwTxn};
 pub use manhattan::{Manhattan, NodeHeaderManhattan};
 use rand::Rng;
+pub use hamming::{Hamming, NodeHeaderHamming};
 
 use crate::internals::{KeyCodec, Side};
 use crate::node::Leaf;
@@ -29,6 +30,7 @@ mod cosine;
 mod dot_product;
 mod euclidean;
 mod manhattan;
+mod hamming;
 
 fn new_leaf<D: Distance>(vec: Vec<f32>) -> Leaf<'static, D> {
     let vector = UnalignedVector::from_vec(vec);
