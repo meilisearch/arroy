@@ -6,14 +6,19 @@ use std::{
 };
 
 pub use binary_quantized::BinaryQuantized;
+pub use binary::Binary;
 
 use bytemuck::pod_collect_to_vec;
 
 mod binary_quantized;
+mod binary;
 mod f32;
 
 #[cfg(test)]
 mod binary_quantized_test;
+
+#[cfg(test)]
+mod binary_test;
 
 /// Determine the way the vectors should be read and written from the database
 pub trait UnalignedVectorCodec: std::borrow::ToOwned + Sized {
