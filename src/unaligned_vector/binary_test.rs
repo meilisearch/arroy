@@ -28,13 +28,13 @@ fn test_from_slice() {
 
 #[test]
 fn test_to_vec_iter() {
-    let original = [0.1, 0.2, -0.3, 0.4, -0.5, 0.6, -0.7, 0.8, -0.9];
+    let original = [0.1, 0.0, -0.3, 0.4, -0.5, 0.6, -0.7, 0.8, -0.9];
     let vector = Binary::from_slice(&original);
     let iter_vec: Vec<_> = Binary::iter(&vector).take(original.len()).collect();
     assert_debug_snapshot!(iter_vec, @r###"
         [
             1.0,
-            1.0,
+            0.0,
             0.0,
             1.0,
             0.0,
@@ -49,7 +49,7 @@ fn test_to_vec_iter() {
     assert_debug_snapshot!(vec_vec, @r###"
         [
             1.0,
-            1.0,
+            0.0,
             0.0,
             1.0,
             0.0,

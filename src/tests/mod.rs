@@ -9,6 +9,7 @@ use tempfile::TempDir;
 use crate::version::VersionCodec;
 use crate::{Database, Distance, MetadataCodec, NodeCodec, NodeMode, Reader};
 
+mod binary;
 mod binary_quantized;
 mod reader;
 mod writer;
