@@ -21,7 +21,7 @@ impl UnalignedVectorCodec for Binary {
             // safety: `UnalignedVector` is transparent
             Ok(Cow::Borrowed(unsafe { transmute::<&[u8], &UnalignedVector<Self>>(bytes) }))
         } else {
-            Err(SizeMismatch { vector_codec: "binary quantized", rem })
+            Err(SizeMismatch { vector_codec: "binary", rem })
         }
     }
 
