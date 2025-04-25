@@ -198,7 +198,7 @@ unsafe fn to_vec_sse(vec: &UnalignedVector<Binary>) -> Vec<f32> {
     let low_mask = [0b_0000_0001, 0b_0000_0010, 0b_0000_0100, 0b_0000_1000];
     let high_mask = [0b_0001_0000, 0b_0010_0000, 0b_0100_0000, 0b_1000_0000];
     let ones = unsafe { _mm_set1_ps(1.0) };
-    let zeros = unsafe{ _mm_setzero_ps() };
+    let zeros = unsafe { _mm_setzero_ps() };
 
     for (current_byte, base) in bytes.iter().enumerate() {
         unsafe {

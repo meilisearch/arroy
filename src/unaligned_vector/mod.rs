@@ -5,13 +5,13 @@ use std::{
     mem::transmute,
 };
 
-pub use binary_quantized::BinaryQuantized;
 pub use binary::Binary;
+pub use binary_quantized::BinaryQuantized;
 
 use bytemuck::pod_collect_to_vec;
 
-mod binary_quantized;
 mod binary;
+mod binary_quantized;
 mod f32;
 
 #[cfg(test)]

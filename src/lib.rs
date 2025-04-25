@@ -114,7 +114,7 @@ pub mod internals {
     pub use crate::distance::{
         NodeHeaderBinaryQuantizedCosine, NodeHeaderBinaryQuantizedEuclidean,
         NodeHeaderBinaryQuantizedManhattan, NodeHeaderCosine, NodeHeaderDotProduct,
-        NodeHeaderEuclidean, NodeHeaderManhattan, NodeHeaderHamming
+        NodeHeaderEuclidean, NodeHeaderHamming, NodeHeaderManhattan,
     };
     pub use crate::key::KeyCodec;
     pub use crate::node::{Leaf, NodeCodec};
@@ -145,7 +145,7 @@ pub mod internals {
 pub mod distances {
     pub use crate::distance::{
         BinaryQuantizedCosine, BinaryQuantizedEuclidean, BinaryQuantizedManhattan, Cosine,
-        DotProduct, Euclidean, Manhattan, Hamming
+        DotProduct, Euclidean, Hamming, Manhattan,
     };
 }
 

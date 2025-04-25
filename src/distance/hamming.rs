@@ -55,7 +55,7 @@ impl Distance for Hamming {
         rng: &mut R,
     ) -> heed::Result<Cow<'a, UnalignedVector<Self::VectorCodec>>> {
         // unlike other distances which build a seperating hyperplane we
-        // construct an LSH by bit sampling and store the random bit in a one-hot 
+        // construct an LSH by bit sampling and store the random bit in a one-hot
         // vector
         // https://en.wikipedia.org/wiki/Locality-sensitive_hashing#Bit_sampling_for_Hamming_distance
 
