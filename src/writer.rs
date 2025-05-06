@@ -286,7 +286,7 @@ impl<D: Distance> Writer<D> {
                 .remap_key_type::<PrefixCodec>()
                 .prefix_iter_mut(wtxn, &Prefix::item(self.index))?
                 .remap_key_type::<KeyCodec>();
-            while let Ok(Some((item_id, node))) = cursor.next().transpose() {
+            while let Some((item_id, node)) = cursor.next().transpose()? {
                 match node {
                     Node::Leaf(Leaf { header: _, vector }) => {
                         let vector = vector.to_vec();

@@ -397,11 +397,7 @@ impl<'t, D: Distance> Reader<'t, D> {
                         writeln!(writer, "\t\t{} [label=\"{}\"]", key.node.item, key.node.item,)?
                     }
                     Node::SplitPlaneNormal(SplitPlaneNormal { normal, left, right }) => {
-                        if let Some(normal) = &normal {
-                            if normal.is_zero() {
-                                writeln!(writer, "\t\t{} [color=red]", key.node.item)?;
-                            }
-                        } else {
+                        if normal.is_non(){
                             // Null normal (optimized version of zero vector)
                             writeln!(writer, "\t\t{} [color=red]", key.node.item)?;
                         }

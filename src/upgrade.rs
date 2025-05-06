@@ -4,6 +4,7 @@ use heed::{
     types::{Bytes, LazyDecode, Unit},
     RoTxn, RwTxn,
 };
+use std::collections::HashMap;
 use roaring::RoaringBitmap;
 
 use crate::{
@@ -162,7 +163,6 @@ pub fn from_0_6_to_0_7<C: Distance>(
     wtxn: &mut RwTxn,
     write_database: Database<C>,
 ) -> Result<()> {
-    use std::collections::HashMap;
     
     // Update version
     let version = Version {
