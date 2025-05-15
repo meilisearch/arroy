@@ -1067,15 +1067,23 @@ impl<D: Distance> Writer<D> {
                         let mut left_ids = RoaringBitmap::new();
                         let mut right_ids = RoaringBitmap::new();
 
-                        if normal.is_zero() {
-                            randomly_split_children(rng, to_insert, &mut left_ids, &mut right_ids);
-                        } else {
-                            for leaf in to_insert {
-                                let node = frozen_reader.leafs.get(leaf)?.unwrap();
-                                match D::side(&normal, &node, rng) {
-                                    Side::Left => left_ids.insert(leaf),
-                                    Side::Right => right_ids.insert(leaf),
-                                };
+                        match normal {
+                            None => {
+                                randomly_split_children(
+                                    rng,
+                                    to_insert,
+                                    &mut left_ids,
+                                    &mut right_ids,
+                                );
+                            }
+                            Some(ref normal) => {
+                                for leaf in to_insert {
+                                    let node = frozen_reader.leafs.get(leaf)?.unwrap();
+                                    match D::side(normal, &node, rng) {
+                                        Side::Left => left_ids.insert(leaf),
+                                        Side::Right => right_ids.insert(leaf),
+                                    };
+                                }
                             }
                         }
 
@@ -1165,7 +1173,7 @@ impl<D: Distance> Writer<D> {
             if split_imbalance(children_left.len() as u64, children_right.len() as u64) < 0.95
                 || remaining_attempts == 0
             {
-                break normal;
+                break Some(normal);
             }
 
             remaining_attempts -= 1;
@@ -1178,7 +1186,7 @@ impl<D: Distance> Writer<D> {
                 let mut children_left = RoaringBitmap::new();
                 let mut children_right = RoaringBitmap::new();
                 randomly_split_children(rng, item_indices, &mut children_left, &mut children_right);
-                UnalignedVector::reset(&mut normal);
+                normal = None;
 
                 (children_left, children_right)
             } else {

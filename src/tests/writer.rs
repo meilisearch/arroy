@@ -397,22 +397,22 @@ fn overwrite_one_item_incremental() {
     writer.builder(&mut rng).n_trees(1).build(&mut wtxn).unwrap();
     wtxn.commit().unwrap();
 
-    insta::assert_snapshot!(handle, @r###"
+    insta::assert_snapshot!(handle, @r#"
     ==================
     Dumping index 0
     Root: Metadata { dimensions: 2, items: RoaringBitmap<[0, 1, 2, 3, 4, 5]>, roots: [0], distance: "euclidean" }
     Tree 0: SplitPlaneNormal(SplitPlaneNormal<euclidean> { left: Item(0), right: Tree(4), normal: [1.0000, 0.0000] })
     Tree 1: Descendants(Descendants { descendants: [1, 5] })
     Tree 2: Descendants(Descendants { descendants: [3, 4] })
-    Tree 3: SplitPlaneNormal(SplitPlaneNormal<euclidean> { left: Tree(2), right: Item(2), normal: [0.0000, 0.0000] })
-    Tree 4: SplitPlaneNormal(SplitPlaneNormal<euclidean> { left: Tree(1), right: Tree(3), normal: [0.0000, 0.0000] })
+    Tree 3: SplitPlaneNormal(SplitPlaneNormal<euclidean> { left: Tree(2), right: Item(2), normal: "none" })
+    Tree 4: SplitPlaneNormal(SplitPlaneNormal<euclidean> { left: Tree(1), right: Tree(3), normal: "none" })
     Item 0: Leaf(Leaf { header: NodeHeaderEuclidean { bias: 0.0 }, vector: [0.0000, 0.0000] })
     Item 1: Leaf(Leaf { header: NodeHeaderEuclidean { bias: 0.0 }, vector: [1.0000, 0.0000] })
     Item 2: Leaf(Leaf { header: NodeHeaderEuclidean { bias: 0.0 }, vector: [2.0000, 0.0000] })
     Item 3: Leaf(Leaf { header: NodeHeaderEuclidean { bias: 0.0 }, vector: [3.0000, 0.0000] })
     Item 4: Leaf(Leaf { header: NodeHeaderEuclidean { bias: 0.0 }, vector: [4.0000, 0.0000] })
     Item 5: Leaf(Leaf { header: NodeHeaderEuclidean { bias: 0.0 }, vector: [5.0000, 0.0000] })
-    "###);
+    "#);
 
     let mut wtxn = handle.env.write_txn().unwrap();
 
@@ -423,14 +423,14 @@ fn overwrite_one_item_incremental() {
     writer.builder(&mut rng).n_trees(1).build(&mut wtxn).unwrap();
     wtxn.commit().unwrap();
 
-    insta::assert_snapshot!(handle, @r###"
+    insta::assert_snapshot!(handle, @r#"
     ==================
     Dumping index 0
     Root: Metadata { dimensions: 2, items: RoaringBitmap<[0, 1, 2, 3, 4, 5]>, roots: [0], distance: "euclidean" }
     Tree 0: SplitPlaneNormal(SplitPlaneNormal<euclidean> { left: Item(0), right: Tree(4), normal: [1.0000, 0.0000] })
     Tree 1: Descendants(Descendants { descendants: [1, 5] })
-    Tree 3: SplitPlaneNormal(SplitPlaneNormal<euclidean> { left: Tree(5), right: Item(2), normal: [0.0000, 0.0000] })
-    Tree 4: SplitPlaneNormal(SplitPlaneNormal<euclidean> { left: Tree(1), right: Tree(3), normal: [0.0000, 0.0000] })
+    Tree 3: SplitPlaneNormal(SplitPlaneNormal<euclidean> { left: Tree(5), right: Item(2), normal: "none" })
+    Tree 4: SplitPlaneNormal(SplitPlaneNormal<euclidean> { left: Tree(1), right: Tree(3), normal: "none" })
     Tree 5: Descendants(Descendants { descendants: [3, 4] })
     Item 0: Leaf(Leaf { header: NodeHeaderEuclidean { bias: 0.0 }, vector: [0.0000, 0.0000] })
     Item 1: Leaf(Leaf { header: NodeHeaderEuclidean { bias: 0.0 }, vector: [1.0000, 0.0000] })
@@ -438,7 +438,7 @@ fn overwrite_one_item_incremental() {
     Item 3: Leaf(Leaf { header: NodeHeaderEuclidean { bias: 0.0 }, vector: [6.0000, 0.0000] })
     Item 4: Leaf(Leaf { header: NodeHeaderEuclidean { bias: 0.0 }, vector: [4.0000, 0.0000] })
     Item 5: Leaf(Leaf { header: NodeHeaderEuclidean { bias: 0.0 }, vector: [5.0000, 0.0000] })
-    "###);
+    "#);
 }
 
 #[test]
@@ -593,16 +593,16 @@ fn delete_one_leaf_in_a_split() {
     writer.builder(&mut rng).n_trees(1).build(&mut wtxn).unwrap();
     wtxn.commit().unwrap();
 
-    insta::assert_snapshot!(handle, @r###"
+    insta::assert_snapshot!(handle, @r#"
     ==================
     Dumping index 0
     Root: Metadata { dimensions: 2, items: RoaringBitmap<[0, 1, 2]>, roots: [0], distance: "euclidean" }
-    Tree 0: SplitPlaneNormal(SplitPlaneNormal<euclidean> { left: Item(1), right: Tree(1), normal: [0.0000, 0.0000] })
+    Tree 0: SplitPlaneNormal(SplitPlaneNormal<euclidean> { left: Item(1), right: Tree(1), normal: "none" })
     Tree 1: Descendants(Descendants { descendants: [0, 2] })
     Item 0: Leaf(Leaf { header: NodeHeaderEuclidean { bias: 0.0 }, vector: [0.0000, 0.0000] })
     Item 1: Leaf(Leaf { header: NodeHeaderEuclidean { bias: 0.0 }, vector: [1.0000, 0.0000] })
     Item 2: Leaf(Leaf { header: NodeHeaderEuclidean { bias: 0.0 }, vector: [2.0000, 0.0000] })
-    "###);
+    "#);
 
     let mut wtxn = handle.env.write_txn().unwrap();
     let writer = Writer::new(handle.database, 0, 2);
@@ -675,22 +675,22 @@ fn delete_one_item() {
     writer.builder(&mut rng).n_trees(1).build(&mut wtxn).unwrap();
     wtxn.commit().unwrap();
 
-    insta::assert_snapshot!(handle, @r###"
+    insta::assert_snapshot!(handle, @r#"
     ==================
     Dumping index 0
     Root: Metadata { dimensions: 2, items: RoaringBitmap<[0, 1, 2, 3, 4, 5]>, roots: [0], distance: "euclidean" }
     Tree 0: SplitPlaneNormal(SplitPlaneNormal<euclidean> { left: Item(0), right: Tree(4), normal: [1.0000, 0.0000] })
     Tree 1: Descendants(Descendants { descendants: [1, 5] })
     Tree 2: Descendants(Descendants { descendants: [3, 4] })
-    Tree 3: SplitPlaneNormal(SplitPlaneNormal<euclidean> { left: Tree(2), right: Item(2), normal: [0.0000, 0.0000] })
-    Tree 4: SplitPlaneNormal(SplitPlaneNormal<euclidean> { left: Tree(1), right: Tree(3), normal: [0.0000, 0.0000] })
+    Tree 3: SplitPlaneNormal(SplitPlaneNormal<euclidean> { left: Tree(2), right: Item(2), normal: "none" })
+    Tree 4: SplitPlaneNormal(SplitPlaneNormal<euclidean> { left: Tree(1), right: Tree(3), normal: "none" })
     Item 0: Leaf(Leaf { header: NodeHeaderEuclidean { bias: 0.0 }, vector: [0.0000, 0.0000] })
     Item 1: Leaf(Leaf { header: NodeHeaderEuclidean { bias: 0.0 }, vector: [1.0000, 0.0000] })
     Item 2: Leaf(Leaf { header: NodeHeaderEuclidean { bias: 0.0 }, vector: [2.0000, 0.0000] })
     Item 3: Leaf(Leaf { header: NodeHeaderEuclidean { bias: 0.0 }, vector: [3.0000, 0.0000] })
     Item 4: Leaf(Leaf { header: NodeHeaderEuclidean { bias: 0.0 }, vector: [4.0000, 0.0000] })
     Item 5: Leaf(Leaf { header: NodeHeaderEuclidean { bias: 0.0 }, vector: [5.0000, 0.0000] })
-    "###);
+    "#);
 
     let mut wtxn = handle.env.write_txn().unwrap();
     let writer = Writer::new(handle.database, 0, 2);
@@ -700,20 +700,20 @@ fn delete_one_item() {
     writer.builder(&mut rng).n_trees(1).build(&mut wtxn).unwrap();
     wtxn.commit().unwrap();
 
-    insta::assert_snapshot!(handle, @r###"
+    insta::assert_snapshot!(handle, @r#"
     ==================
     Dumping index 0
     Root: Metadata { dimensions: 2, items: RoaringBitmap<[0, 1, 2, 4, 5]>, roots: [0], distance: "euclidean" }
     Tree 0: SplitPlaneNormal(SplitPlaneNormal<euclidean> { left: Item(0), right: Tree(4), normal: [1.0000, 0.0000] })
     Tree 1: Descendants(Descendants { descendants: [1, 5] })
     Tree 3: Descendants(Descendants { descendants: [2, 4] })
-    Tree 4: SplitPlaneNormal(SplitPlaneNormal<euclidean> { left: Tree(1), right: Tree(3), normal: [0.0000, 0.0000] })
+    Tree 4: SplitPlaneNormal(SplitPlaneNormal<euclidean> { left: Tree(1), right: Tree(3), normal: "none" })
     Item 0: Leaf(Leaf { header: NodeHeaderEuclidean { bias: 0.0 }, vector: [0.0000, 0.0000] })
     Item 1: Leaf(Leaf { header: NodeHeaderEuclidean { bias: 0.0 }, vector: [1.0000, 0.0000] })
     Item 2: Leaf(Leaf { header: NodeHeaderEuclidean { bias: 0.0 }, vector: [2.0000, 0.0000] })
     Item 4: Leaf(Leaf { header: NodeHeaderEuclidean { bias: 0.0 }, vector: [4.0000, 0.0000] })
     Item 5: Leaf(Leaf { header: NodeHeaderEuclidean { bias: 0.0 }, vector: [5.0000, 0.0000] })
-    "###);
+    "#);
 
     // delete the last item in a descendants node
     let mut wtxn = handle.env.write_txn().unwrap();
@@ -724,19 +724,19 @@ fn delete_one_item() {
     writer.builder(&mut rng).n_trees(1).build(&mut wtxn).unwrap();
     wtxn.commit().unwrap();
 
-    insta::assert_snapshot!(handle, @r###"
+    insta::assert_snapshot!(handle, @r#"
     ==================
     Dumping index 0
     Root: Metadata { dimensions: 2, items: RoaringBitmap<[0, 2, 4, 5]>, roots: [0], distance: "euclidean" }
     Tree 0: SplitPlaneNormal(SplitPlaneNormal<euclidean> { left: Item(0), right: Tree(4), normal: [1.0000, 0.0000] })
     Tree 1: Descendants(Descendants { descendants: [5] })
     Tree 3: Descendants(Descendants { descendants: [2, 4] })
-    Tree 4: SplitPlaneNormal(SplitPlaneNormal<euclidean> { left: Tree(1), right: Tree(3), normal: [0.0000, 0.0000] })
+    Tree 4: SplitPlaneNormal(SplitPlaneNormal<euclidean> { left: Tree(1), right: Tree(3), normal: "none" })
     Item 0: Leaf(Leaf { header: NodeHeaderEuclidean { bias: 0.0 }, vector: [0.0000, 0.0000] })
     Item 2: Leaf(Leaf { header: NodeHeaderEuclidean { bias: 0.0 }, vector: [2.0000, 0.0000] })
     Item 4: Leaf(Leaf { header: NodeHeaderEuclidean { bias: 0.0 }, vector: [4.0000, 0.0000] })
     Item 5: Leaf(Leaf { header: NodeHeaderEuclidean { bias: 0.0 }, vector: [5.0000, 0.0000] })
-    "###);
+    "#);
 }
 
 #[test]
@@ -860,22 +860,22 @@ fn add_one_item_incrementally() {
     writer.builder(&mut rng).n_trees(1).build(&mut wtxn).unwrap();
     wtxn.commit().unwrap();
 
-    insta::assert_snapshot!(handle, @r###"
+    insta::assert_snapshot!(handle, @r#"
     ==================
     Dumping index 0
     Root: Metadata { dimensions: 2, items: RoaringBitmap<[0, 1, 2, 3, 4, 5]>, roots: [0], distance: "euclidean" }
     Tree 0: SplitPlaneNormal(SplitPlaneNormal<euclidean> { left: Item(0), right: Tree(4), normal: [1.0000, 0.0000] })
     Tree 1: Descendants(Descendants { descendants: [1, 5] })
     Tree 2: Descendants(Descendants { descendants: [3, 4] })
-    Tree 3: SplitPlaneNormal(SplitPlaneNormal<euclidean> { left: Tree(2), right: Item(2), normal: [0.0000, 0.0000] })
-    Tree 4: SplitPlaneNormal(SplitPlaneNormal<euclidean> { left: Tree(1), right: Tree(3), normal: [0.0000, 0.0000] })
+    Tree 3: SplitPlaneNormal(SplitPlaneNormal<euclidean> { left: Tree(2), right: Item(2), normal: "none" })
+    Tree 4: SplitPlaneNormal(SplitPlaneNormal<euclidean> { left: Tree(1), right: Tree(3), normal: "none" })
     Item 0: Leaf(Leaf { header: NodeHeaderEuclidean { bias: 0.0 }, vector: [0.0000, 0.0000] })
     Item 1: Leaf(Leaf { header: NodeHeaderEuclidean { bias: 0.0 }, vector: [1.0000, 0.0000] })
     Item 2: Leaf(Leaf { header: NodeHeaderEuclidean { bias: 0.0 }, vector: [2.0000, 0.0000] })
     Item 3: Leaf(Leaf { header: NodeHeaderEuclidean { bias: 0.0 }, vector: [3.0000, 0.0000] })
     Item 4: Leaf(Leaf { header: NodeHeaderEuclidean { bias: 0.0 }, vector: [4.0000, 0.0000] })
     Item 5: Leaf(Leaf { header: NodeHeaderEuclidean { bias: 0.0 }, vector: [5.0000, 0.0000] })
-    "###);
+    "#);
 
     let mut wtxn = handle.env.write_txn().unwrap();
     let writer = Writer::new(handle.database, 0, 2);
@@ -885,15 +885,15 @@ fn add_one_item_incrementally() {
     writer.builder(&mut rng).n_trees(1).build(&mut wtxn).unwrap();
     wtxn.commit().unwrap();
 
-    insta::assert_snapshot!(handle, @r###"
+    insta::assert_snapshot!(handle, @r#"
     ==================
     Dumping index 0
     Root: Metadata { dimensions: 2, items: RoaringBitmap<[0, 1, 2, 3, 4, 5, 25]>, roots: [0], distance: "euclidean" }
     Tree 0: SplitPlaneNormal(SplitPlaneNormal<euclidean> { left: Item(0), right: Tree(4), normal: [1.0000, 0.0000] })
     Tree 1: Descendants(Descendants { descendants: [1, 5] })
-    Tree 2: SplitPlaneNormal(SplitPlaneNormal<euclidean> { left: Tree(5), right: Item(3), normal: [0.0000, 0.0000] })
-    Tree 3: SplitPlaneNormal(SplitPlaneNormal<euclidean> { left: Tree(2), right: Item(2), normal: [0.0000, 0.0000] })
-    Tree 4: SplitPlaneNormal(SplitPlaneNormal<euclidean> { left: Tree(1), right: Tree(3), normal: [0.0000, 0.0000] })
+    Tree 2: SplitPlaneNormal(SplitPlaneNormal<euclidean> { left: Tree(5), right: Item(3), normal: "none" })
+    Tree 3: SplitPlaneNormal(SplitPlaneNormal<euclidean> { left: Tree(2), right: Item(2), normal: "none" })
+    Tree 4: SplitPlaneNormal(SplitPlaneNormal<euclidean> { left: Tree(1), right: Tree(3), normal: "none" })
     Tree 5: Descendants(Descendants { descendants: [4, 25] })
     Item 0: Leaf(Leaf { header: NodeHeaderEuclidean { bias: 0.0 }, vector: [0.0000, 0.0000] })
     Item 1: Leaf(Leaf { header: NodeHeaderEuclidean { bias: 0.0 }, vector: [1.0000, 0.0000] })
@@ -902,7 +902,7 @@ fn add_one_item_incrementally() {
     Item 4: Leaf(Leaf { header: NodeHeaderEuclidean { bias: 0.0 }, vector: [4.0000, 0.0000] })
     Item 5: Leaf(Leaf { header: NodeHeaderEuclidean { bias: 0.0 }, vector: [5.0000, 0.0000] })
     Item 25: Leaf(Leaf { header: NodeHeaderEuclidean { bias: 0.0 }, vector: [25.0000, 0.0000] })
-    "###);
+    "#);
 
     let mut wtxn = handle.env.write_txn().unwrap();
     let writer = Writer::new(handle.database, 0, 2);
@@ -912,15 +912,15 @@ fn add_one_item_incrementally() {
     writer.builder(&mut rng).n_trees(1).build(&mut wtxn).unwrap();
     wtxn.commit().unwrap();
 
-    insta::assert_snapshot!(handle, @r###"
+    insta::assert_snapshot!(handle, @r#"
     ==================
     Dumping index 0
     Root: Metadata { dimensions: 2, items: RoaringBitmap<[0, 1, 2, 3, 4, 5, 8, 25]>, roots: [0], distance: "euclidean" }
     Tree 0: SplitPlaneNormal(SplitPlaneNormal<euclidean> { left: Item(0), right: Tree(4), normal: [1.0000, 0.0000] })
-    Tree 1: SplitPlaneNormal(SplitPlaneNormal<euclidean> { left: Item(8), right: Tree(6), normal: [0.0000, 0.0000] })
-    Tree 2: SplitPlaneNormal(SplitPlaneNormal<euclidean> { left: Tree(5), right: Item(3), normal: [0.0000, 0.0000] })
-    Tree 3: SplitPlaneNormal(SplitPlaneNormal<euclidean> { left: Tree(2), right: Item(2), normal: [0.0000, 0.0000] })
-    Tree 4: SplitPlaneNormal(SplitPlaneNormal<euclidean> { left: Tree(1), right: Tree(3), normal: [0.0000, 0.0000] })
+    Tree 1: SplitPlaneNormal(SplitPlaneNormal<euclidean> { left: Item(8), right: Tree(6), normal: "none" })
+    Tree 2: SplitPlaneNormal(SplitPlaneNormal<euclidean> { left: Tree(5), right: Item(3), normal: "none" })
+    Tree 3: SplitPlaneNormal(SplitPlaneNormal<euclidean> { left: Tree(2), right: Item(2), normal: "none" })
+    Tree 4: SplitPlaneNormal(SplitPlaneNormal<euclidean> { left: Tree(1), right: Tree(3), normal: "none" })
     Tree 5: Descendants(Descendants { descendants: [4, 25] })
     Tree 6: Descendants(Descendants { descendants: [1, 5] })
     Item 0: Leaf(Leaf { header: NodeHeaderEuclidean { bias: 0.0 }, vector: [0.0000, 0.0000] })
@@ -931,7 +931,7 @@ fn add_one_item_incrementally() {
     Item 5: Leaf(Leaf { header: NodeHeaderEuclidean { bias: 0.0 }, vector: [5.0000, 0.0000] })
     Item 8: Leaf(Leaf { header: NodeHeaderEuclidean { bias: 0.0 }, vector: [8.0000, 0.0000] })
     Item 25: Leaf(Leaf { header: NodeHeaderEuclidean { bias: 0.0 }, vector: [25.0000, 0.0000] })
-    "###);
+    "#);
 }
 
 #[test]
@@ -1016,22 +1016,22 @@ fn create_root_split_node_with_empty_child() {
     writer.builder(&mut rng).n_trees(1).build(&mut wtxn).unwrap();
     wtxn.commit().unwrap();
 
-    insta::assert_snapshot!(handle, @r###"
+    insta::assert_snapshot!(handle, @r#"
     ==================
     Dumping index 0
     Root: Metadata { dimensions: 2, items: RoaringBitmap<[0, 1, 2, 3, 4, 5]>, roots: [0], distance: "euclidean" }
     Tree 0: SplitPlaneNormal(SplitPlaneNormal<euclidean> { left: Item(0), right: Tree(4), normal: [1.0000, 0.0000] })
     Tree 1: Descendants(Descendants { descendants: [1, 5] })
     Tree 2: Descendants(Descendants { descendants: [3, 4] })
-    Tree 3: SplitPlaneNormal(SplitPlaneNormal<euclidean> { left: Tree(2), right: Item(2), normal: [0.0000, 0.0000] })
-    Tree 4: SplitPlaneNormal(SplitPlaneNormal<euclidean> { left: Tree(1), right: Tree(3), normal: [0.0000, 0.0000] })
+    Tree 3: SplitPlaneNormal(SplitPlaneNormal<euclidean> { left: Tree(2), right: Item(2), normal: "none" })
+    Tree 4: SplitPlaneNormal(SplitPlaneNormal<euclidean> { left: Tree(1), right: Tree(3), normal: "none" })
     Item 0: Leaf(Leaf { header: NodeHeaderEuclidean { bias: 0.0 }, vector: [0.0000, 0.0000] })
     Item 1: Leaf(Leaf { header: NodeHeaderEuclidean { bias: 0.0 }, vector: [1.0000, 0.0000] })
     Item 2: Leaf(Leaf { header: NodeHeaderEuclidean { bias: 0.0 }, vector: [2.0000, 0.0000] })
     Item 3: Leaf(Leaf { header: NodeHeaderEuclidean { bias: 0.0 }, vector: [3.0000, 0.0000] })
     Item 4: Leaf(Leaf { header: NodeHeaderEuclidean { bias: 0.0 }, vector: [4.0000, 0.0000] })
     Item 5: Leaf(Leaf { header: NodeHeaderEuclidean { bias: 0.0 }, vector: [5.0000, 0.0000] })
-    "###);
+    "#);
 
     let mut wtxn = handle.env.write_txn().unwrap();
     let writer = Writer::new(handle.database, 0, 2);
@@ -1042,18 +1042,18 @@ fn create_root_split_node_with_empty_child() {
     writer.builder(&mut rng).n_trees(1).build(&mut wtxn).unwrap();
     wtxn.commit().unwrap();
 
-    insta::assert_snapshot!(handle, @r###"
+    insta::assert_snapshot!(handle, @r#"
     ==================
     Dumping index 0
     Root: Metadata { dimensions: 2, items: RoaringBitmap<[0, 2, 3, 4]>, roots: [0], distance: "euclidean" }
     Tree 0: SplitPlaneNormal(SplitPlaneNormal<euclidean> { left: Item(0), right: Tree(3), normal: [1.0000, 0.0000] })
     Tree 2: Descendants(Descendants { descendants: [3, 4] })
-    Tree 3: SplitPlaneNormal(SplitPlaneNormal<euclidean> { left: Tree(2), right: Item(2), normal: [0.0000, 0.0000] })
+    Tree 3: SplitPlaneNormal(SplitPlaneNormal<euclidean> { left: Tree(2), right: Item(2), normal: "none" })
     Item 0: Leaf(Leaf { header: NodeHeaderEuclidean { bias: 0.0 }, vector: [0.0000, 0.0000] })
     Item 2: Leaf(Leaf { header: NodeHeaderEuclidean { bias: 0.0 }, vector: [2.0000, 0.0000] })
     Item 3: Leaf(Leaf { header: NodeHeaderEuclidean { bias: 0.0 }, vector: [3.0000, 0.0000] })
     Item 4: Leaf(Leaf { header: NodeHeaderEuclidean { bias: 0.0 }, vector: [4.0000, 0.0000] })
-    "###);
+    "#);
 
     let mut wtxn = handle.env.write_txn().unwrap();
     let writer = Writer::new(handle.database, 0, 2);
@@ -1063,16 +1063,16 @@ fn create_root_split_node_with_empty_child() {
     writer.builder(&mut rng).n_trees(1).build(&mut wtxn).unwrap();
     wtxn.commit().unwrap();
 
-    insta::assert_snapshot!(handle, @r###"
+    insta::assert_snapshot!(handle, @r#"
     ==================
     Dumping index 0
     Root: Metadata { dimensions: 2, items: RoaringBitmap<[2, 3, 4]>, roots: [3], distance: "euclidean" }
     Tree 2: Descendants(Descendants { descendants: [3, 4] })
-    Tree 3: SplitPlaneNormal(SplitPlaneNormal<euclidean> { left: Tree(2), right: Item(2), normal: [0.0000, 0.0000] })
+    Tree 3: SplitPlaneNormal(SplitPlaneNormal<euclidean> { left: Tree(2), right: Item(2), normal: "none" })
     Item 2: Leaf(Leaf { header: NodeHeaderEuclidean { bias: 0.0 }, vector: [2.0000, 0.0000] })
     Item 3: Leaf(Leaf { header: NodeHeaderEuclidean { bias: 0.0 }, vector: [3.0000, 0.0000] })
     Item 4: Leaf(Leaf { header: NodeHeaderEuclidean { bias: 0.0 }, vector: [4.0000, 0.0000] })
-    "###);
+    "#);
 }
 
 #[test]
@@ -1088,22 +1088,22 @@ fn reuse_node_id() {
     writer.builder(&mut rng).n_trees(1).build(&mut wtxn).unwrap();
     wtxn.commit().unwrap();
 
-    insta::assert_snapshot!(handle, @r###"
+    insta::assert_snapshot!(handle, @r#"
     ==================
     Dumping index 0
     Root: Metadata { dimensions: 2, items: RoaringBitmap<[0, 1, 2, 3, 4, 5]>, roots: [0], distance: "euclidean" }
     Tree 0: SplitPlaneNormal(SplitPlaneNormal<euclidean> { left: Item(0), right: Tree(4), normal: [1.0000, 0.0000] })
     Tree 1: Descendants(Descendants { descendants: [1, 5] })
     Tree 2: Descendants(Descendants { descendants: [3, 4] })
-    Tree 3: SplitPlaneNormal(SplitPlaneNormal<euclidean> { left: Tree(2), right: Item(2), normal: [0.0000, 0.0000] })
-    Tree 4: SplitPlaneNormal(SplitPlaneNormal<euclidean> { left: Tree(1), right: Tree(3), normal: [0.0000, 0.0000] })
+    Tree 3: SplitPlaneNormal(SplitPlaneNormal<euclidean> { left: Tree(2), right: Item(2), normal: "none" })
+    Tree 4: SplitPlaneNormal(SplitPlaneNormal<euclidean> { left: Tree(1), right: Tree(3), normal: "none" })
     Item 0: Leaf(Leaf { header: NodeHeaderEuclidean { bias: 0.0 }, vector: [0.0000, 0.0000] })
     Item 1: Leaf(Leaf { header: NodeHeaderEuclidean { bias: 0.0 }, vector: [1.0000, 0.0000] })
     Item 2: Leaf(Leaf { header: NodeHeaderEuclidean { bias: 0.0 }, vector: [2.0000, 0.0000] })
     Item 3: Leaf(Leaf { header: NodeHeaderEuclidean { bias: 0.0 }, vector: [3.0000, 0.0000] })
     Item 4: Leaf(Leaf { header: NodeHeaderEuclidean { bias: 0.0 }, vector: [4.0000, 0.0000] })
     Item 5: Leaf(Leaf { header: NodeHeaderEuclidean { bias: 0.0 }, vector: [5.0000, 0.0000] })
-    "###);
+    "#);
 
     let mut wtxn = handle.env.write_txn().unwrap();
     let writer = Writer::new(handle.database, 0, 2);
@@ -1114,19 +1114,19 @@ fn reuse_node_id() {
     writer.builder(&mut rng).n_trees(1).build(&mut wtxn).unwrap();
     wtxn.commit().unwrap();
 
-    insta::assert_snapshot!(handle, @r###"
+    insta::assert_snapshot!(handle, @r#"
     ==================
     Dumping index 0
     Root: Metadata { dimensions: 2, items: RoaringBitmap<[0, 1, 2, 5]>, roots: [0], distance: "euclidean" }
     Tree 0: SplitPlaneNormal(SplitPlaneNormal<euclidean> { left: Item(0), right: Tree(4), normal: [1.0000, 0.0000] })
     Tree 1: Descendants(Descendants { descendants: [1, 5] })
     Tree 3: Descendants(Descendants { descendants: [2] })
-    Tree 4: SplitPlaneNormal(SplitPlaneNormal<euclidean> { left: Tree(1), right: Tree(3), normal: [0.0000, 0.0000] })
+    Tree 4: SplitPlaneNormal(SplitPlaneNormal<euclidean> { left: Tree(1), right: Tree(3), normal: "none" })
     Item 0: Leaf(Leaf { header: NodeHeaderEuclidean { bias: 0.0 }, vector: [0.0000, 0.0000] })
     Item 1: Leaf(Leaf { header: NodeHeaderEuclidean { bias: 0.0 }, vector: [1.0000, 0.0000] })
     Item 2: Leaf(Leaf { header: NodeHeaderEuclidean { bias: 0.0 }, vector: [2.0000, 0.0000] })
     Item 5: Leaf(Leaf { header: NodeHeaderEuclidean { bias: 0.0 }, vector: [5.0000, 0.0000] })
-    "###);
+    "#);
 
     let mut wtxn = handle.env.write_txn().unwrap();
     let writer = Writer::new(handle.database, 0, 2);
@@ -1137,22 +1137,22 @@ fn reuse_node_id() {
     writer.builder(&mut rng).n_trees(1).build(&mut wtxn).unwrap();
     wtxn.commit().unwrap();
 
-    insta::assert_snapshot!(handle, @r###"
+    insta::assert_snapshot!(handle, @r#"
     ==================
     Dumping index 0
     Root: Metadata { dimensions: 2, items: RoaringBitmap<[0, 1, 2, 3, 4, 5]>, roots: [0], distance: "euclidean" }
     Tree 0: SplitPlaneNormal(SplitPlaneNormal<euclidean> { left: Item(0), right: Tree(4), normal: [1.0000, 0.0000] })
-    Tree 1: SplitPlaneNormal(SplitPlaneNormal<euclidean> { left: Tree(2), right: Item(1), normal: [0.0000, 0.0000] })
+    Tree 1: SplitPlaneNormal(SplitPlaneNormal<euclidean> { left: Tree(2), right: Item(1), normal: "none" })
     Tree 2: Descendants(Descendants { descendants: [4, 5] })
     Tree 3: Descendants(Descendants { descendants: [2, 3] })
-    Tree 4: SplitPlaneNormal(SplitPlaneNormal<euclidean> { left: Tree(1), right: Tree(3), normal: [0.0000, 0.0000] })
+    Tree 4: SplitPlaneNormal(SplitPlaneNormal<euclidean> { left: Tree(1), right: Tree(3), normal: "none" })
     Item 0: Leaf(Leaf { header: NodeHeaderEuclidean { bias: 0.0 }, vector: [0.0000, 0.0000] })
     Item 1: Leaf(Leaf { header: NodeHeaderEuclidean { bias: 0.0 }, vector: [1.0000, 0.0000] })
     Item 2: Leaf(Leaf { header: NodeHeaderEuclidean { bias: 0.0 }, vector: [2.0000, 0.0000] })
     Item 3: Leaf(Leaf { header: NodeHeaderEuclidean { bias: 0.0 }, vector: [3.0000, 0.0000] })
     Item 4: Leaf(Leaf { header: NodeHeaderEuclidean { bias: 0.0 }, vector: [4.0000, 0.0000] })
     Item 5: Leaf(Leaf { header: NodeHeaderEuclidean { bias: 0.0 }, vector: [5.0000, 0.0000] })
-    "###);
+    "#);
 
     let mut wtxn = handle.env.write_txn().unwrap();
     let writer = Writer::new(handle.database, 0, 2);
@@ -1161,29 +1161,29 @@ fn reuse_node_id() {
     writer.builder(&mut rng).n_trees(2).build(&mut wtxn).unwrap();
     wtxn.commit().unwrap();
 
-    insta::assert_snapshot!(handle, @r###"
+    insta::assert_snapshot!(handle, @r#"
     ==================
     Dumping index 0
     Root: Metadata { dimensions: 2, items: RoaringBitmap<[0, 1, 2, 3, 4, 5]>, roots: [0, 5], distance: "euclidean" }
     Tree 0: SplitPlaneNormal(SplitPlaneNormal<euclidean> { left: Item(0), right: Tree(4), normal: [1.0000, 0.0000] })
-    Tree 1: SplitPlaneNormal(SplitPlaneNormal<euclidean> { left: Tree(2), right: Item(1), normal: [0.0000, 0.0000] })
+    Tree 1: SplitPlaneNormal(SplitPlaneNormal<euclidean> { left: Tree(2), right: Item(1), normal: "none" })
     Tree 2: Descendants(Descendants { descendants: [4, 5] })
     Tree 3: Descendants(Descendants { descendants: [2, 3] })
-    Tree 4: SplitPlaneNormal(SplitPlaneNormal<euclidean> { left: Tree(1), right: Tree(3), normal: [0.0000, 0.0000] })
+    Tree 4: SplitPlaneNormal(SplitPlaneNormal<euclidean> { left: Tree(1), right: Tree(3), normal: "none" })
     Tree 5: SplitPlaneNormal(SplitPlaneNormal<euclidean> { left: Tree(11), right: Item(0), normal: [-1.0000, 0.0000] })
     Tree 6: Descendants(Descendants { descendants: [4, 5] })
-    Tree 7: SplitPlaneNormal(SplitPlaneNormal<euclidean> { left: Item(2), right: Tree(6), normal: [0.0000, 0.0000] })
+    Tree 7: SplitPlaneNormal(SplitPlaneNormal<euclidean> { left: Item(2), right: Tree(6), normal: "none" })
     Tree 8: Descendants(Descendants { descendants: [] })
-    Tree 9: SplitPlaneNormal(SplitPlaneNormal<euclidean> { left: Tree(7), right: Tree(8), normal: [0.0000, 0.0000] })
+    Tree 9: SplitPlaneNormal(SplitPlaneNormal<euclidean> { left: Tree(7), right: Tree(8), normal: "none" })
     Tree 10: Descendants(Descendants { descendants: [1, 3] })
-    Tree 11: SplitPlaneNormal(SplitPlaneNormal<euclidean> { left: Tree(9), right: Tree(10), normal: [0.0000, 0.0000] })
+    Tree 11: SplitPlaneNormal(SplitPlaneNormal<euclidean> { left: Tree(9), right: Tree(10), normal: "none" })
     Item 0: Leaf(Leaf { header: NodeHeaderEuclidean { bias: 0.0 }, vector: [0.0000, 0.0000] })
     Item 1: Leaf(Leaf { header: NodeHeaderEuclidean { bias: 0.0 }, vector: [1.0000, 0.0000] })
     Item 2: Leaf(Leaf { header: NodeHeaderEuclidean { bias: 0.0 }, vector: [2.0000, 0.0000] })
     Item 3: Leaf(Leaf { header: NodeHeaderEuclidean { bias: 0.0 }, vector: [3.0000, 0.0000] })
     Item 4: Leaf(Leaf { header: NodeHeaderEuclidean { bias: 0.0 }, vector: [4.0000, 0.0000] })
     Item 5: Leaf(Leaf { header: NodeHeaderEuclidean { bias: 0.0 }, vector: [5.0000, 0.0000] })
-    "###);
+    "#);
 }
 
 #[test]
