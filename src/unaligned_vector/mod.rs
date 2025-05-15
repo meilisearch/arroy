@@ -53,15 +53,6 @@ pub struct UnalignedVector<Codec: UnalignedVectorCodec> {
 }
 
 impl<Codec: UnalignedVectorCodec> UnalignedVector<Codec> {
-    /// Creates an unaligned slice of something. It's up to the caller to ensure
-    /// it will be used with the same type it was created initially.
-    pub(crate) fn reset(vector: &mut Cow<'_, UnalignedVector<Codec>>) {
-        match vector {
-            Cow::Borrowed(slice) => *vector = Cow::Owned(vec![0; slice.as_bytes().len()]),
-            Cow::Owned(bytes) => bytes.fill(0),
-        }
-    }
-
     /// Creates an unaligned vector from a slice of bytes.
     /// Don't allocate.
     pub fn from_bytes(bytes: &[u8]) -> Result<Cow<UnalignedVector<Codec>>, SizeMismatch> {
