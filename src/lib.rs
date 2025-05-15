@@ -83,6 +83,7 @@ mod key;
 mod metadata;
 mod node;
 mod node_id;
+mod nohash_hasher;
 mod parallel;
 mod reader;
 mod roaring;
