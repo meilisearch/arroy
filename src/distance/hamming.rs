@@ -1,4 +1,5 @@
 use crate::distance::Distance;
+use crate::internals::Side;
 use crate::node::Leaf;
 use crate::parallel::ImmutableSubsetLeafs;
 use crate::unaligned_vector::{Binary, UnalignedVector};
@@ -106,6 +107,19 @@ impl Distance for Hamming {
         let ret =
             p.as_bytes().iter().zip(q.as_bytes()).map(|(u, v)| (u & v).count_ones()).sum::<u32>();
         ret as f32
+    }
+
+    fn side<R: Rng>(
+        normal_plane: &UnalignedVector<Self::VectorCodec>,
+        node: &Leaf<Self>,
+        _rng: &mut R,
+    ) -> Side {
+        let dot = Self::margin_no_header(&node.vector, normal_plane);
+        if dot > 0.0 {
+            Side::Right
+        } else {
+            Side::Left
+        }
     }
 }
 
