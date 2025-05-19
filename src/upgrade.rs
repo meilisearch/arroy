@@ -7,9 +7,9 @@ use heed::{
 
 use crate::{
     distance::Cosine,
-    key::Key,
+    key::{Key, KeyCodec, Prefix, PrefixCodec},
     metadata::MetadataCodec,
-    node::{Node, NodeCodec},
+    node::{Node, NodeCodec, SplitPlaneNormal},
     node_id::NodeMode,
     roaring::RoaringBitmapCodec,
     version::{Version, VersionCodec},
@@ -145,6 +145,61 @@ pub fn from_0_5_to_0_6<C: Distance>(
                 &Key::version(index),
                 &version,
             )?;
+        }
+    }
+
+    Ok(())
+}
+
+/// Upgrade an arroy database from v0.6 to v0.7.
+///
+/// What changed:
+/// - `SplitPlaneNormal::normal` is now `Option<u64>`
+/// - `SplitPlaneNormal::normal` is now `None` if the normal is the zero vector
+/// - The version must be written in each index
+pub fn from_0_6_to_0_7<C: Distance>(
+    rtxn: &RoTxn,
+    read_database: Database<C>,
+    wtxn: &mut RwTxn,
+    write_database: Database<C>,
+) -> Result<()> {
+    let version = Version {
+        major: env!("CARGO_PKG_VERSION_MAJOR").parse().unwrap(),
+        minor: env!("CARGO_PKG_VERSION_MINOR").parse().unwrap(),
+        patch: env!("CARGO_PKG_VERSION_PATCH").parse().unwrap(),
+    };
+
+    for index in 0..=u16::MAX {
+        let metadata = Key::metadata(index);
+        if write_database.remap_data_type::<MetadataCodec>().get(wtxn, &metadata)?.is_some() {
+            write_database.remap_data_type::<VersionCodec>().put(
+                wtxn,
+                &Key::version(index),
+                &version,
+            )?;
+        } else {
+            // If the metadata is not present, it means the index was never built and there is no nodes to update.
+            continue;
+        }
+
+        for ret in read_database
+            .remap_key_type::<PrefixCodec>()
+            .prefix_iter(rtxn, &Prefix::tree(index))?
+            .remap_key_type::<KeyCodec>()
+        {
+            let (key, node) = ret?;
+            if let Node::SplitPlaneNormal(split) = node {
+                // At this point all normal should be Some
+                if let Some(normal) = split.normal {
+                    if normal.is_zero() {
+                        write_database.put(
+                            wtxn,
+                            &key,
+                            &Node::SplitPlaneNormal(SplitPlaneNormal { normal: None, ..split }),
+                        )?;
+                    }
+                }
+            }
         }
     }
 
