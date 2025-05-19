@@ -41,8 +41,8 @@ impl Distance for Hamming {
         hamming_bitwise_fast(p.vector.as_bytes(), q.vector.as_bytes())
     }
 
-    fn normalized_distance(d: f32, dimensions: usize) -> f32 {
-        d.max(0.0) / dimensions as f32
+    fn normalized_distance(d: f32, _: usize) -> f32 {
+        d
     }
 
     fn norm_no_header(v: &UnalignedVector<Self::VectorCodec>) -> f32 {
