@@ -109,6 +109,13 @@ impl Distance for Hamming {
         ret as f32
     }
 
+    fn pq_distance(distance: f32, margin: f32, side: Side) -> f32 {
+        match side {
+            Side::Left => distance - margin,
+            Side::Right => distance - (1.0 - margin),
+        }
+    }
+
     fn side<R: Rng>(
         normal_plane: &UnalignedVector<Self::VectorCodec>,
         node: &Leaf<Self>,
