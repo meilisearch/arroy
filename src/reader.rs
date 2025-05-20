@@ -342,18 +342,16 @@ impl<'t, D: Distance> Reader<'t, D> {
                 Node::Descendants(_) | Node::SplitPlaneNormal(_) => unreachable!(),
             };
             let distance = D::built_distance(query_leaf, &leaf);
-            nns_distances.push(Reverse((OrderedFloat(distance), nn)));
+            nns_distances.push((OrderedFloat(distance), nn));
         }
 
-        let mut sorted_nns = BinaryHeap::from(nns_distances);
-        let capacity = opt.count.min(sorted_nns.len());
-        let mut output = Vec::with_capacity(capacity);
-        while let Some(Reverse((OrderedFloat(dist), item))) = sorted_nns.pop() {
-            if output.len() == capacity {
-                break;
-            }
-            output.push((item, D::normalized_distance(dist, self.dimensions)));
-        }
+        // Keep only the k nearest elements
+        let k = opt.count.min(nns_distances.len());
+        let top_k_nns = median_top_k(k, nns_distances);
+        let output = top_k_nns
+            .into_iter()
+            .map(|(OrderedFloat(dist), item)| (item, D::normalized_distance(dist, self.dimensions)))
+            .collect();
 
         Ok(output)
     }
@@ -547,4 +545,38 @@ pub fn item_leaf<'a, D: Distance>(
         Some(Node::Descendants(_)) => Ok(None),
         None => Ok(None),
     }
+}
+
+#[inline]
+// FIXME: change `v` to an impl Iterator
+pub fn median_top_k(k: usize, v: Vec<(OrderedFloat<f32>, u32)>) -> Vec<(OrderedFloat<f32>, u32)> {
+    let mut buffer = Vec::with_capacity(2 * k.max(1));
+    let mut threshold = (OrderedFloat(f32::MAX), u32::MAX);
+
+    // prefill with no threshold checks
+    let mut v = v.into_iter();
+    buffer.extend(v.take(k));
+
+    for item in v {
+        if item >= threshold {
+            continue;
+        }
+        if buffer.len() == 2 * k {
+            let (_, &mut median, _) = buffer.select_nth_unstable(k - 1);
+            threshold = median;
+            buffer.truncate(k);
+        }
+
+        // avoids buffer resizing from being inlined from vec.push()
+        let uninit = buffer.spare_capacity_mut();
+        uninit[0].write(item);
+        // SAFETY: we would have panicked above
+        unsafe {
+            buffer.set_len(buffer.len() + 1);
+        }
+    }
+
+    buffer.sort_unstable();
+    buffer.truncate(k);
+    buffer
 }
