@@ -115,17 +115,20 @@ impl fmt::Debug for ItemIds<'_> {
 pub struct SplitPlaneNormal<'a, D: Distance> {
     pub left: NodeId,
     pub right: NodeId,
-    pub normal: Cow<'a, UnalignedVector<D::VectorCodec>>,
+    pub normal: Option<Cow<'a, UnalignedVector<D::VectorCodec>>>,
 }
 
 impl<D: Distance> fmt::Debug for SplitPlaneNormal<'_, D> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let name = format!("SplitPlaneNormal<{}>", D::name());
-        f.debug_struct(&name)
-            .field("left", &self.left)
-            .field("right", &self.right)
-            .field("normal", &self.normal)
-            .finish()
+        let mut debug = f.debug_struct(&name);
+
+        debug.field("left", &self.left).field("right", &self.right);
+        match &self.normal {
+            Some(normal) => debug.field("normal", &normal),
+            None => debug.field("normal", &"none"),
+        };
+        debug.finish()
     }
 }
 
@@ -153,7 +156,9 @@ impl<'a, D: Distance> BytesEncode<'a> for NodeCodec<D> {
                 bytes.push(SPLIT_PLANE_NORMAL_TAG);
                 bytes.extend_from_slice(&left.to_bytes());
                 bytes.extend_from_slice(&right.to_bytes());
-                bytes.extend_from_slice(normal.as_bytes());
+                if let Some(normal) = normal {
+                    bytes.extend_from_slice(normal.as_bytes());
+                }
             }
             Node::Descendants(Descendants { descendants }) => {
                 bytes.push(DESCENDANTS_TAG);
@@ -179,11 +184,12 @@ impl<'a, D: Distance> BytesDecode<'a> for NodeCodec<D> {
             [SPLIT_PLANE_NORMAL_TAG, bytes @ ..] => {
                 let (left, bytes) = NodeId::from_bytes(bytes);
                 let (right, bytes) = NodeId::from_bytes(bytes);
-                Ok(Node::SplitPlaneNormal(SplitPlaneNormal {
-                    normal: UnalignedVector::<D::VectorCodec>::from_bytes(bytes)?,
-                    left,
-                    right,
-                }))
+                let normal = if bytes.is_empty() {
+                    None
+                } else {
+                    Some(UnalignedVector::<D::VectorCodec>::from_bytes(bytes)?)
+                };
+                Ok(Node::SplitPlaneNormal(SplitPlaneNormal { normal, left, right }))
             }
             [DESCENDANTS_TAG, bytes @ ..] => Ok(Node::Descendants(Descendants {
                 descendants: Cow::Owned(RoaringBitmap::deserialize_from(bytes)?),
