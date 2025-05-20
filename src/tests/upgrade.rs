@@ -5,7 +5,6 @@ use crate::distance::Euclidean;
 use crate::upgrade::from_0_6_to_0_7;
 use crate::Database;
 
-
 #[test]
 fn upgrade_v0_6_to_v0_7() {
     let dir = tempfile::tempdir().unwrap();
@@ -14,7 +13,7 @@ fn upgrade_v0_6_to_v0_7() {
         unsafe { EnvOpenOptions::new().map_size(200 * 1024 * 1024).open(dir.path()) }.unwrap();
     let mut rtxn = env.read_txn().unwrap();
     let database: Database<Euclidean> = env.open_database(&mut rtxn, None).unwrap().unwrap();
-    
+
     let mut wtxn = env.write_txn().unwrap();
 
     /* The original database in v0.6 looks like this:

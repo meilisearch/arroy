@@ -12,8 +12,8 @@ use crate::{Database, Distance, MetadataCodec, NodeCodec, NodeMode, Reader};
 mod binary;
 mod binary_quantized;
 mod reader;
-mod writer;
 mod upgrade;
+mod writer;
 
 pub struct DatabaseHandle<D> {
     pub env: Env<WithTls>,
