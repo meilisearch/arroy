@@ -13,6 +13,7 @@ mod binary;
 mod binary_quantized;
 mod reader;
 mod writer;
+mod upgrade;
 
 pub struct DatabaseHandle<D> {
     pub env: Env<WithTls>,
