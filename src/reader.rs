@@ -1,4 +1,3 @@
-use std::cmp::Reverse;
 use std::collections::BinaryHeap;
 use std::iter::repeat;
 use std::marker;
@@ -347,7 +346,7 @@ impl<'t, D: Distance> Reader<'t, D> {
 
         // Keep only the k nearest elements
         let k = opt.count.min(nns_distances.len());
-        let top_k_nns = median_top_k(k, nns_distances);
+        let top_k_nns = median_based_top_k(k, nns_distances);
         let output = top_k_nns
             .into_iter()
             .map(|(OrderedFloat(dist), item)| (item, D::normalized_distance(dist, self.dimensions)))
@@ -549,13 +548,13 @@ pub fn item_leaf<'a, D: Distance>(
 
 #[inline]
 // FIXME: change `v` to an impl Iterator
-pub fn median_top_k(k: usize, v: Vec<(OrderedFloat<f32>, u32)>) -> Vec<(OrderedFloat<f32>, u32)> {
+pub fn median_based_top_k(k: usize, v: Vec<(OrderedFloat<f32>, u32)>) -> Vec<(OrderedFloat<f32>, u32)> {
     let mut buffer = Vec::with_capacity(2 * k.max(1));
     let mut threshold = (OrderedFloat(f32::MAX), u32::MAX);
 
     // prefill with no threshold checks
     let mut v = v.into_iter();
-    buffer.extend(v.take(k));
+    buffer.extend((&mut v).take(k));
 
     for item in v {
         if item >= threshold {
