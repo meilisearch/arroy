@@ -3,13 +3,13 @@ use std::fmt;
 use std::mem::size_of;
 
 use bytemuck::{bytes_of, cast_slice, pod_read_unaligned};
-use byteorder::{ByteOrder, NativeEndian};
+use byteorder::{BigEndian, ByteOrder, NativeEndian};
 use heed::{BoxedError, BytesDecode, BytesEncode};
 use roaring::RoaringBitmap;
 
 use crate::distance::Distance;
 use crate::unaligned_vector::UnalignedVector;
-use crate::{ItemId, NodeId};
+use crate::ItemId;
 
 #[derive(Clone, Debug)]
 pub enum Node<'a, D: Distance> {
@@ -113,8 +113,8 @@ impl fmt::Debug for ItemIds<'_> {
 }
 
 pub struct SplitPlaneNormal<'a, D: Distance> {
-    pub left: NodeId,
-    pub right: NodeId,
+    pub left: ItemId,
+    pub right: ItemId,
     pub normal: Option<Cow<'a, UnalignedVector<D::VectorCodec>>>,
 }
 
@@ -154,8 +154,8 @@ impl<'a, D: Distance> BytesEncode<'a> for NodeCodec<D> {
             }
             Node::SplitPlaneNormal(SplitPlaneNormal { normal, left, right }) => {
                 bytes.push(SPLIT_PLANE_NORMAL_TAG);
-                bytes.extend_from_slice(&left.to_bytes());
-                bytes.extend_from_slice(&right.to_bytes());
+                bytes.extend_from_slice(&left.to_be_bytes());
+                bytes.extend_from_slice(&right.to_be_bytes());
                 if let Some(normal) = normal {
                     bytes.extend_from_slice(normal.as_bytes());
                 }
@@ -182,8 +182,10 @@ impl<'a, D: Distance> BytesDecode<'a> for NodeCodec<D> {
                 Ok(Node::Leaf(Leaf { header, vector }))
             }
             [SPLIT_PLANE_NORMAL_TAG, bytes @ ..] => {
-                let (left, bytes) = NodeId::from_bytes(bytes);
-                let (right, bytes) = NodeId::from_bytes(bytes);
+                let left = BigEndian::read_u32(bytes);
+                let bytes = &bytes[std::mem::size_of_val(&left)..];
+                let right = BigEndian::read_u32(bytes);
+                let bytes = &bytes[std::mem::size_of_val(&right)..];
                 let normal = if bytes.is_empty() {
                     None
                 } else {
