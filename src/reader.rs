@@ -202,6 +202,11 @@ impl<'t, D: Distance> Reader<'t, D> {
         self.index
     }
 
+    /// Returns the version of the database.
+    pub fn version(&self) -> Version {
+        self.version
+    }
+
     /// Returns the stats of the trees of this database.
     pub fn stats(&self, rtxn: &RoTxn) -> Result<Stats> {
         fn recursive_depth<D: Distance>(
