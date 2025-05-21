@@ -1,19 +1,21 @@
 //! Everything related to the upgrade process.
 
+use std::borrow::Cow;
+
 use heed::{
     types::{Bytes, LazyDecode, Unit},
     RoTxn, RwTxn,
 };
+use roaring::RoaringBitmap;
 
 use crate::{
     distance::Cosine,
     key::{Key, KeyCodec, Prefix, PrefixCodec},
     metadata::MetadataCodec,
     node::{
-        GenericReadNode, GenericReadNodeCodecFromV0_4_0, Node, SplitPlaneNormal,
-        WriteNodeCodecForV0_5_0,
+        Descendants, GenericReadNode, GenericReadNodeCodecFromV0_4_0, GenericReadSplitPlaneNormal, Node, SplitPlaneNormal, WriteNodeCodecForV0_5_0
     },
-    node_id::NodeMode,
+    node_id::{NodeId, NodeMode},
     roaring::RoaringBitmapCodec,
     version::{Version, VersionCodec},
     Database, Distance, Error, Result,
@@ -173,11 +175,13 @@ pub fn from_0_5_to_0_6<C: Distance>(
     Ok(())
 }
 
-/// Upgrade an arroy database from v0.6 to v0.7.
+/// Upgrade an arroy database from v0.6 to the current version.
 ///
 /// What changed:
 /// - `SplitPlaneNormal::normal` is now `Option<u64>`
 /// - `SplitPlaneNormal::normal` is now `None` if the normal is the zero vector
+/// - `SplitPlaneNormal::normal` does not point to an item directly anymore and
+///     only store a simple `ItemId` instead of the `NodeId` we had before
 /// - The version must be written in each index
 pub fn from_0_6_to_current<C: Distance>(
     rtxn: &RoTxn,
@@ -200,22 +204,63 @@ pub fn from_0_6_to_current<C: Distance>(
             continue;
         }
 
+        let mut last_tree_id = match read_database.remap_key_type::<PrefixCodec>().rev_prefix_iter(&rtxn, &Prefix::tree(index))?.remap_types::<KeyCodec, Bytes>().next() {
+            Some(ret) => ret?.0.node.item,
+            // If there is no tree nodes at all, there is nothing else to update in this version
+            None => continue,
+        };
+
         for ret in read_database
             .remap_key_type::<PrefixCodec>()
             .prefix_iter(rtxn, &Prefix::tree(index))?
-            .remap_key_type::<KeyCodec>()
+            .remap_types::<KeyCodec, GenericReadNodeCodecFromV0_4_0<C>>()
         {
             let (key, node) = ret?;
-            if let Node::SplitPlaneNormal(split) = node {
-                // At this point all normal should be Some
-                if let Some(normal) = split.normal {
-                    if normal.is_zero() {
+            if let GenericReadNode::SplitPlaneNormal(GenericReadSplitPlaneNormal { normal, left, right }) = node {
+                let mut must_rewrite = false;
+
+                // For all normal that are `None`, the split node must be rewritten
+                if normal.is_none() {
+                    must_rewrite = true;
+                }
+                let left = match left.mode {
+                    NodeMode::Item => {
+                        must_rewrite = true;
+                        last_tree_id += 1;
                         write_database.put(
                             wtxn,
-                            &key,
-                            &Node::SplitPlaneNormal(SplitPlaneNormal { normal: None, ..split }),
+                            &Key::tree(index, last_tree_id),
+                            &Node::Descendants(Descendants { descendants: Cow::Owned(RoaringBitmap::from_iter(Some(left.item))) }),
                         )?;
-                    }
+                        last_tree_id
+                    },
+                    NodeMode::Tree => left.item,
+                    NodeMode::Metadata => unreachable!("Metadata cannot be linked to a split node"),
+                    NodeMode::Updated => unreachable!("Updated cannot be linked to a split node"),
+                };
+                let right = match right.mode {
+                    NodeMode::Item => {
+                        must_rewrite = true;
+                        last_tree_id += 1;
+                        write_database.put(
+                            wtxn,
+                            &Key::tree(index, last_tree_id),
+                            &Node::Descendants(Descendants { descendants: Cow::Owned(RoaringBitmap::from_iter(Some(right.item))) }),
+                        )?;
+                        last_tree_id
+                    },
+                    NodeMode::Tree => right.item,
+                    NodeMode::Metadata => unreachable!("Metadata cannot be linked to a split node"),
+                    NodeMode::Updated => unreachable!("Updated cannot be linked to a split node"),
+                };
+
+
+                if must_rewrite {
+                    write_database.put(
+                        wtxn,
+                        &key,
+                        &Node::SplitPlaneNormal(SplitPlaneNormal { normal, left, right }),
+                    )?;
                 }
             }
         }
