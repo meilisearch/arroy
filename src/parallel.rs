@@ -16,7 +16,6 @@ use roaring::{RoaringBitmap, RoaringTreemap};
 use crate::internals::{KeyCodec, Leaf, NodeCodec};
 use crate::key::{Key, Prefix, PrefixCodec};
 use crate::node::{Node, SplitPlaneNormal};
-use crate::node_id::NodeMode;
 use crate::{Database, Distance, Error, ItemId, Result};
 
 /// A structure to store the tree nodes out of the heed database.

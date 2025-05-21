@@ -2,7 +2,7 @@ use heed::EnvOpenOptions;
 
 use super::DatabaseHandle;
 use crate::distance::Euclidean;
-use crate::upgrade::from_0_6_to_0_7;
+use crate::upgrade::from_0_6_to_current;
 use crate::Database;
 
 #[test]
@@ -33,7 +33,7 @@ fn upgrade_v0_6_to_v0_7() {
     Item 5: Leaf(Leaf { header: NodeHeaderEuclidean { bias: 0.0 }, vector: [5.0000, 0.0000] })
     */
 
-    from_0_6_to_0_7(&mut rtxn, database, &mut wtxn, database).unwrap();
+    from_0_6_to_current(&mut rtxn, database, &mut wtxn, database).unwrap();
     wtxn.commit().unwrap();
     drop(rtxn);
 

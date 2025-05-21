@@ -9,7 +9,10 @@ use crate::{
     distance::Cosine,
     key::{Key, KeyCodec, Prefix, PrefixCodec},
     metadata::MetadataCodec,
-    node::{Node, NodeCodec, SplitPlaneNormal},
+    node::{
+        GenericReadNode, GenericReadNodeCodecFromV0_4_0, Node, SplitPlaneNormal,
+        WriteNodeCodecForV0_5_0,
+    },
     node_id::NodeMode,
     roaring::RoaringBitmapCodec,
     version::{Version, VersionCodec},
@@ -47,8 +50,15 @@ pub fn cosine_from_0_4_to_0_5(
     // We need to update EVERY single nodes, thus we can clear the whole DB initially
     write_database.clear(wtxn)?;
 
+    // To write the split plane normal we need to know the dimension of the vectors.
+    // Since the `OldNodeMode` starts by the item we're guaranteed to see the dimension before the split plane normal.
+    let mut dimension = None;
+
     // Then we **must** iterate over everything in the database to be sure we don't miss anything.
-    for ret in read_database.remap_data_type::<LazyDecode<NodeCodec<Cosine>>>().iter(rtxn)? {
+    for ret in read_database
+        .remap_data_type::<LazyDecode<GenericReadNodeCodecFromV0_4_0<Cosine>>>()
+        .iter(rtxn)?
+    {
         let (mut key, value) = ret?;
         let old_mode = OldNodeMode::try_from(key.node.mode as u8)
             .map_err(|_| Error::CannotDecodeKeyMode { mode: key.node.mode })?;
@@ -56,6 +66,13 @@ pub fn cosine_from_0_4_to_0_5(
         match old_mode {
             OldNodeMode::Item => {
                 key.node.mode = NodeMode::Item;
+                let item = value.decode().unwrap();
+                match item {
+                    GenericReadNode::Leaf(leaf) => {
+                        dimension = Some(leaf.vector.len());
+                    }
+                    _ => unreachable!("The v0.4.0 arroy database is corrupted."),
+                }
                 // In case of an item there is nothing else to do
                 write_database.remap_data_type::<Bytes>().put(
                     wtxn,
@@ -68,7 +85,7 @@ pub fn cosine_from_0_4_to_0_5(
                 // Meilisearch is only using Cosine distance at this point
                 let mut tree_node = value.decode().unwrap();
                 // The leaf and descendants tree node don't contains any node mode
-                if let Node::SplitPlaneNormal(split) = &mut tree_node {
+                if let GenericReadNode::SplitPlaneNormal(split) = &mut tree_node {
                     let left_old_mode = OldNodeMode::try_from(split.left.mode as u8)
                         .map_err(|_| Error::CannotDecodeKeyMode { mode: split.left.mode })?;
                     split.left.mode = match left_old_mode {
@@ -85,7 +102,11 @@ pub fn cosine_from_0_4_to_0_5(
                         OldNodeMode::Metadata => NodeMode::Metadata,
                     };
                 }
-                write_database.put(wtxn, &key, &tree_node)?;
+                write_database.remap_data_type::<WriteNodeCodecForV0_5_0<Cosine>>().put(
+                    wtxn,
+                    &key,
+                    &(tree_node, dimension.unwrap()),
+                )?;
             }
             OldNodeMode::Metadata => {
                 match key.node.item {
@@ -122,6 +143,7 @@ pub fn cosine_from_0_4_to_0_5(
 }
 
 /// Upgrade an arroy database from v0.5 to v0.6 without rebuilding the trees.
+/// The only addition between the two versions is that we now store the version of the database.
 pub fn from_0_5_to_0_6<C: Distance>(
     rtxn: &RoTxn,
     read_database: Database<C>,
@@ -129,9 +151,9 @@ pub fn from_0_5_to_0_6<C: Distance>(
     write_database: Database<C>,
 ) -> Result<()> {
     let version = Version {
-        major: env!("CARGO_PKG_VERSION_MAJOR").parse().unwrap(),
-        minor: env!("CARGO_PKG_VERSION_MINOR").parse().unwrap(),
-        patch: env!("CARGO_PKG_VERSION_PATCH").parse().unwrap(),
+        major: 0,
+        minor: 6,
+        patch: 0,
     };
 
     // Note that we have to write the versions into each database.
@@ -157,17 +179,13 @@ pub fn from_0_5_to_0_6<C: Distance>(
 /// - `SplitPlaneNormal::normal` is now `Option<u64>`
 /// - `SplitPlaneNormal::normal` is now `None` if the normal is the zero vector
 /// - The version must be written in each index
-pub fn from_0_6_to_0_7<C: Distance>(
+pub fn from_0_6_to_current<C: Distance>(
     rtxn: &RoTxn,
     read_database: Database<C>,
     wtxn: &mut RwTxn,
     write_database: Database<C>,
 ) -> Result<()> {
-    let version = Version {
-        major: env!("CARGO_PKG_VERSION_MAJOR").parse().unwrap(),
-        minor: env!("CARGO_PKG_VERSION_MINOR").parse().unwrap(),
-        patch: env!("CARGO_PKG_VERSION_PATCH").parse().unwrap(),
-    };
+    let version = Version::current();
 
     for index in 0..=u16::MAX {
         let metadata = Key::metadata(index);

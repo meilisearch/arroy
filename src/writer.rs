@@ -15,7 +15,6 @@ use crate::distance::Distance;
 use crate::internals::{KeyCodec, Side};
 use crate::item_iter::ItemIter;
 use crate::node::{Descendants, ItemIds, Leaf, SplitPlaneNormal};
-use crate::node_id::NodeMode;
 use crate::parallel::{
     ConcurrentNodeIds, ImmutableLeafs, ImmutableSubsetLeafs, ImmutableTrees, TmpNodes,
     TmpNodesReader,
@@ -24,7 +23,7 @@ use crate::reader::item_leaf;
 use crate::unaligned_vector::UnalignedVector;
 use crate::version::{Version, VersionCodec};
 use crate::{
-    Database, Error, ItemId, Key, Metadata, MetadataCodec, Node, NodeCodec, NodeId, Prefix,
+    Database, Error, ItemId, Key, Metadata, MetadataCodec, Node, NodeCodec, Prefix,
     PrefixCodec, Result,
 };
 
@@ -558,6 +557,11 @@ impl<D: Distance> Writer<D> {
             &Key::metadata(self.index),
             &metadata,
         )?;
+        self.database.remap_data_type::<VersionCodec>().put(
+            wtxn,
+            &Key::version(self.index),
+            &Version::current(),
+        )?;
 
         Ok(())
     }
@@ -778,11 +782,7 @@ impl<D: Distance> Writer<D> {
             &metadata,
         )?;
         tracing::debug!("write the version...");
-        let version = Version {
-            major: env!("CARGO_PKG_VERSION_MAJOR").parse().unwrap(),
-            minor: env!("CARGO_PKG_VERSION_MINOR").parse().unwrap(),
-            patch: env!("CARGO_PKG_VERSION_PATCH").parse().unwrap(),
-        };
+        let version = Version::current();
         self.database.remap_data_type::<VersionCodec>().put(
             wtxn,
             &Key::version(self.index),
