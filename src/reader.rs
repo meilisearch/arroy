@@ -208,7 +208,7 @@ impl<'t, D: Distance> Reader<'t, D> {
                 Node::SplitPlaneNormal(SplitPlaneNormal { normal, left, right }) => {
                     let left = recursive_depth(rtxn, database, index, left)?;
                     let right = recursive_depth(rtxn, database, index, right)?;
-                    let is_zero_normal = normal.is_zero() as usize;
+                    let is_zero_normal = normal.map_or(1, |normal| normal.is_zero() as usize);
 
                     Ok(TreeStats {
                         depth: 1 + left.depth.max(right.depth),
@@ -321,7 +321,10 @@ impl<'t, D: Distance> Reader<'t, D> {
                     }
                 }
                 Node::SplitPlaneNormal(SplitPlaneNormal { normal, left, right }) => {
-                    let margin = D::margin_no_header(&normal, &query_leaf.vector);
+                    let margin = match normal {
+                        Some(normal) => D::margin_no_header(&normal, &query_leaf.vector),
+                        None => 0.0,
+                    };
                     queue.push((OrderedFloat(D::pq_distance(dist, margin, Side::Left)), left));
                     queue.push((OrderedFloat(D::pq_distance(dist, margin, Side::Right)), right));
                 }
@@ -389,7 +392,7 @@ impl<'t, D: Distance> Reader<'t, D> {
                         writeln!(writer, "\t\t{} [label=\"{}\"]", key.node.item, key.node.item,)?
                     }
                     Node::SplitPlaneNormal(SplitPlaneNormal { normal, left, right }) => {
-                        if normal.is_zero() {
+                        if normal.is_none() {
                             writeln!(writer, "\t\t{} [color=red]", key.node.item)?;
                         }
                         writeln!(
