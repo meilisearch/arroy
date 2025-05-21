@@ -55,8 +55,11 @@ fn upgrade_v0_6_to_v0_7() {
     insta::assert_snapshot!(format!("{:?}", reader.item_vector(&rtxn, 0).unwrap()), @"Some([0.0, 0.0])");
     insta::assert_snapshot!(format!("{:?}", reader.item_vector(&rtxn, 25).unwrap()), @"None");
 
-
-    let nns = reader.nns(3).search_k(NonZeroUsize::new(100).unwrap()).by_vector(&rtxn, &[1.0, 0.0]).unwrap();
+    let nns = reader
+        .nns(3)
+        .search_k(NonZeroUsize::new(100).unwrap())
+        .by_vector(&rtxn, &[1.0, 0.0])
+        .unwrap();
     insta::assert_snapshot!(NnsRes(Some(nns)), @r"
     id(1): distance(0)
     id(0): distance(1)

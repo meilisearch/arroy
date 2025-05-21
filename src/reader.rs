@@ -302,7 +302,7 @@ impl<'t, D: Distance> Reader<'t, D> {
     fn database_get(&self, rtxn: &'t RoTxn, key: &Key) -> Result<Option<GenericReadNode<D>>> {
         match self.version {
             // the node format didn't change between v0.4.0 and v0.6.0 included
-            Version { major: 0, minor: 4 | 5 | 6, patch: _ } => Ok(self
+            Version { major: 0, minor: 4..=6, patch: _ } => Ok(self
                 .database
                 .remap_data_type::<GenericReadNodeCodecFromV0_4_0<D>>()
                 .get(rtxn, key)?),
