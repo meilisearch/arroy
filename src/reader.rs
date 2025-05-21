@@ -548,7 +548,7 @@ impl<'t, D: Distance> Reader<'t, D> {
         rtxn: &RoTxn,
         node_id: NodeId,
     ) -> Result<(RoaringBitmap, RoaringBitmap)> {
-        use crate::node::{SplitPlaneNormal};
+        use crate::node::SplitPlaneNormal;
 
         match self
             .database
