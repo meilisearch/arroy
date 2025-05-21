@@ -23,8 +23,8 @@ use crate::reader::item_leaf;
 use crate::unaligned_vector::UnalignedVector;
 use crate::version::{Version, VersionCodec};
 use crate::{
-    Database, Error, ItemId, Key, Metadata, MetadataCodec, Node, NodeCodec, Prefix,
-    PrefixCodec, Result,
+    Database, Error, ItemId, Key, Metadata, MetadataCodec, Node, NodeCodec, Prefix, PrefixCodec,
+    Result,
 };
 
 /// The options available when building the arroy database.

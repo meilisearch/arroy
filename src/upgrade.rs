@@ -13,9 +13,10 @@ use crate::{
     key::{Key, KeyCodec, Prefix, PrefixCodec},
     metadata::MetadataCodec,
     node::{
-        Descendants, GenericReadNode, GenericReadNodeCodecFromV0_4_0, GenericReadSplitPlaneNormal, Node, SplitPlaneNormal, WriteNodeCodecForV0_5_0
+        Descendants, GenericReadNode, GenericReadNodeCodecFromV0_4_0, GenericReadSplitPlaneNormal,
+        Node, SplitPlaneNormal, WriteNodeCodecForV0_5_0,
     },
-    node_id::{NodeId, NodeMode},
+    node_id::NodeMode,
     roaring::RoaringBitmapCodec,
     version::{Version, VersionCodec},
     Database, Distance, Error, Result,
@@ -152,11 +153,7 @@ pub fn from_0_5_to_0_6<C: Distance>(
     wtxn: &mut RwTxn,
     write_database: Database<C>,
 ) -> Result<()> {
-    let version = Version {
-        major: 0,
-        minor: 6,
-        patch: 0,
-    };
+    let version = Version { major: 0, minor: 6, patch: 0 };
 
     // Note that we have to write the versions into each database.
     // The reason is that the Keys are prefixed by the index
@@ -204,7 +201,12 @@ pub fn from_0_6_to_current<C: Distance>(
             continue;
         }
 
-        let mut last_tree_id = match read_database.remap_key_type::<PrefixCodec>().rev_prefix_iter(&rtxn, &Prefix::tree(index))?.remap_types::<KeyCodec, Bytes>().next() {
+        let mut last_tree_id = match read_database
+            .remap_key_type::<PrefixCodec>()
+            .rev_prefix_iter(&rtxn, &Prefix::tree(index))?
+            .remap_types::<KeyCodec, Bytes>()
+            .next()
+        {
             Some(ret) => ret?.0.node.item,
             // If there is no tree nodes at all, there is nothing else to update in this version
             None => continue,
@@ -216,7 +218,12 @@ pub fn from_0_6_to_current<C: Distance>(
             .remap_types::<KeyCodec, GenericReadNodeCodecFromV0_4_0<C>>()
         {
             let (key, node) = ret?;
-            if let GenericReadNode::SplitPlaneNormal(GenericReadSplitPlaneNormal { normal, left, right }) = node {
+            if let GenericReadNode::SplitPlaneNormal(GenericReadSplitPlaneNormal {
+                normal,
+                left,
+                right,
+            }) = node
+            {
                 let mut must_rewrite = false;
 
                 // For all normal that are `None`, the split node must be rewritten
@@ -230,10 +237,12 @@ pub fn from_0_6_to_current<C: Distance>(
                         write_database.put(
                             wtxn,
                             &Key::tree(index, last_tree_id),
-                            &Node::Descendants(Descendants { descendants: Cow::Owned(RoaringBitmap::from_iter(Some(left.item))) }),
+                            &Node::Descendants(Descendants {
+                                descendants: Cow::Owned(RoaringBitmap::from_iter(Some(left.item))),
+                            }),
                         )?;
                         last_tree_id
-                    },
+                    }
                     NodeMode::Tree => left.item,
                     NodeMode::Metadata => unreachable!("Metadata cannot be linked to a split node"),
                     NodeMode::Updated => unreachable!("Updated cannot be linked to a split node"),
@@ -245,15 +254,16 @@ pub fn from_0_6_to_current<C: Distance>(
                         write_database.put(
                             wtxn,
                             &Key::tree(index, last_tree_id),
-                            &Node::Descendants(Descendants { descendants: Cow::Owned(RoaringBitmap::from_iter(Some(right.item))) }),
+                            &Node::Descendants(Descendants {
+                                descendants: Cow::Owned(RoaringBitmap::from_iter(Some(right.item))),
+                            }),
                         )?;
                         last_tree_id
-                    },
+                    }
                     NodeMode::Tree => right.item,
                     NodeMode::Metadata => unreachable!("Metadata cannot be linked to a split node"),
                     NodeMode::Updated => unreachable!("Updated cannot be linked to a split node"),
                 };
-
 
                 if must_rewrite {
                     write_database.put(
