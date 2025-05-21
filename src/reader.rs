@@ -344,14 +344,15 @@ impl<'t, D: Distance> Reader<'t, D> {
             nns_distances.push((OrderedFloat(distance), nn));
         }
 
-        // Keep only the k nearest elements
-        let k = opt.count.min(nns_distances.len());
-        let top_k_nns = median_based_top_k(k, nns_distances);
-        let output = top_k_nns
-            .into_iter()
-            .map(|(OrderedFloat(dist), item)| (item, D::normalized_distance(dist, self.dimensions)))
-            .collect();
+        // Get k nearest neighbors
+        let k = opt.count.max(nns_distances.len());
+        let top_k = median_based_top_k(k, nns_distances);
 
+        // Normalize distances before return
+        let mut output = Vec::with_capacity(top_k.len());
+        for (OrderedFloat(dist), item) in top_k {
+            output.push((item, D::normalized_distance(dist, self.dimensions)));
+        }
         Ok(output)
     }
 
@@ -546,30 +547,31 @@ pub fn item_leaf<'a, D: Distance>(
     }
 }
 
-#[inline]
-// FIXME: change `v` to an impl Iterator
-pub fn median_based_top_k(k: usize, v: Vec<(OrderedFloat<f32>, u32)>) -> Vec<(OrderedFloat<f32>, u32)> {
+pub fn median_based_top_k(
+    k: usize,
+    v: Vec<(OrderedFloat<f32>, u32)>,
+) -> Vec<(OrderedFloat<f32>, u32)> {
     let mut buffer = Vec::with_capacity(2 * k.max(1));
-    let mut threshold = (OrderedFloat(f32::MAX), u32::MAX);
+    let mut threshold = OrderedFloat(f32::MAX);
 
     // prefill with no threshold checks
     let mut v = v.into_iter();
     buffer.extend((&mut v).take(k));
 
     for item in v {
-        if item >= threshold {
+        if item.0 >= threshold {
             continue;
         }
         if buffer.len() == 2 * k {
             let (_, &mut median, _) = buffer.select_nth_unstable(k - 1);
-            threshold = median;
+            threshold = median.0;
             buffer.truncate(k);
         }
 
         // avoids buffer resizing from being inlined from vec.push()
         let uninit = buffer.spare_capacity_mut();
         uninit[0].write(item);
-        // SAFETY: we would have panicked above
+        // SAFETY: we would have panicked above already
         unsafe {
             buffer.set_len(buffer.len() + 1);
         }
