@@ -203,7 +203,7 @@ pub fn from_0_6_to_current<C: Distance>(
 
         let mut last_tree_id = match read_database
             .remap_key_type::<PrefixCodec>()
-            .rev_prefix_iter(&rtxn, &Prefix::tree(index))?
+            .rev_prefix_iter(rtxn, &Prefix::tree(index))?
             .remap_types::<KeyCodec, Bytes>()
             .next()
         {
