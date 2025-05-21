@@ -580,7 +580,7 @@ impl<D: Distance> Writer<D> {
             }
             // We want to remove the oldest trees first
             let root = roots.swap_remove(0);
-            self.delete_tree(wtxn, NodeId::tree(root))?;
+            self.delete_tree(wtxn, root)?;
         }
 
         Ok(())
@@ -629,7 +629,7 @@ impl<D: Distance> Writer<D> {
             let (root_id, nb_new_tree_nodes) =
                 self.make_tree_in_file(options, &frozen_reader, rng, &to_insert, &mut tmp_nodes)?;
             // We cannot update our father so we're going to overwrite the new root node as ourselves.
-            tmp_nodes.remap(root_id.item, descendant_id);
+            tmp_nodes.remap(root_id, descendant_id);
 
             let tmp_nodes = tmp_nodes.into_bytes_reader()?;
             // We never delete anything while building trees
@@ -661,7 +661,7 @@ impl<D: Distance> Writer<D> {
         rng: &mut R,
         options: &BuildOption,
         mut to_insert: RoaringBitmap,
-        roots: &[u32],
+        roots: &[ItemId],
         nb_tree_nodes: u64,
         concurrent_node_ids: &ConcurrentNodeIds,
     ) -> Result<RoaringBitmap> {
@@ -809,7 +809,7 @@ impl<D: Distance> Writer<D> {
         &self,
         wtxn: &mut RwTxn,
         options: &BuildOption,
-        roots: &mut [u32],
+        roots: &mut [ItemId],
         to_delete: &RoaringBitmap,
     ) -> Result<()> {
         (options.progress)(WriterProgress {
@@ -875,49 +875,19 @@ impl<D: Distance> Writer<D> {
                 Ok((current_node, new_descendants))
             }
             Node::SplitPlaneNormal(SplitPlaneNormal { normal, left, right }) => {
-                let (new_left, left_items) = match left.mode {
-                    NodeMode::Tree => {
-                        let (id, items) = self
-                            .delete_items_in_file(options, rtxn, left.item, tmp_nodes, to_delete)?;
-                        (NodeId::tree(id), items)
-                    }
-                    NodeMode::Item => {
-                        if to_delete.contains(left.item) {
-                            (left, RoaringBitmap::new())
-                        } else {
-                            (left, RoaringBitmap::from_sorted_iter(Some(left.item)).unwrap())
-                        }
-                    }
-                    NodeMode::Metadata | NodeMode::Updated => unreachable!(),
-                };
-                let (new_right, right_items) = match right.mode {
-                    NodeMode::Tree => {
-                        let (id, items) = self.delete_items_in_file(
-                            options, rtxn, right.item, tmp_nodes, to_delete,
-                        )?;
-                        (NodeId::tree(id), items)
-                    }
-                    NodeMode::Item => {
-                        if to_delete.contains(right.item) {
-                            (right, RoaringBitmap::new())
-                        } else {
-                            (right, RoaringBitmap::from_sorted_iter(Some(right.item)).unwrap())
-                        }
-                    }
-                    NodeMode::Metadata | NodeMode::Updated => unreachable!(),
-                };
+                let (new_left, left_items) =
+                    self.delete_items_in_file(options, rtxn, left, tmp_nodes, to_delete)?;
+
+                let (new_right, right_items) =
+                    self.delete_items_in_file(options, rtxn, right, tmp_nodes, to_delete)?;
 
                 let total_items = &left_items | &right_items;
 
                 if self.fit_in_descendant(options, total_items.len()) {
                     // Since we're shrinking we KNOW that new_left and new_right are descendants
                     // thus we can delete them directly knowing there is no sub-tree to look at.
-                    if new_left.mode == NodeMode::Tree {
-                        tmp_nodes.remove(new_left.item);
-                    }
-                    if new_right.mode == NodeMode::Tree {
-                        tmp_nodes.remove(new_right.item);
-                    }
+                    tmp_nodes.remove(new_left);
+                    tmp_nodes.remove(new_right);
 
                     tmp_nodes.put(
                         current_node,
@@ -931,17 +901,13 @@ impl<D: Distance> Writer<D> {
 
                 // If we don't have any items in either the left or right we can delete ourselves and point directly to our child
                 } else if left_items.is_empty() {
-                    if new_left.mode == NodeMode::Tree {
-                        tmp_nodes.remove(new_left.item);
-                    }
+                    tmp_nodes.remove(new_left);
                     tmp_nodes.remove(current_node);
-                    Ok((new_right.item, total_items))
+                    Ok((new_right, total_items))
                 } else if right_items.is_empty() {
-                    if new_right.mode == NodeMode::Tree {
-                        tmp_nodes.remove(new_right.item);
-                    }
+                    tmp_nodes.remove(new_right);
                     tmp_nodes.remove(current_node);
-                    Ok((new_left.item, total_items))
+                    Ok((new_left, total_items))
                 } else {
                     // if either the left or the right changed we must update ourselves inplace
                     if new_left != left || new_right != right {
@@ -969,7 +935,7 @@ impl<D: Distance> Writer<D> {
         &self,
         opt: &BuildOption,
         rng: &mut R,
-        roots: &[u32],
+        roots: &[ItemId],
         to_insert: &RoaringBitmap,
         frozen_reader: &FrozzenReader<D>,
     ) -> Result<Vec<(TmpNodesReader, RoaringBitmap)>> {
@@ -983,13 +949,12 @@ impl<D: Distance> Writer<D> {
                     Some(path) => TmpNodes::new_in(path)?,
                     None => TmpNodes::new()?,
                 };
-                let root_node = NodeId::tree(*root);
                 let mut large_descendants = RoaringBitmap::new();
                 self.insert_items_in_file(
                     opt,
                     frozen_reader,
                     &mut rng,
-                    root_node,
+                    *root,
                     to_insert,
                     &mut large_descendants,
                     &mut tmp_descendant,
@@ -1008,122 +973,88 @@ impl<D: Distance> Writer<D> {
         opt: &BuildOption,
         frozen_reader: &FrozzenReader<D>,
         rng: &mut R,
-        current_node: NodeId,
+        current_node: ItemId,
         to_insert: &RoaringBitmap,
         large_descendants: &mut RoaringBitmap,
         tmp_nodes: &mut TmpNodes<NodeCodec<D>>,
     ) -> Result<ItemId> {
         opt.cancelled()?;
-        match current_node.mode {
-            NodeMode::Item => {
-                // We were called on a specific item, we should create a descendants node
-                let mut new_items = RoaringBitmap::from_iter([current_node.item]);
-                new_items |= to_insert;
+        match frozen_reader.trees.get(current_node)?.unwrap() {
+            Node::Leaf(_) => unreachable!(),
+            Node::Descendants(Descendants { descendants }) => {
+                let mut new_descendants = descendants.clone().into_owned();
+                // insert all of our IDs in the descendants
+                new_descendants |= to_insert;
 
-                if !self.fit_in_descendant(opt, new_items.len()) {
-                    large_descendants.insert(current_node.item);
+                if !self.fit_in_descendant(opt, new_descendants.len()) {
+                    large_descendants.insert(current_node);
                 }
 
-                if new_items.len() > 1 {
-                    let node_id = frozen_reader.concurrent_node_ids.next()?;
-                    let node_id = NodeId::tree(node_id);
+                // If the number of descendant changed it means we inserted new items and must overwrite the node
+                if descendants.len() != new_descendants.len() {
+                    // otherwise we can just update our descendants
                     tmp_nodes.put(
-                        node_id.item,
+                        current_node,
                         &Node::Descendants(Descendants {
-                            descendants: Cow::Owned(new_items.clone()),
+                            descendants: Cow::Owned(new_descendants.clone()),
                         }),
                     )?;
-                    Ok(node_id.item)
+                }
+                Ok(current_node)
+            }
+            Node::SplitPlaneNormal(SplitPlaneNormal { normal, left, right }) => {
+                // Split the to_insert into two bitmaps on the left and right of this normal
+                let mut left_ids = RoaringBitmap::new();
+                let mut right_ids = RoaringBitmap::new();
+
+                match normal {
+                    None => {
+                        randomly_split_children(rng, to_insert, &mut left_ids, &mut right_ids);
+                    }
+                    Some(ref normal) => {
+                        for leaf in to_insert {
+                            let node = frozen_reader.leafs.get(leaf)?.unwrap();
+                            match D::side(normal, &node, rng) {
+                                Side::Left => left_ids.insert(leaf),
+                                Side::Right => right_ids.insert(leaf),
+                            };
+                        }
+                    }
+                }
+
+                let new_left = self.insert_items_in_file(
+                    opt,
+                    frozen_reader,
+                    rng,
+                    left,
+                    &left_ids,
+                    large_descendants,
+                    tmp_nodes,
+                )?;
+                let new_right = self.insert_items_in_file(
+                    opt,
+                    frozen_reader,
+                    rng,
+                    right,
+                    &right_ids,
+                    large_descendants,
+                    tmp_nodes,
+                )?;
+
+                if new_left != left || new_right != right {
+                    tmp_nodes.put(
+                        current_node,
+                        &Node::SplitPlaneNormal(SplitPlaneNormal {
+                            normal,
+                            left: new_left,
+                            right: new_right,
+                        }),
+                    )?;
+                    Ok(current_node)
                 } else {
-                    Ok(current_node.item)
+                    Ok(current_node)
                 }
             }
-            NodeMode::Tree => {
-                match frozen_reader.trees.get(current_node.item)?.unwrap() {
-                    Node::Leaf(_) => unreachable!(),
-                    Node::Descendants(Descendants { descendants }) => {
-                        let mut new_descendants = descendants.clone().into_owned();
-                        // insert all of our IDs in the descendants
-                        new_descendants |= to_insert;
-
-                        if !self.fit_in_descendant(opt, new_descendants.len()) {
-                            large_descendants.insert(current_node.item);
-                        }
-
-                        // If the number of descendant changed it means we inserted new items and must overwrite the node
-                        if descendants.len() != new_descendants.len() {
-                            // otherwise we can just update our descendants
-                            tmp_nodes.put(
-                                current_node.item,
-                                &Node::Descendants(Descendants {
-                                    descendants: Cow::Owned(new_descendants.clone()),
-                                }),
-                            )?;
-                        }
-                        Ok(current_node.item)
-                    }
-                    Node::SplitPlaneNormal(SplitPlaneNormal { normal, left, right }) => {
-                        // Split the to_insert into two bitmaps on the left and right of this normal
-                        let mut left_ids = RoaringBitmap::new();
-                        let mut right_ids = RoaringBitmap::new();
-
-                        match normal {
-                            None => {
-                                randomly_split_children(
-                                    rng,
-                                    to_insert,
-                                    &mut left_ids,
-                                    &mut right_ids,
-                                );
-                            }
-                            Some(ref normal) => {
-                                for leaf in to_insert {
-                                    let node = frozen_reader.leafs.get(leaf)?.unwrap();
-                                    match D::side(normal, &node, rng) {
-                                        Side::Left => left_ids.insert(leaf),
-                                        Side::Right => right_ids.insert(leaf),
-                                    };
-                                }
-                            }
-                        }
-
-                        let new_left = self.insert_items_in_file(
-                            opt,
-                            frozen_reader,
-                            rng,
-                            left,
-                            &left_ids,
-                            large_descendants,
-                            tmp_nodes,
-                        )?;
-                        let new_right = self.insert_items_in_file(
-                            opt,
-                            frozen_reader,
-                            rng,
-                            right,
-                            &right_ids,
-                            large_descendants,
-                            tmp_nodes,
-                        )?;
-
-                        if new_left != left.item || new_right != right.item {
-                            tmp_nodes.put(
-                                current_node.item,
-                                &Node::SplitPlaneNormal(SplitPlaneNormal {
-                                    normal,
-                                    left: NodeId::item(new_left),
-                                    right: NodeId::item(new_right),
-                                }),
-                            )?;
-                            Ok(current_node.item)
-                        } else {
-                            Ok(current_node.item)
-                        }
-                    }
-                }
-            }
-            NodeMode::Metadata => unreachable!(),
-            NodeMode::Updated => unreachable!(),
         }
     }
 
@@ -1138,17 +1069,13 @@ impl<D: Distance> Writer<D> {
         rng: &mut R,
         item_indices: &RoaringBitmap,
         tmp_nodes: &mut TmpNodes<NodeCodec<D>>,
-    ) -> Result<(NodeId, u64)> {
+    ) -> Result<(ItemId, u64)> {
         opt.cancelled()?;
-        if item_indices.len() == 1 {
-            return Ok((NodeId::item(item_indices.min().unwrap()), 0));
-        }
-
         if self.fit_in_descendant(opt, item_indices.len()) {
             let item_id = reader.concurrent_node_ids.next()?;
             let item = Node::Descendants(Descendants { descendants: Cow::Borrowed(item_indices) });
             tmp_nodes.put(item_id, &item)?;
-            return Ok((NodeId::tree(item_id), 1));
+            return Ok((item_id, 1));
         }
 
         let children = ImmutableSubsetLeafs::from_item_ids(reader.leafs, item_indices);
@@ -1203,11 +1130,11 @@ impl<D: Distance> Writer<D> {
         let new_node_id = reader.concurrent_node_ids.next()?;
         tmp_nodes.put(new_node_id, &Node::SplitPlaneNormal(normal))?;
 
-        Ok((NodeId::tree(new_node_id), l + r + 1))
+        Ok((new_node_id, l + r + 1))
     }
 
-    fn delete_tree(&self, wtxn: &mut RwTxn, node: NodeId) -> Result<()> {
-        let key = Key::new(self.index, node);
+    fn delete_tree(&self, wtxn: &mut RwTxn, node: ItemId) -> Result<()> {
+        let key = Key::tree(self.index, node);
         match self.database.get(wtxn, &key)?.ok_or(Error::missing_key(key))? {
             // the leafs are shared between the trees, we MUST NOT delete them.
             Node::Leaf(_) => Ok(()),
