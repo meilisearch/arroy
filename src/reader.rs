@@ -381,11 +381,10 @@ impl<'t, D: Distance> Reader<'t, D> {
         let mut nns_distances = Vec::with_capacity(nns.len());
         for nn in nns {
             let key = Key::item(self.index, nn);
-            let leaf = match self.database_get(rtxn, &key)?.ok_or(Error::missing_key(key))? {
-                GenericReadNode::Leaf(leaf) => leaf,
-                GenericReadNode::Descendants(_) | GenericReadNode::SplitPlaneNormal(_) => {
-                    unreachable!()
-                }
+            let GenericReadNode::Leaf(leaf) =
+                self.database_get(rtxn, &key)?.ok_or(Error::missing_key(key))?
+            else {
+                unreachable!()
             };
             let distance = D::built_distance(query_leaf, &leaf);
             nns_distances.push((OrderedFloat(distance), nn));
