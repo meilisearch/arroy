@@ -1,6 +1,6 @@
 use std::io;
 
-use crate::{key::Key, node_id::NodeMode, ItemId};
+use crate::{key::Key, node_id::NodeMode, version::Version, ItemId};
 
 /// The different set of errors that arroy can encounter.
 #[derive(Debug, thiserror::Error)]
@@ -71,6 +71,13 @@ pub enum Error {
     CannotDecodeKeyMode {
         /// The mode that couldn't be decoded.
         mode: NodeMode,
+    },
+
+    /// Unknown version
+    #[error("Unknown version: v{version}")]
+    UnknownVersion {
+        /// The version that is unknown.
+        version: Version,
     },
 }
 

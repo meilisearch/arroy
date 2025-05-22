@@ -16,7 +16,6 @@ use roaring::{RoaringBitmap, RoaringTreemap};
 use crate::internals::{KeyCodec, Leaf, NodeCodec};
 use crate::key::{Key, Prefix, PrefixCodec};
 use crate::node::{Node, SplitPlaneNormal};
-use crate::node_id::NodeMode;
 use crate::{Database, Distance, Error, ItemId, Result};
 
 /// A structure to store the tree nodes out of the heed database.
@@ -489,13 +488,8 @@ impl<'t, D: Distance> ImmutableTrees<'t, D> {
                 }
                 Node::SplitPlaneNormal(SplitPlaneNormal { left, right, normal: _ }) => {
                     trees.insert(current, (bytes.len(), bytes.as_ptr()));
-                    // We must avoid the items and only push the tree nodes
-                    if left.mode == NodeMode::Tree {
-                        explore.push(left.item);
-                    }
-                    if right.mode == NodeMode::Tree {
-                        explore.push(right.item);
-                    }
+                    explore.push(left);
+                    explore.push(right);
                 }
             }
         }

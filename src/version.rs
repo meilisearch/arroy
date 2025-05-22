@@ -1,14 +1,35 @@
-use std::borrow::Cow;
 use std::mem::size_of;
+use std::{borrow::Cow, fmt};
 
 use byteorder::{BigEndian, ByteOrder};
 use heed::BoxedError;
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub struct Version {
     pub major: u32,
     pub minor: u32,
     pub patch: u32,
+}
+
+impl fmt::Display for Version {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "v{}.{}.{}", self.major, self.minor, self.patch)
+    }
+}
+
+impl Version {
+    /// Returns the version before the first versioned database.
+    pub fn before_version_db_was_introduced() -> Self {
+        Self { major: 0, minor: 4, patch: 0 }
+    }
+
+    pub fn current() -> Self {
+        Version {
+            major: env!("CARGO_PKG_VERSION_MAJOR").parse().unwrap(),
+            minor: env!("CARGO_PKG_VERSION_MINOR").parse().unwrap(),
+            patch: env!("CARGO_PKG_VERSION_PATCH").parse().unwrap(),
+        }
+    }
 }
 
 pub enum VersionCodec {}
