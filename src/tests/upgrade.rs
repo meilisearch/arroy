@@ -93,7 +93,6 @@ fn simple_upgrade_v0_6_to_v0_7() {
     "#);
 }
 
-
 // Same test as above but with a larger database. See its original snapshot here: https://github.com/meilisearch/arroy/blob/f52bf0560f5ceef27946bf0522730649be46ccdd/src/tests/snapshots/arroy__tests__writer__write_and_update_lot_of_random_points-2.snap
 #[test]
 fn large_upgrade_v0_6_to_v0_7() {

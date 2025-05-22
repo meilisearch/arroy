@@ -224,15 +224,8 @@ pub fn from_0_6_to_current<C: Distance>(
                 right,
             }) = node
             {
-                let mut must_rewrite = false;
-
-                // For all normal that are `None`, the split node must be rewritten
-                if normal.is_none() {
-                    must_rewrite = true;
-                }
                 let left = match left.mode {
                     NodeMode::Item => {
-                        must_rewrite = true;
                         last_tree_id += 1;
                         write_database.put(
                             wtxn,
@@ -249,7 +242,6 @@ pub fn from_0_6_to_current<C: Distance>(
                 };
                 let right = match right.mode {
                     NodeMode::Item => {
-                        must_rewrite = true;
                         last_tree_id += 1;
                         write_database.put(
                             wtxn,
@@ -265,13 +257,11 @@ pub fn from_0_6_to_current<C: Distance>(
                     NodeMode::Updated => unreachable!("Updated cannot be linked to a split node"),
                 };
 
-                if must_rewrite {
-                    write_database.put(
-                        wtxn,
-                        &key,
-                        &Node::SplitPlaneNormal(SplitPlaneNormal { normal, left, right }),
-                    )?;
-                }
+                write_database.put(
+                    wtxn,
+                    &key,
+                    &Node::SplitPlaneNormal(SplitPlaneNormal { normal, left, right }),
+                )?;
             }
         }
     }
