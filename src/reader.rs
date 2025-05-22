@@ -348,7 +348,7 @@ impl<'t, D: Distance> Reader<'t, D> {
         }
 
         // Get k nearest neighbors
-        let k = opt.count.max(nns_distances.len());
+        let k = opt.count.min(nns_distances.len());
         let top_k = median_based_top_k(k, nns_distances);
 
         // Normalize distances before return
