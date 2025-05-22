@@ -236,7 +236,7 @@ impl<'a, D: Distance> BytesDecode<'a> for NodeCodec<D> {
                 descendants: Cow::Owned(RoaringBitmap::deserialize_from(bytes)?),
             })),
             unknown => panic!(
-                "Did not recognize node tag type: {unknown:?} while decoding a node from v0.6.0"
+                "Did not recognize node tag type: {unknown:?} while decoding a node from v0.7.0"
             ),
         }
     }
