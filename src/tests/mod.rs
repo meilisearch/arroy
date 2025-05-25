@@ -104,7 +104,7 @@ fn rng() -> StdRng {
     StdRng::from_seed(std::array::from_fn(|_| 42))
 }
 
-fn top_k_with_binary_heap<T: Ord>(v: Vec<T>, k: usize) -> Vec<T> {
+fn binary_heap_based_top_k<T: Ord>(v: Vec<T>, k: usize) -> Vec<T> {
     // max to min heap
     let v: Vec<_> = v.into_iter().map(Reverse).collect();
 
