@@ -287,7 +287,7 @@ proptest! {
     ){
         let original: Vec<_> = original.into_iter().map(|item| OrderedFloat(item)).collect();
 
-        let u = top_k_with_binary_heap(original.clone(), k);
+        let u = binary_heap_based_top_k(original.clone(), k);
         let v = median_based_top_k(original, k, OrderedFloat(f32::MAX));
 
         assert_eq!(u, v);
