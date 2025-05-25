@@ -349,7 +349,7 @@ impl<'t, D: Distance> Reader<'t, D> {
 
         // Get k nearest neighbors
         let k = opt.count.min(nns_distances.len());
-        let top_k = median_based_top_k(k, nns_distances, (OrderedFloat(f32::MAX), u32::MAX));
+        let top_k = median_based_top_k(nns_distances, k, (OrderedFloat(f32::MAX), u32::MAX));
         let mut output = Vec::with_capacity(top_k.len());
         for (OrderedFloat(dist), item) in top_k {
             output.push((item, D::normalized_distance(dist, self.dimensions)));
@@ -548,7 +548,7 @@ pub fn item_leaf<'a, D: Distance>(
     }
 }
 
-pub fn median_based_top_k<T>(k: usize, v: Vec<T>, mut threshold: T) -> Vec<T>
+pub fn median_based_top_k<T>(v: Vec<T>, k: usize, mut threshold: T) -> Vec<T>
 where
     T: Ord + Copy,
 {

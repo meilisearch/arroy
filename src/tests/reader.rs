@@ -1,11 +1,15 @@
 use std::fmt::Display;
 use std::num::NonZeroUsize;
 
+use ordered_float::OrderedFloat;
+use proptest::collection::vec;
+use proptest::prelude::*;
 use roaring::RoaringBitmap;
 
 use super::*;
 use crate::distance::Cosine;
 use crate::distances::{Euclidean, Manhattan};
+use crate::reader::median_based_top_k;
 use crate::{ItemId, Reader, Writer};
 
 pub struct NnsRes(pub Option<Vec<(ItemId, f32)>>);
@@ -271,4 +275,21 @@ fn try_reading_in_a_non_built_database() {
         0,
     )
     "###);
+}
+
+proptest! {
+    #[test]
+    fn median_top_k_vs_binary_heap(
+        (original, k) in vec(any::<f32>(), 0..1000).prop_flat_map(|v|{
+            let k_strategy = 1..=v.len();
+            (Just(v), k_strategy)
+        })
+    ){
+        let original: Vec<_> = original.into_iter().map(|item| OrderedFloat(item)).collect();
+
+        let u = top_k_with_binary_heap(original.clone(), k);
+        let v = median_based_top_k(original, k, OrderedFloat(f32::MAX));
+
+        assert_eq!(u, v);
+    }
 }
