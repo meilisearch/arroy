@@ -1,3 +1,5 @@
+use std::cmp::Reverse;
+use std::collections::BinaryHeap;
 use std::fmt;
 
 use heed::types::LazyDecode;
@@ -101,4 +103,20 @@ fn create_database<D: Distance>() -> DatabaseHandle<D> {
 
 fn rng() -> StdRng {
     StdRng::from_seed(std::array::from_fn(|_| 42))
+}
+
+fn top_k_with_binary_heap<T: Ord>(v: Vec<T>, k: usize) -> Vec<T> {
+    // max to min heap
+    let v: Vec<_> = v.into_iter().map(Reverse).collect();
+
+    let mut heap = BinaryHeap::from(v);
+    let mut output = Vec::with_capacity(k);
+
+    while let Some(Reverse(item)) = heap.pop() {
+        if output.len() == k {
+            break;
+        }
+        output.push(item);
+    }
+    output
 }
