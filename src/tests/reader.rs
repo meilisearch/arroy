@@ -285,10 +285,11 @@ proptest! {
             (Just(v), k_strategy)
         })
     ){
-        let original: Vec<_> = original.into_iter().map(|item| OrderedFloat(item)).collect();
+        let original: Vec<(OrderedFloat<f32>, u32)> =
+            original.into_iter().enumerate().map(|(num, item)| (OrderedFloat(item), num as u32)).collect();
 
         let u = binary_heap_based_top_k(original.clone(), k);
-        let v = median_based_top_k(original, k, OrderedFloat(f32::MAX));
+        let v = median_based_top_k(original, k);
 
         assert_eq!(u, v);
     }

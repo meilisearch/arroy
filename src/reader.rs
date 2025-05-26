@@ -392,7 +392,7 @@ impl<'t, D: Distance> Reader<'t, D> {
 
         // Get k nearest neighbors
         let k = opt.count.min(nns_distances.len());
-        let top_k = median_based_top_k(nns_distances, k, (OrderedFloat(f32::MAX), u32::MAX));
+        let top_k = median_based_top_k(nns_distances, k);
         let mut output = Vec::with_capacity(top_k.len());
         for (OrderedFloat(dist), item) in top_k {
             output.push((item, D::normalized_distance(dist, self.dimensions)));
@@ -604,15 +604,16 @@ pub fn item_leaf<'a, D: Distance>(
 }
 
 // Based on https://quickwit.io/blog/top-k-complexity, implemented in https://github.com/meilisearch/arroy/pull/129
-pub fn median_based_top_k<T>(v: Vec<T>, k: usize, mut threshold: T) -> Vec<T>
-where
-    T: Ord + Copy,
-{
+pub fn median_based_top_k(
+    v: Vec<(OrderedFloat<f32>, u32)>,
+    k: usize,
+) -> Vec<(OrderedFloat<f32>, u32)> {
+    let mut threshold = (OrderedFloat(f32::MAX), u32::MAX);
     let mut buffer = Vec::with_capacity(2 * k.max(1));
 
     // prefill with no threshold checks
     let mut v = v.into_iter();
-    buffer.extend((&mut v).take(k));
+    buffer.extend((&mut v).take(2 * k));
 
     for item in v {
         if item >= threshold {
