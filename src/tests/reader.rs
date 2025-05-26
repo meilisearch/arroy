@@ -280,7 +280,7 @@ fn try_reading_in_a_non_built_database() {
 proptest! {
     #[test]
     fn median_top_k_vs_binary_heap(
-        (original, k) in vec(any::<f32>(), 0..1000).prop_flat_map(|v|{
+        (original, k) in vec(any::<f32>(), 1..1000).prop_flat_map(|v|{
             let k_strategy = 1..=v.len();
             (Just(v), k_strategy)
         })
