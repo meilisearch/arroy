@@ -11,8 +11,12 @@ use roaring::RoaringBitmap;
 use crate::distance::Distance;
 use crate::internals::{KeyCodec, Side};
 use crate::item_iter::ItemIter;
-use crate::node::{Descendants, ItemIds, Leaf, SplitPlaneNormal};
+use crate::node::{
+    Descendants, GenericReadNode, GenericReadNodeCodecFromV0_4_0, GenericReadNodeCodecFromV0_7_0,
+    GenericReadSplitPlaneNormal, ItemIds, Leaf,
+};
 use crate::unaligned_vector::UnalignedVector;
+use crate::version::{Version, VersionCodec};
 use crate::{
     Database, Error, ItemId, Key, MetadataCodec, Node, NodeId, Prefix, PrefixCodec, Result, Stats,
     TreeStats,
@@ -127,6 +131,7 @@ pub struct Reader<'t, D: Distance> {
     roots: ItemIds<'t>,
     dimensions: usize,
     items: RoaringBitmap,
+    version: Version,
     _marker: marker::PhantomData<D>,
 }
 
@@ -138,6 +143,11 @@ impl<'t, D: Distance> Reader<'t, D> {
             Some(metadata) => metadata,
             None => return Err(Error::MissingMetadata(index)),
         };
+        let version =
+            match database.remap_data_type::<VersionCodec>().get(rtxn, &Key::version(index))? {
+                Some(version) => version,
+                None => Version::before_version_db_was_introduced(),
+            };
 
         if D::name() != metadata.distance {
             return Err(Error::UnmatchingDistance {
@@ -161,6 +171,7 @@ impl<'t, D: Distance> Reader<'t, D> {
             roots: metadata.roots,
             dimensions: metadata.dimensions.try_into().unwrap(),
             items: metadata.items,
+            version,
             _marker: marker::PhantomData,
         })
     }
@@ -190,29 +201,39 @@ impl<'t, D: Distance> Reader<'t, D> {
         self.index
     }
 
+    /// Returns the version of the database.
+    pub fn version(&self) -> Version {
+        self.version
+    }
+
     /// Returns the stats of the trees of this database.
     pub fn stats(&self, rtxn: &RoTxn) -> Result<Stats> {
         fn recursive_depth<D: Distance>(
             rtxn: &RoTxn,
-            database: Database<D>,
+            this: &Reader<D>,
             index: u16,
             node_id: NodeId,
         ) -> Result<TreeStats> {
-            match database.get(rtxn, &Key::new(index, node_id))?.unwrap() {
-                Node::Leaf(_) => {
+            match this.database_get(rtxn, &Key::new(index, node_id))?.unwrap() {
+                GenericReadNode::Leaf(_) => {
                     Ok(TreeStats { depth: 1, dummy_normals: 0, split_nodes: 0, descendants: 0 })
                 }
-                Node::Descendants(_) => {
+                GenericReadNode::Descendants(_) => {
                     Ok(TreeStats { depth: 1, dummy_normals: 0, split_nodes: 0, descendants: 1 })
                 }
-                Node::SplitPlaneNormal(SplitPlaneNormal { normal, left, right }) => {
-                    let left = recursive_depth(rtxn, database, index, left)?;
-                    let right = recursive_depth(rtxn, database, index, right)?;
-                    let is_zero_normal = normal.map_or(1, |normal| normal.is_zero() as usize);
+                GenericReadNode::SplitPlaneNormal(GenericReadSplitPlaneNormal {
+                    normal,
+                    left,
+                    right,
+                }) => {
+                    let left = recursive_depth(rtxn, this, index, left)?;
+                    let right = recursive_depth(rtxn, this, index, right)?;
 
                     Ok(TreeStats {
                         depth: 1 + left.depth.max(right.depth),
-                        dummy_normals: left.dummy_normals + right.dummy_normals + is_zero_normal,
+                        dummy_normals: left.dummy_normals
+                            + right.dummy_normals
+                            + normal.is_none() as usize,
                         split_nodes: left.split_nodes + right.split_nodes + 1,
                         descendants: left.descendants + right.descendants,
                     })
@@ -224,7 +245,7 @@ impl<'t, D: Distance> Reader<'t, D> {
             .roots
             .iter()
             .map(NodeId::tree)
-            .map(|root| recursive_depth::<D>(rtxn, self.database, self.index, root))
+            .map(|root| recursive_depth::<D>(rtxn, self, self.index, root))
             .collect();
 
         Ok(Stats { tree_stats: tree_stats?, leaf: self.items.len() })
@@ -276,6 +297,23 @@ impl<'t, D: Distance> Reader<'t, D> {
         QueryBuilder { reader: self, count, search_k: None, oversampling: None, candidates: None }
     }
 
+    /// Get a generic read node from the database using the version of the database found while creating the reader.
+    /// Must be used every time we retrieve a node in this file.
+    fn database_get(&self, rtxn: &'t RoTxn, key: &Key) -> Result<Option<GenericReadNode<D>>> {
+        match self.version {
+            // the node format didn't change between v0.4.0 and v0.6.0 included
+            Version { major: 0, minor: 4..=6, patch: _ } => Ok(self
+                .database
+                .remap_data_type::<GenericReadNodeCodecFromV0_4_0<D>>()
+                .get(rtxn, key)?),
+            Version { major: 0, minor: 7, patch: _ } => Ok(self
+                .database
+                .remap_data_type::<GenericReadNodeCodecFromV0_7_0<D>>()
+                .get(rtxn, key)?),
+            version => Err(Error::UnknownVersion { version }),
+        }
+    }
+
     fn nns_by_leaf(
         &self,
         rtxn: &'t RoTxn,
@@ -307,20 +345,24 @@ impl<'t, D: Distance> Reader<'t, D> {
             };
 
             let key = Key::new(self.index, item);
-            match self.database.get(rtxn, &key)?.ok_or(Error::missing_key(key))? {
-                Node::Leaf(_) => {
+            match self.database_get(rtxn, &key)?.ok_or(Error::missing_key(key))? {
+                GenericReadNode::Leaf(_) => {
                     if opt.candidates.map_or(true, |c| c.contains(item.item)) {
                         nns.push(item.unwrap_item());
                     }
                 }
-                Node::Descendants(Descendants { descendants }) => {
+                GenericReadNode::Descendants(Descendants { descendants }) => {
                     if let Some(candidates) = opt.candidates {
                         nns.extend((descendants.into_owned() & candidates).iter());
                     } else {
                         nns.extend(descendants.iter());
                     }
                 }
-                Node::SplitPlaneNormal(SplitPlaneNormal { normal, left, right }) => {
+                GenericReadNode::SplitPlaneNormal(GenericReadSplitPlaneNormal {
+                    normal,
+                    left,
+                    right,
+                }) => {
                     let margin = match normal {
                         Some(normal) => D::margin_no_header(&normal, &query_leaf.vector),
                         None => 0.0,
@@ -339,9 +381,10 @@ impl<'t, D: Distance> Reader<'t, D> {
         let mut nns_distances = Vec::with_capacity(nns.len());
         for nn in nns {
             let key = Key::item(self.index, nn);
-            let leaf = match self.database.get(rtxn, &key)?.ok_or(Error::missing_key(key))? {
-                Node::Leaf(leaf) => leaf,
-                Node::Descendants(_) | Node::SplitPlaneNormal(_) => unreachable!(),
+            let GenericReadNode::Leaf(leaf) =
+                self.database_get(rtxn, &key)?.ok_or(Error::missing_key(key))?
+            else {
+                unreachable!()
             };
             let distance = D::built_distance(query_leaf, &leaf);
             nns_distances.push((OrderedFloat(distance), nn));
@@ -384,12 +427,16 @@ impl<'t, D: Distance> Reader<'t, D> {
 
             let mut explore = vec![Key::tree(self.index, tree)];
             while let Some(key) = explore.pop() {
-                match self.database.get(rtxn, &key)?.unwrap() {
-                    Node::Leaf(_) => (),
-                    Node::Descendants(Descendants { descendants: _ }) => {
+                match self.database_get(rtxn, &key)?.unwrap() {
+                    GenericReadNode::Leaf(_) => (),
+                    GenericReadNode::Descendants(Descendants { descendants: _ }) => {
                         writeln!(writer, "\t\t{} [label=\"{}\"]", key.node.item, key.node.item,)?
                     }
-                    Node::SplitPlaneNormal(SplitPlaneNormal { normal, left, right }) => {
+                    GenericReadNode::SplitPlaneNormal(GenericReadSplitPlaneNormal {
+                        normal,
+                        left,
+                        right,
+                    }) => {
                         if normal.is_none() {
                             writeln!(writer, "\t\t{} [color=red]", key.node.item)?;
                         }
@@ -433,10 +480,14 @@ impl<'t, D: Distance> Reader<'t, D> {
             return Ok(*count);
         }
 
-        match self.database.get(rtxn, &Key::new(self.index, node_id))?.unwrap() {
-            Node::Leaf(_) => Ok(1),
-            Node::Descendants(Descendants { descendants }) => Ok(descendants.len()),
-            Node::SplitPlaneNormal(SplitPlaneNormal { normal: _, left, right }) => {
+        match self.database_get(rtxn, &Key::new(self.index, node_id))?.unwrap() {
+            GenericReadNode::Leaf(_) => Ok(1),
+            GenericReadNode::Descendants(Descendants { descendants }) => Ok(descendants.len()),
+            GenericReadNode::SplitPlaneNormal(GenericReadSplitPlaneNormal {
+                normal: _,
+                left,
+                right,
+            }) => {
                 let left = self.nb_sub_nodes(rtxn, left, cache)?;
                 let right = self.nb_sub_nodes(rtxn, right, cache)?;
                 let nb_descendants = left + right;
@@ -452,6 +503,8 @@ impl<'t, D: Distance> Reader<'t, D> {
     /// - All the tree nodes are part of a tree.
     /// - No tree shares the same tree node.
     /// - We're effectively working with trees and not graphs (i.e., an item or tree node cannot be linked twice in the tree)
+    ///
+    /// This function should always be called in tests and on the latest version of the database which means we don't need to care about the version.
     #[cfg(any(test, feature = "assert-reader-validity"))]
     pub fn assert_validity(&self, rtxn: &RoTxn) -> Result<()> {
         // First, get all the items
@@ -499,6 +552,8 @@ impl<'t, D: Distance> Reader<'t, D> {
         rtxn: &RoTxn,
         node_id: NodeId,
     ) -> Result<(RoaringBitmap, RoaringBitmap)> {
+        use crate::node::SplitPlaneNormal;
+
         match self
             .database
             .get(rtxn, &Key::new(self.index, node_id))?
@@ -513,8 +568,8 @@ impl<'t, D: Distance> Reader<'t, D> {
                 descendants.into_owned(),
             )),
             Node::SplitPlaneNormal(SplitPlaneNormal { normal: _, left, right }) => {
-                let left = self.gather_items_and_tree_ids(rtxn, left)?;
-                let right = self.gather_items_and_tree_ids(rtxn, right)?;
+                let left = self.gather_items_and_tree_ids(rtxn, NodeId::tree(left))?;
+                let right = self.gather_items_and_tree_ids(rtxn, NodeId::tree(right))?;
 
                 let total_trees_size = left.0.len() + right.0.len();
                 let total_items_size = left.1.len() + right.1.len();
