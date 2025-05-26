@@ -603,6 +603,7 @@ pub fn item_leaf<'a, D: Distance>(
     }
 }
 
+// Based on https://quickwit.io/blog/top-k-complexity, implemented in https://github.com/meilisearch/arroy/pull/129
 pub fn median_based_top_k<T>(v: Vec<T>, k: usize, mut threshold: T) -> Vec<T>
 where
     T: Ord + Copy,
