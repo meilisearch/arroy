@@ -1,4 +1,3 @@
-use std::cmp::Reverse;
 use std::collections::BinaryHeap;
 use std::iter::repeat;
 use std::marker;
@@ -388,19 +387,16 @@ impl<'t, D: Distance> Reader<'t, D> {
                 unreachable!()
             };
             let distance = D::built_distance(query_leaf, &leaf);
-            nns_distances.push(Reverse((OrderedFloat(distance), nn)));
+            nns_distances.push((OrderedFloat(distance), nn));
         }
 
-        let mut sorted_nns = BinaryHeap::from(nns_distances);
-        let capacity = opt.count.min(sorted_nns.len());
-        let mut output = Vec::with_capacity(capacity);
-        while let Some(Reverse((OrderedFloat(dist), item))) = sorted_nns.pop() {
-            if output.len() == capacity {
-                break;
-            }
+        // Get k nearest neighbors
+        let k = opt.count.min(nns_distances.len());
+        let top_k = median_based_top_k(nns_distances, k);
+        let mut output = Vec::with_capacity(top_k.len());
+        for (OrderedFloat(dist), item) in top_k {
             output.push((item, D::normalized_distance(dist, self.dimensions)));
         }
-
         Ok(output)
     }
 
@@ -605,4 +601,40 @@ pub fn item_leaf<'a, D: Distance>(
         Some(Node::Descendants(_)) => Ok(None),
         None => Ok(None),
     }
+}
+
+// Based on https://quickwit.io/blog/top-k-complexity, implemented in https://github.com/meilisearch/arroy/pull/129
+pub fn median_based_top_k(
+    v: Vec<(OrderedFloat<f32>, u32)>,
+    k: usize,
+) -> Vec<(OrderedFloat<f32>, u32)> {
+    let mut threshold = (OrderedFloat(f32::MAX), u32::MAX);
+    let mut buffer = Vec::with_capacity(2 * k.max(1));
+
+    // prefill with no threshold checks
+    let mut v = v.into_iter();
+    buffer.extend((&mut v).take(2 * k));
+
+    for item in v {
+        if item >= threshold {
+            continue;
+        }
+        if buffer.len() == 2 * k {
+            let (_, &mut median, _) = buffer.select_nth_unstable(k - 1);
+            threshold = median;
+            buffer.truncate(k);
+        }
+
+        // avoids buffer resizing from being inlined from vec.push()
+        let uninit = buffer.spare_capacity_mut();
+        uninit[0].write(item);
+        // SAFETY: we would have panicked above already
+        unsafe {
+            buffer.set_len(buffer.len() + 1);
+        }
+    }
+
+    buffer.sort_unstable();
+    buffer.truncate(k);
+    buffer
 }
