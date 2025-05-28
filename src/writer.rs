@@ -826,7 +826,7 @@ impl<D: Distance> Writer<D> {
             sub: None,
         });
 
-        let mut tmp_nodes: TmpNodes<NodeCodec<D>> = match self.tmpdir.as_ref() {
+        let mut tmp_nodes: TmpNodes<D> = match self.tmpdir.as_ref() {
             Some(path) => TmpNodes::new_in(path)?,
             None => TmpNodes::new()?,
         };
@@ -861,7 +861,7 @@ impl<D: Distance> Writer<D> {
         options: &BuildOption,
         rtxn: &RoTxn,
         current_node: ItemId,
-        tmp_nodes: &mut TmpNodes<NodeCodec<D>>,
+        tmp_nodes: &mut TmpNodes<D>,
         to_delete: &RoaringBitmap,
     ) -> Result<(ItemId, RoaringBitmap)> {
         options.cancelled()?;
@@ -1049,7 +1049,7 @@ impl<D: Distance> Writer<D> {
         reader: &FrozzenReader<D>,
         rng: &mut R,
         item_indices: &RoaringBitmap,
-        tmp_nodes: &mut TmpNodes<NodeCodec<D>>,
+        tmp_nodes: &mut TmpNodes<D>,
     ) -> Result<(ItemId, u64)> {
         opt.cancelled()?;
         if self.fit_in_descendant(opt, item_indices.len()) {

@@ -13,6 +13,7 @@ use crate::{Database, Distance, MetadataCodec, NodeCodec, NodeMode, Reader};
 
 mod binary_quantized;
 mod reader;
+mod tmp_nodes;
 mod upgrade;
 mod writer;
 
