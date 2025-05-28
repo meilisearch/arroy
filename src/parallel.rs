@@ -1,6 +1,6 @@
 use core::slice;
 use std::fs::File;
-use std::io::{BufWriter, Write};
+use std::io::{BufReader, BufWriter, Read, Seek, SeekFrom, Write};
 use std::marker;
 use std::path::Path;
 use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering};
@@ -18,9 +18,81 @@ use crate::key::{Key, Prefix, PrefixCodec};
 use crate::node::{Node, SplitPlaneNormal};
 use crate::{Database, Distance, Error, ItemId, Result};
 
+#[derive(Default, Debug)]
+enum TmpNodesState {
+    Writing(BufWriter<File>),
+    Reading(BufReader<File>),
+    // Ugly trick because otherwise I can't take the value out of the enum. Can we do better?
+    // The enum should never be let in this state.
+    #[default]
+    Invalid,
+}
+
+impl TmpNodesState {
+    pub fn write_all(&mut self, bytes: &[u8]) -> Result<()> {
+        let this = match std::mem::take(self) {
+            TmpNodesState::Writing(mut writer) => {
+                writer.write_all(bytes)?;
+                TmpNodesState::Writing(writer)
+            }
+            TmpNodesState::Reading(reader) => {
+                let mut writer = BufWriter::new(reader.into_inner());
+                writer.write_all(bytes)?;
+                TmpNodesState::Writing(writer)
+            }
+            TmpNodesState::Invalid => unreachable!(),
+        };
+
+        debug_assert!(!matches!(this, TmpNodesState::Invalid));
+
+        *self = this;
+        Ok(())
+    }
+
+    pub fn read_all(&mut self, (start, end): (usize, usize)) -> Result<Vec<u8>> {
+        debug_assert!(start < end);
+        let mut buffer = vec![0; end - start];
+
+        let this = match std::mem::take(self) {
+            TmpNodesState::Writing(mut writer) => {
+                writer.flush()?;
+                let mut reader = BufReader::new(writer.into_inner().expect("Could not convert the writer to a file even thought it was flushed right before"));
+                reader.seek(SeekFrom::Start(start as u64))?;
+                reader.read_exact(&mut buffer)?;
+                TmpNodesState::Reading(reader)
+            }
+            TmpNodesState::Reading(mut reader) => {
+                reader.seek(SeekFrom::Start(start as u64))?;
+                reader.read_exact(&mut buffer)?;
+                TmpNodesState::Reading(reader)
+            }
+            TmpNodesState::Invalid => unreachable!(),
+        };
+
+        debug_assert!(!matches!(this, TmpNodesState::Invalid));
+
+        *self = this;
+        Ok(buffer)
+    }
+
+    pub fn into_inner(self) -> Result<File> {
+        let file = match self {
+            TmpNodesState::Writing(mut writer) => {
+                writer.flush()?;
+                writer.into_inner().expect("Could not convert the writer to a file even thought it was flushed right before")
+            }
+            TmpNodesState::Reading(reader) => reader.into_inner(),
+            TmpNodesState::Invalid => unreachable!(),
+        };
+        Ok(file)
+    }
+}
+
 /// A structure to store the tree nodes out of the heed database.
+/// You should avoid alternating between writing and reading as it flushes the file on each operation and lose the read buffer.
+/// The structure is optimized for reading the last written nodes.
 pub struct TmpNodes<DE> {
-    file: BufWriter<File>,
+    file: TmpNodesState,
     ids: Vec<ItemId>,
     bounds: Vec<usize>,
     deleted: RoaringBitmap,
@@ -28,11 +100,11 @@ pub struct TmpNodes<DE> {
     _marker: marker::PhantomData<DE>,
 }
 
-impl<'a, DE: BytesEncode<'a>> TmpNodes<DE> {
+impl<'a, D: Distance> TmpNodes<D> {
     /// Creates an empty `TmpNodes`.
-    pub fn new() -> heed::Result<TmpNodes<DE>> {
+    pub fn new() -> heed::Result<TmpNodes<D>> {
         Ok(TmpNodes {
-            file: tempfile::tempfile().map(BufWriter::new)?,
+            file: TmpNodesState::Writing(tempfile::tempfile().map(BufWriter::new)?),
             ids: Vec::new(),
             bounds: vec![0],
             deleted: RoaringBitmap::new(),
@@ -42,9 +114,9 @@ impl<'a, DE: BytesEncode<'a>> TmpNodes<DE> {
     }
 
     /// Creates an empty `TmpNodes` in the defined folder.
-    pub fn new_in(path: &Path) -> heed::Result<TmpNodes<DE>> {
+    pub fn new_in(path: &Path) -> heed::Result<TmpNodes<D>> {
         Ok(TmpNodes {
-            file: tempfile::tempfile_in(path).map(BufWriter::new)?,
+            file: TmpNodesState::Writing(tempfile::tempfile_in(path).map(BufWriter::new)?),
             ids: Vec::new(),
             bounds: vec![0],
             deleted: RoaringBitmap::new(),
@@ -59,10 +131,10 @@ impl<'a, DE: BytesEncode<'a>> TmpNodes<DE> {
         // TODO move that in the type
         &mut self,
         item: ItemId,
-        data: &'a DE::EItem,
-    ) -> heed::Result<()> {
+        data: &'a Node<D>,
+    ) -> Result<()> {
         assert!(item != ItemId::MAX);
-        let bytes = DE::bytes_encode(data).map_err(heed::Error::Encoding)?;
+        let bytes = NodeCodec::bytes_encode(data).map_err(heed::Error::Encoding)?;
         self.file.write_all(&bytes)?;
         let last_bound = self.bounds.last().unwrap();
         self.bounds.push(last_bound + bytes.len());
@@ -72,6 +144,20 @@ impl<'a, DE: BytesEncode<'a>> TmpNodes<DE> {
         debug_assert!(!self.deleted.contains(item));
 
         Ok(())
+    }
+
+    /// Get the node at the given item id.
+    /// Ignore the remapped ids and deletions, only suitable when appending to the file.
+    /// A flush will be executed on the file if the previous operation was a write.
+    pub fn get(&mut self, item: ItemId) -> Result<Option<Node<'static, D>>> {
+        // In our current implementation, when we starts retrieving the nodes, it's always the nodes of the last tree,
+        // so it makes sense to search in reverse order.
+        let Some(position) = self.ids.iter().rev().position(|id| *id == item) else {
+            return Ok(None);
+        };
+        let bounds = &self.bounds[self.bounds.len() - position - 2..self.bounds.len() - position];
+        let bytes = self.file.read_all((bounds[0], bounds[1]))?;
+        Ok(Some(NodeCodec::bytes_decode(&bytes).map_err(heed::Error::Decoding)?.to_owned()))
     }
 
     /// Remap the item id of an already inserted node to another node.
@@ -91,7 +177,7 @@ impl<'a, DE: BytesEncode<'a>> TmpNodes<DE> {
 
     /// Converts it into a readers to read the nodes.
     pub fn into_bytes_reader(self) -> Result<TmpNodesReader> {
-        let file = self.file.into_inner().map_err(|iie| iie.into_error())?;
+        let file = self.file.into_inner()?;
         // safety: No one should move our files around
         let mmap = unsafe { Mmap::map(&file)? };
         #[cfg(unix)]
