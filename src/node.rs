@@ -40,8 +40,15 @@ impl<'a, D: Distance> Node<'a, D> {
             None
         }
     }
-}
 
+    pub fn descendants(self) -> Option<Descendants<'a>> {
+        if let Node::Descendants(descendants) = self {
+            Some(descendants)
+        } else {
+            None
+        }
+    }
+}
 /// A leaf node which corresponds to the vector inputed
 /// by the user and the distance header.
 pub struct Leaf<'a, D: Distance> {

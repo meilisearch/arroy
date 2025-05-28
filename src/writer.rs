@@ -6,6 +6,7 @@ use std::sync::Arc;
 
 use heed::types::{Bytes, DecodeIgnore, Unit};
 use heed::{MdbError, PutFlags, RoTxn, RwTxn};
+use nohash::{BuildNoHashHasher, IntMap};
 use rand::{Rng, SeedableRng};
 use rayon::iter::repeatn;
 use rayon::prelude::*;
@@ -17,7 +18,6 @@ use crate::item_iter::ItemIter;
 use crate::node::{Descendants, ItemIds, Leaf, SplitPlaneNormal};
 use crate::parallel::{
     ConcurrentNodeIds, ImmutableLeafs, ImmutableSubsetLeafs, ImmutableTrees, TmpNodes,
-    TmpNodesReader,
 };
 use crate::reader::item_leaf;
 use crate::unaligned_vector::UnalignedVector;
@@ -669,22 +669,23 @@ impl<D: Distance> Writer<D> {
         nb_tree_nodes: u64,
         concurrent_node_ids: &ConcurrentNodeIds,
     ) -> Result<RoaringBitmap> {
-        let mut large_descendants = RoaringBitmap::new();
-
         if roots.is_empty() {
-            return Ok(large_descendants);
+            return Ok(RoaringBitmap::new());
         }
+
+        // If we have only one roots it means we're splitting a large descendants.
+        // Otherwise it means we're updating the whole database and will need all the tree nodes.
+        let immutable_tree_nodes = if roots.len() == 1 {
+            ImmutableTrees::sub_tree_from_id(wtxn, self.database, self.index, roots[0])?
+        } else {
+            ImmutableTrees::new(wtxn, self.database, self.index, nb_tree_nodes)?
+        };
+        let mut descendants_to_update: IntMap<ItemId, RoaringBitmap> =
+            IntMap::with_hasher(BuildNoHashHasher::default());
 
         while !to_insert.is_empty() {
             options.cancelled()?;
 
-            // If we have only one roots it means we're splitting a large descendants.
-            // Otherwise it means we're updating the whole database and will need all the tree nodes.
-            let immutable_tree_nodes = if roots.len() == 1 {
-                ImmutableTrees::sub_tree_from_id(wtxn, self.database, self.index, roots[0])?
-            } else {
-                ImmutableTrees::new(wtxn, self.database, self.index, nb_tree_nodes)?
-            };
             let (leafs, to_insert) = ImmutableLeafs::new(
                 wtxn,
                 self.database,
@@ -699,22 +700,30 @@ impl<D: Distance> Writer<D> {
                 FrozzenReader { leafs: &leafs, trees: &immutable_tree_nodes, concurrent_node_ids };
             let tmp_descendant_to_write =
                 self.insert_items_in_tree(options, rng, roots, &to_insert, &frozzen_reader)?;
-
-            for (tmp_node, descendants) in tmp_descendant_to_write.iter() {
-                large_descendants |= descendants;
-
-                for item_id in tmp_node.to_delete() {
-                    options.cancelled()?;
-                    let key = Key::tree(self.index, item_id);
-                    self.database.remap_data_type::<Bytes>().delete(wtxn, &key)?;
-                }
-                for (item_id, item_bytes) in tmp_node.to_insert() {
-                    options.cancelled()?;
-                    let key = Key::tree(self.index, item_id);
-                    self.database.remap_data_type::<Bytes>().put(wtxn, &key, item_bytes)?;
-                }
+            for (item_id, descendants) in tmp_descendant_to_write.into_iter() {
+                descendants_to_update.entry(item_id).or_default().extend(descendants.clone());
             }
         }
+
+        let mut large_descendants = RoaringBitmap::new();
+
+        for (item_id, descendants) in descendants_to_update.into_iter() {
+            options.cancelled()?;
+
+            let key = Key::tree(self.index, item_id);
+            let old_node = self.database.get(&wtxn, &key)?.unwrap();
+            let Descendants { descendants: original_descendants } = old_node.descendants().unwrap();
+            let new_descendants = original_descendants.into_owned() | descendants;
+            self.database.put(
+                wtxn,
+                &key,
+                &Node::Descendants(Descendants { descendants: Cow::Borrowed(&new_descendants) }),
+            )?;
+            if !self.fit_in_descendant(options, new_descendants.len()) {
+                large_descendants.insert(item_id);
+            }
+        }
+
         Ok(large_descendants)
     }
 
@@ -938,32 +947,38 @@ impl<D: Distance> Writer<D> {
         roots: &[ItemId],
         to_insert: &RoaringBitmap,
         frozen_reader: &FrozzenReader<D>,
-    ) -> Result<Vec<(TmpNodesReader, RoaringBitmap)>> {
+    ) -> Result<IntMap<ItemId, RoaringBitmap>> {
         repeatn(rng.next_u64(), roots.len())
             .zip(roots)
             .map(|(seed, root)| {
                 opt.cancelled()?;
                 tracing::debug!("started updating tree {root:X}...");
                 let mut rng = R::seed_from_u64(seed.wrapping_add(*root as u64));
-                let mut tmp_descendant: TmpNodes<NodeCodec<D>> = match self.tmpdir.as_ref() {
-                    Some(path) => TmpNodes::new_in(path)?,
-                    None => TmpNodes::new()?,
-                };
-                let mut large_descendants = RoaringBitmap::new();
+                let mut descendants_to_update = IntMap::with_hasher(BuildNoHashHasher::default());
                 self.insert_items_in_file(
                     opt,
                     frozen_reader,
                     &mut rng,
                     *root,
                     to_insert,
-                    &mut large_descendants,
-                    &mut tmp_descendant,
+                    &mut descendants_to_update,
                 )?;
 
                 tracing::debug!("finished updating tree {root:X}");
-                Ok((tmp_descendant.into_bytes_reader()?, large_descendants))
+                Ok(descendants_to_update)
             })
-            .collect()
+            .reduce(
+                || Ok(IntMap::with_hasher(BuildNoHashHasher::default())),
+                |acc, descendants_to_update| match (acc, descendants_to_update) {
+                    (Err(e), _) | (_, Err(e)) => Err(e),
+                    (Ok(mut acc), Ok(descendants_to_update)) => {
+                        for (item_id, descendants) in descendants_to_update.into_iter() {
+                            acc.entry(item_id).or_default().extend(descendants.clone());
+                        }
+                        Ok(acc)
+                    }
+                },
+            )
     }
 
     /// Find all the descendants that matches the list of items to insert and write them to a file
@@ -975,32 +990,13 @@ impl<D: Distance> Writer<D> {
         rng: &mut R,
         current_node: ItemId,
         to_insert: &RoaringBitmap,
-        large_descendants: &mut RoaringBitmap,
-        tmp_nodes: &mut TmpNodes<NodeCodec<D>>,
-    ) -> Result<ItemId> {
+        descendants_to_update: &mut IntMap<ItemId, RoaringBitmap>,
+    ) -> Result<()> {
         opt.cancelled()?;
         match frozen_reader.trees.get(current_node)?.unwrap() {
             Node::Leaf(_) => unreachable!(),
-            Node::Descendants(Descendants { descendants }) => {
-                let mut new_descendants = descendants.clone().into_owned();
-                // insert all of our IDs in the descendants
-                new_descendants |= to_insert;
-
-                if !self.fit_in_descendant(opt, new_descendants.len()) {
-                    large_descendants.insert(current_node);
-                }
-
-                // If the number of descendant changed it means we inserted new items and must overwrite the node
-                if descendants.len() != new_descendants.len() {
-                    // otherwise we can just update our descendants
-                    tmp_nodes.put(
-                        current_node,
-                        &Node::Descendants(Descendants {
-                            descendants: Cow::Owned(new_descendants.clone()),
-                        }),
-                    )?;
-                }
-                Ok(current_node)
+            Node::Descendants(Descendants { descendants: _ }) => {
+                descendants_to_update.insert(current_node, to_insert.clone());
             }
             Node::SplitPlaneNormal(SplitPlaneNormal { normal, left, right }) => {
                 // Split the to_insert into two bitmaps on the left and right of this normal
@@ -1022,40 +1018,25 @@ impl<D: Distance> Writer<D> {
                     }
                 }
 
-                let new_left = self.insert_items_in_file(
+                self.insert_items_in_file(
                     opt,
                     frozen_reader,
                     rng,
                     left,
                     &left_ids,
-                    large_descendants,
-                    tmp_nodes,
+                    descendants_to_update,
                 )?;
-                let new_right = self.insert_items_in_file(
+                self.insert_items_in_file(
                     opt,
                     frozen_reader,
                     rng,
                     right,
                     &right_ids,
-                    large_descendants,
-                    tmp_nodes,
+                    descendants_to_update,
                 )?;
-
-                if new_left != left || new_right != right {
-                    tmp_nodes.put(
-                        current_node,
-                        &Node::SplitPlaneNormal(SplitPlaneNormal {
-                            normal,
-                            left: new_left,
-                            right: new_right,
-                        }),
-                    )?;
-                    Ok(current_node)
-                } else {
-                    Ok(current_node)
-                }
             }
         }
+        Ok(())
     }
 
     /// Creates a tree of nodes from the frozzen items that lives
