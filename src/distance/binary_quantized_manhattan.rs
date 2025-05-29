@@ -78,13 +78,6 @@ impl Distance for BinaryQuantizedManhattan {
     fn margin(p: &Leaf<Self>, q: &Leaf<Self>) -> f32 {
         p.header.bias + dot_product_binary_quantized(&p.vector, &q.vector)
     }
-
-    fn margin_no_header(
-        p: &Leaf<Self>,
-        q: &Leaf<Self>,
-    ) -> f32 {
-        dot_product_binary_quantized(&p.vector, &q.vector)
-    }
 }
 
 /// For the binary quantized manhattan distance:

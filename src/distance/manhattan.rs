@@ -76,8 +76,4 @@ impl Distance for Manhattan {
     fn margin(p: &Leaf<Self>, q: &Leaf<Self>) -> f32 {
         p.header.bias + dot_product(&p.vector, &q.vector)
     }
-
-    fn margin_no_header(p: &Leaf<Self>, q: &Leaf<Self>) -> f32 {
-        dot_product(&p.vector, &q.vector)
-    }
 }

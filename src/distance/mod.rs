@@ -98,14 +98,10 @@ pub trait Distance: Send + Sync + Sized + Clone + fmt::Debug + 'static {
         rng: &mut R,
     ) -> heed::Result<Leaf<'a, Self>>;
 
-    fn margin(p: &Leaf<Self>, q: &Leaf<Self>) -> f32 {
-        Self::margin_no_header(p, q)
-    }
+    fn margin(p: &Leaf<Self>, q: &Leaf<Self>) -> f32; 
 
-    fn margin_no_header(p: &Leaf<Self>, q: &Leaf<Self>) -> f32;
-
-    fn side<R: Rng>(normal: &Leaf<Self>, node: &Leaf<Self>, rng: &mut R) -> Side {
-        let dot = Self::margin_no_header(normal, node);
+    fn side(normal: &Leaf<Self>, node: &Leaf<Self>) -> Side {
+        let dot = Self::margin(normal, node);
         if dot.is_sign_positive() {
             Side::Right
         } else {
