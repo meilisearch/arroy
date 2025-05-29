@@ -1,4 +1,3 @@
-use std::borrow::Cow;
 
 use bytemuck::{Pod, Zeroable};
 use rand::Rng;
@@ -59,17 +58,18 @@ impl Distance for BinaryQuantizedEuclidean {
     fn create_split<'a, R: Rng>(
         children: &'a ImmutableSubsetLeafs<Self>,
         rng: &mut R,
-    ) -> heed::Result<Cow<'a, UnalignedVector<Self::VectorCodec>>> {
+    ) -> heed::Result<Leaf<'a, Self>> {
         let [node_p, node_q] = two_means::<Self, Euclidean, R>(rng, children, false)?;
         let vector: Vec<f32> =
             node_p.vector.iter().zip(node_q.vector.iter()).map(|(p, q)| p - q).collect();
         let mut normal = Leaf {
             header: NodeHeaderBinaryQuantizedEuclidean { bias: 0.0 },
-            vector: UnalignedVector::from_slice(&vector),
+            vector: UnalignedVector::from_vec(vector),
         };
         Self::normalize(&mut normal);
+        normal.header = Self::new_header(&normal.vector);
 
-        Ok(Cow::Owned(normal.vector.into_owned()))
+        Ok(normal)
     }
 
     fn margin(p: &Leaf<Self>, q: &Leaf<Self>) -> f32 {
@@ -77,10 +77,10 @@ impl Distance for BinaryQuantizedEuclidean {
     }
 
     fn margin_no_header(
-        p: &UnalignedVector<Self::VectorCodec>,
-        q: &UnalignedVector<Self::VectorCodec>,
+        p: &Leaf<Self>,
+        q: &Leaf<Self>,
     ) -> f32 {
-        dot_product_binary_quantized(p, q)
+        dot_product_binary_quantized(&p.vector, &q.vector)
     }
 }
 
