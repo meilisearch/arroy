@@ -85,7 +85,7 @@ impl Distance for BinaryQuantizedCosine {
         Ok(normal)
     }
 
-    fn margin_no_header(
+    fn margin(
         p: &Leaf<Self>,
         q: &Leaf<Self>,
     ) -> f32 {

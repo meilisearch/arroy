@@ -78,7 +78,7 @@ impl Distance for Cosine {
         Ok(normal)
     }
 
-    fn margin_no_header(p: &Leaf<Self>, q: &Leaf<Self>) -> f32 {
+    fn margin(p: &Leaf<Self>, q: &Leaf<Self>) -> f32 {
         dot_product(&p.vector, &q.vector)
     }
 }

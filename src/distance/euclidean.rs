@@ -73,11 +73,4 @@ impl Distance for Euclidean {
     fn margin(n: &Leaf<Self>, q: &Leaf<Self>) -> f32 {
         n.header.bias + dot_product(&n.vector, &q.vector)
     }
-
-    fn margin_no_header(
-        p: &Leaf<Self>,
-        q: &Leaf<Self>,
-    ) -> f32 {
-        dot_product(&p.vector, &q.vector)
-    }
 }
