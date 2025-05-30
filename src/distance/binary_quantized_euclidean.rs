@@ -1,4 +1,3 @@
-
 use bytemuck::{Pod, Zeroable};
 use rand::Rng;
 
@@ -67,7 +66,14 @@ impl Distance for BinaryQuantizedEuclidean {
             vector: UnalignedVector::from_vec(vector),
         };
         Self::normalize(&mut normal);
-        normal.header = Self::new_header(&normal.vector);
+
+        normal.header.bias = normal
+            .vector
+            .iter()
+            .zip(UnalignedVector::<BinaryQuantized>::from_vec(node_p.vector.to_vec()).iter())
+            .zip(UnalignedVector::<BinaryQuantized>::from_vec(node_q.vector.to_vec()).iter())
+            .map(|((n, p), q)| -n * (p + q) / 2.0)
+            .sum();
 
         Ok(normal)
     }
