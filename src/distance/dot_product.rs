@@ -1,3 +1,5 @@
+use std::fmt;
+
 use bytemuck::{Pod, Zeroable};
 use heed::{RwPrefix, RwTxn};
 use rand::Rng;
@@ -19,11 +21,19 @@ pub enum DotProduct {}
 
 /// The header of DotProduct leaf nodes.
 #[repr(C)]
-#[derive(Pod, Zeroable, Debug, Clone, Copy)]
+#[derive(Pod, Zeroable, Clone, Copy)]
 pub struct NodeHeaderDotProduct {
     extra_dim: f32,
     /// An extra constant term to determine the offset of the plane
     norm: f32,
+}
+impl fmt::Debug for NodeHeaderDotProduct {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("NodeHeaderDotProduct")
+            .field("extra_dim", &format!("{:.4}", self.extra_dim))
+            .field("norm", &format!("{:.4}", self.norm))
+            .finish()
+    }
 }
 
 impl Distance for DotProduct {

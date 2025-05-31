@@ -1,3 +1,5 @@
+use std::fmt;
+
 use bytemuck::{Pod, Zeroable};
 use rand::Rng;
 
@@ -16,10 +18,15 @@ pub enum Manhattan {}
 
 /// The header of Manhattan leaf nodes.
 #[repr(C)]
-#[derive(Pod, Zeroable, Debug, Clone, Copy)]
+#[derive(Pod, Zeroable, Clone, Copy)]
 pub struct NodeHeaderManhattan {
     /// An extra constant term to determine the offset of the plane
     bias: f32,
+}
+impl fmt::Debug for NodeHeaderManhattan {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("NodeHeaderManhattan").field("bias", &format!("{:.4}", self.bias)).finish()
+    }
 }
 
 impl Distance for Manhattan {
