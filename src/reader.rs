@@ -347,7 +347,7 @@ impl<'t, D: Distance> Reader<'t, D> {
             let key = Key::new(self.index, item);
             match self.database_get(rtxn, &key)?.ok_or(Error::missing_key(key))? {
                 GenericReadNode::Leaf(_) => {
-                    if opt.candidates.is_none_or(|c| c.contains(item.item)) {
+                    if opt.candidates.map_or(true, |c| c.contains(item.item)) {
                         nns.push(item.unwrap_item());
                     }
                 }
