@@ -100,7 +100,7 @@ pub trait Distance: Send + Sync + Sized + Clone + fmt::Debug + 'static {
         rng: &mut R,
     ) -> heed::Result<Leaf<'a, Self>>;
 
-    fn margin(p: &Leaf<Self>, q: &Leaf<Self>) -> f32; 
+    fn margin(p: &Leaf<Self>, q: &Leaf<Self>) -> f32;
 
     fn side(normal: &Leaf<Self>, node: &Leaf<Self>) -> Side {
         let dot = Self::margin(normal, node);
