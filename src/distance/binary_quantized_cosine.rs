@@ -1,3 +1,5 @@
+use std::fmt;
+
 use bytemuck::{Pod, Zeroable};
 use rand::Rng;
 
@@ -18,9 +20,16 @@ pub enum BinaryQuantizedCosine {}
 
 /// The header of `BinaryQuantizedCosine` leaf nodes.
 #[repr(C)]
-#[derive(Pod, Zeroable, Debug, Clone, Copy)]
+#[derive(Pod, Zeroable, Clone, Copy)]
 pub struct NodeHeaderBinaryQuantizedCosine {
     norm: f32,
+}
+impl fmt::Debug for NodeHeaderBinaryQuantizedCosine {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("NodeHeaderBinaryQuantizedCosine")
+            .field("norm", &format!("{:.4}", self.norm))
+            .finish()
+    }
 }
 
 impl Distance for BinaryQuantizedCosine {
