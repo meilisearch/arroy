@@ -1,4 +1,3 @@
-
 use bytemuck::{Pod, Zeroable};
 use rand::Rng;
 
@@ -85,10 +84,7 @@ impl Distance for BinaryQuantizedCosine {
         Ok(normal)
     }
 
-    fn margin(
-        p: &Leaf<Self>,
-        q: &Leaf<Self>,
-    ) -> f32 {
+    fn margin(p: &Leaf<Self>, q: &Leaf<Self>) -> f32 {
         dot_product_binary_quantized(&p.vector, &q.vector)
     }
 }
