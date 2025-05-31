@@ -364,7 +364,7 @@ impl<'t, D: Distance> Reader<'t, D> {
                     right,
                 }) => {
                     let margin = match normal {
-                        Some(normal) => D::margin_no_header(&normal, &query_leaf.vector),
+                        Some(normal) => D::margin(&normal, query_leaf),
                         None => 0.0,
                     };
                     queue.push((OrderedFloat(D::pq_distance(dist, margin, Side::Left)), left));

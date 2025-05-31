@@ -1014,7 +1014,7 @@ impl<D: Distance> Writer<D> {
                     Some(ref normal) => {
                         for leaf in to_insert {
                             let node = frozen_reader.leafs.get(leaf)?.unwrap();
-                            match D::side(normal, &node, rng) {
+                            match D::side(normal, &node) {
                                 Side::Left => left_ids.insert(leaf),
                                 Side::Right => right_ids.insert(leaf),
                             };
@@ -1091,7 +1091,7 @@ impl<D: Distance> Writer<D> {
             let normal = D::create_split(&children, rng)?;
             for item_id in item_indices.iter() {
                 let node = reader.leafs.get(item_id)?.unwrap();
-                match D::side(&normal, &node, rng) {
+                match D::side(&normal, &node) {
                     Side::Left => children_left.push(item_id),
                     Side::Right => children_right.push(item_id),
                 };

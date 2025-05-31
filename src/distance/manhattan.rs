@@ -1,4 +1,4 @@
-use std::borrow::Cow;
+use std::fmt;
 
 use bytemuck::{Pod, Zeroable};
 use rand::Rng;
@@ -18,10 +18,15 @@ pub enum Manhattan {}
 
 /// The header of Manhattan leaf nodes.
 #[repr(C)]
-#[derive(Pod, Zeroable, Debug, Clone, Copy)]
+#[derive(Pod, Zeroable, Clone, Copy)]
 pub struct NodeHeaderManhattan {
     /// An extra constant term to determine the offset of the plane
     bias: f32,
+}
+impl fmt::Debug for NodeHeaderManhattan {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("NodeHeaderManhattan").field("bias", &format!("{:.4}", self.bias)).finish()
+    }
 }
 
 impl Distance for Manhattan {
@@ -53,7 +58,7 @@ impl Distance for Manhattan {
     fn create_split<'a, R: Rng>(
         children: &'a ImmutableSubsetLeafs<Self>,
         rng: &mut R,
-    ) -> heed::Result<Cow<'a, UnalignedVector<Self::VectorCodec>>> {
+    ) -> heed::Result<Leaf<'a, Self>> {
         let [node_p, node_q] = two_means(rng, children, false)?;
         let vector: Vec<_> =
             node_p.vector.iter().zip(node_q.vector.iter()).map(|(p, q)| p - q).collect();
@@ -71,17 +76,10 @@ impl Distance for Manhattan {
             .map(|((n, p), q)| -n * (p + q) / 2.0)
             .sum();
 
-        Ok(normal.vector)
+        Ok(normal)
     }
 
     fn margin(p: &Leaf<Self>, q: &Leaf<Self>) -> f32 {
         p.header.bias + dot_product(&p.vector, &q.vector)
-    }
-
-    fn margin_no_header(
-        p: &UnalignedVector<Self::VectorCodec>,
-        q: &UnalignedVector<Self::VectorCodec>,
-    ) -> f32 {
-        dot_product(p, q)
     }
 }

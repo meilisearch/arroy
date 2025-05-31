@@ -1,4 +1,4 @@
-use std::borrow::Cow;
+use std::fmt;
 
 use bytemuck::{Pod, Zeroable};
 use heed::{RwPrefix, RwTxn};
@@ -21,11 +21,19 @@ pub enum DotProduct {}
 
 /// The header of DotProduct leaf nodes.
 #[repr(C)]
-#[derive(Pod, Zeroable, Debug, Clone, Copy)]
+#[derive(Pod, Zeroable, Clone, Copy)]
 pub struct NodeHeaderDotProduct {
     extra_dim: f32,
     /// An extra constant term to determine the offset of the plane
     norm: f32,
+}
+impl fmt::Debug for NodeHeaderDotProduct {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("NodeHeaderDotProduct")
+            .field("extra_dim", &format!("{:.4}", self.extra_dim))
+            .field("norm", &format!("{:.4}", self.norm))
+            .finish()
+    }
 }
 
 impl Distance for DotProduct {
@@ -90,7 +98,7 @@ impl Distance for DotProduct {
     fn create_split<'a, R: Rng>(
         children: &'a ImmutableSubsetLeafs<Self>,
         rng: &mut R,
-    ) -> heed::Result<Cow<'a, UnalignedVector<Self::VectorCodec>>> {
+    ) -> heed::Result<Leaf<'a, Self>> {
         let [node_p, node_q] = two_means(rng, children, true)?;
         let vector: Vec<f32> =
             node_p.vector.iter().zip(node_q.vector.iter()).map(|(p, q)| p - q).collect();
@@ -101,18 +109,11 @@ impl Distance for DotProduct {
         normal.header.extra_dim = node_p.header.extra_dim - node_q.header.extra_dim;
         Self::normalize(&mut normal);
 
-        Ok(normal.vector)
+        Ok(normal)
     }
 
     fn margin(p: &Leaf<Self>, q: &Leaf<Self>) -> f32 {
         dot_product(&p.vector, &q.vector) + p.header.extra_dim * q.header.extra_dim
-    }
-
-    fn margin_no_header(
-        p: &UnalignedVector<Self::VectorCodec>,
-        q: &UnalignedVector<Self::VectorCodec>,
-    ) -> f32 {
-        dot_product(p, q)
     }
 
     fn preprocess(
