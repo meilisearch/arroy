@@ -77,19 +77,19 @@ fn simple_upgrade_v0_6_to_v0_7() {
     Dumping index 0
     Root: Metadata { dimensions: 2, items: RoaringBitmap<[0, 1, 2, 3, 4, 5]>, roots: [0], distance: "euclidean" }
     Version: Version { major: 0, minor: 7, patch: 0 }
-    Tree 0: SplitPlaneNormal(SplitPlaneNormal<euclidean> { left: 5, right: 4, normal: Leaf { header: NodeHeaderEuclidean { bias: 0.0 }, vector: [1.0000, 0.0000] } })
+    Tree 0: SplitPlaneNormal(SplitPlaneNormal<euclidean> { left: 5, right: 4, normal: Leaf { header: NodeHeaderEuclidean { bias: "0.0000" }, vector: [1.0000, 0.0000] } })
     Tree 1: Descendants(Descendants { descendants: [1, 5] })
     Tree 2: Descendants(Descendants { descendants: [3, 4] })
     Tree 3: SplitPlaneNormal(SplitPlaneNormal<euclidean> { left: 2, right: 6, normal: "none" })
     Tree 4: SplitPlaneNormal(SplitPlaneNormal<euclidean> { left: 1, right: 3, normal: "none" })
     Tree 5: Descendants(Descendants { descendants: [0] })
     Tree 6: Descendants(Descendants { descendants: [2] })
-    Item 0: Leaf(Leaf { header: NodeHeaderEuclidean { bias: 0.0 }, vector: [0.0000, 0.0000] })
-    Item 1: Leaf(Leaf { header: NodeHeaderEuclidean { bias: 0.0 }, vector: [1.0000, 0.0000] })
-    Item 2: Leaf(Leaf { header: NodeHeaderEuclidean { bias: 0.0 }, vector: [2.0000, 0.0000] })
-    Item 3: Leaf(Leaf { header: NodeHeaderEuclidean { bias: 0.0 }, vector: [3.0000, 0.0000] })
-    Item 4: Leaf(Leaf { header: NodeHeaderEuclidean { bias: 0.0 }, vector: [4.0000, 0.0000] })
-    Item 5: Leaf(Leaf { header: NodeHeaderEuclidean { bias: 0.0 }, vector: [5.0000, 0.0000] })
+    Item 0: Leaf(Leaf { header: NodeHeaderEuclidean { bias: "0.0000" }, vector: [0.0000, 0.0000] })
+    Item 1: Leaf(Leaf { header: NodeHeaderEuclidean { bias: "0.0000" }, vector: [1.0000, 0.0000] })
+    Item 2: Leaf(Leaf { header: NodeHeaderEuclidean { bias: "0.0000" }, vector: [2.0000, 0.0000] })
+    Item 3: Leaf(Leaf { header: NodeHeaderEuclidean { bias: "0.0000" }, vector: [3.0000, 0.0000] })
+    Item 4: Leaf(Leaf { header: NodeHeaderEuclidean { bias: "0.0000" }, vector: [4.0000, 0.0000] })
+    Item 5: Leaf(Leaf { header: NodeHeaderEuclidean { bias: "0.0000" }, vector: [5.0000, 0.0000] })
     "#);
 }
 
