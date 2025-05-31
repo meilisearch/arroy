@@ -281,9 +281,9 @@ fn write_vectors_until_there_is_a_split() {
     Dumping index 0
     Root: Metadata { dimensions: 3, items: RoaringBitmap<[0, 1, 2, 3]>, roots: [0], distance: "euclidean" }
     Version: Version { major: 0, minor: 7, patch: 0 }
-    Tree 0: SplitPlaneNormal(SplitPlaneNormal<euclidean> { left: 1, right: 2, normal: [0.5774, 0.5774, 0.5774] })
-    Tree 1: Descendants(Descendants { descendants: [0] })
-    Tree 2: Descendants(Descendants { descendants: [1, 2, 3] })
+    Tree 0: SplitPlaneNormal(SplitPlaneNormal<euclidean> { left: 1, right: 2, normal: Leaf { header: NodeHeaderEuclidean { bias: -2.6152277 }, vector: [0.5774, 0.5774, 0.5774] } })
+    Tree 1: Descendants(Descendants { descendants: [0, 1] })
+    Tree 2: Descendants(Descendants { descendants: [2, 3] })
     Item 0: Leaf(Leaf { header: NodeHeaderEuclidean { bias: 0.0 }, vector: [0.0000, 0.0000, 0.0000] })
     Item 1: Leaf(Leaf { header: NodeHeaderEuclidean { bias: 0.0 }, vector: [1.0000, 1.0000, 1.0000] })
     Item 2: Leaf(Leaf { header: NodeHeaderEuclidean { bias: 0.0 }, vector: [2.0000, 2.0000, 2.0000] })
@@ -404,13 +404,13 @@ fn overwrite_one_item_incremental() {
     Dumping index 0
     Root: Metadata { dimensions: 2, items: RoaringBitmap<[0, 1, 2, 3, 4, 5]>, roots: [0], distance: "euclidean" }
     Version: Version { major: 0, minor: 7, patch: 0 }
-    Tree 0: SplitPlaneNormal(SplitPlaneNormal<euclidean> { left: 1, right: 6, normal: [1.0000, 0.0000] })
-    Tree 1: Descendants(Descendants { descendants: [0] })
-    Tree 2: Descendants(Descendants { descendants: [1, 5] })
-    Tree 3: Descendants(Descendants { descendants: [3, 4] })
-    Tree 4: Descendants(Descendants { descendants: [2] })
-    Tree 5: SplitPlaneNormal(SplitPlaneNormal<euclidean> { left: 3, right: 4, normal: "none" })
-    Tree 6: SplitPlaneNormal(SplitPlaneNormal<euclidean> { left: 2, right: 5, normal: "none" })
+    Tree 0: SplitPlaneNormal(SplitPlaneNormal<euclidean> { left: 3, right: 6, normal: Leaf { header: NodeHeaderEuclidean { bias: -2.5414658 }, vector: [1.0000, 0.0000] } })
+    Tree 1: Descendants(Descendants { descendants: [0, 1] })
+    Tree 2: Descendants(Descendants { descendants: [2] })
+    Tree 3: SplitPlaneNormal(SplitPlaneNormal<euclidean> { left: 1, right: 2, normal: Leaf { header: NodeHeaderEuclidean { bias: -1.2328244 }, vector: [1.0000, 0.0000] } })
+    Tree 4: Descendants(Descendants { descendants: [5] })
+    Tree 5: Descendants(Descendants { descendants: [3, 4] })
+    Tree 6: SplitPlaneNormal(SplitPlaneNormal<euclidean> { left: 4, right: 5, normal: Leaf { header: NodeHeaderEuclidean { bias: 4.253788 }, vector: [-1.0000, 0.0000] } })
     Item 0: Leaf(Leaf { header: NodeHeaderEuclidean { bias: 0.0 }, vector: [0.0000, 0.0000] })
     Item 1: Leaf(Leaf { header: NodeHeaderEuclidean { bias: 0.0 }, vector: [1.0000, 0.0000] })
     Item 2: Leaf(Leaf { header: NodeHeaderEuclidean { bias: 0.0 }, vector: [2.0000, 0.0000] })
@@ -433,13 +433,13 @@ fn overwrite_one_item_incremental() {
     Dumping index 0
     Root: Metadata { dimensions: 2, items: RoaringBitmap<[0, 1, 2, 3, 4, 5]>, roots: [0], distance: "euclidean" }
     Version: Version { major: 0, minor: 7, patch: 0 }
-    Tree 0: SplitPlaneNormal(SplitPlaneNormal<euclidean> { left: 1, right: 6, normal: [1.0000, 0.0000] })
-    Tree 1: Descendants(Descendants { descendants: [0] })
-    Tree 2: Descendants(Descendants { descendants: [1, 5] })
-    Tree 5: SplitPlaneNormal(SplitPlaneNormal<euclidean> { left: 7, right: 8, normal: "none" })
-    Tree 6: SplitPlaneNormal(SplitPlaneNormal<euclidean> { left: 2, right: 5, normal: "none" })
-    Tree 7: Descendants(Descendants { descendants: [3, 4] })
-    Tree 8: Descendants(Descendants { descendants: [2] })
+    Tree 0: SplitPlaneNormal(SplitPlaneNormal<euclidean> { left: 3, right: 6, normal: Leaf { header: NodeHeaderEuclidean { bias: -2.5414658 }, vector: [1.0000, 0.0000] } })
+    Tree 1: Descendants(Descendants { descendants: [0, 1] })
+    Tree 2: Descendants(Descendants { descendants: [2] })
+    Tree 3: SplitPlaneNormal(SplitPlaneNormal<euclidean> { left: 1, right: 2, normal: Leaf { header: NodeHeaderEuclidean { bias: -1.2328244 }, vector: [1.0000, 0.0000] } })
+    Tree 6: SplitPlaneNormal(SplitPlaneNormal<euclidean> { left: 7, right: 8, normal: Leaf { header: NodeHeaderEuclidean { bias: 5.16018 }, vector: [-1.0000, 0.0000] } })
+    Tree 7: Descendants(Descendants { descendants: [3] })
+    Tree 8: Descendants(Descendants { descendants: [4, 5] })
     Item 0: Leaf(Leaf { header: NodeHeaderEuclidean { bias: 0.0 }, vector: [0.0000, 0.0000] })
     Item 1: Leaf(Leaf { header: NodeHeaderEuclidean { bias: 0.0 }, vector: [1.0000, 0.0000] })
     Item 2: Leaf(Leaf { header: NodeHeaderEuclidean { bias: 0.0 }, vector: [2.0000, 0.0000] })
@@ -606,9 +606,9 @@ fn delete_one_leaf_in_a_split() {
     Dumping index 0
     Root: Metadata { dimensions: 2, items: RoaringBitmap<[0, 1, 2]>, roots: [0], distance: "euclidean" }
     Version: Version { major: 0, minor: 7, patch: 0 }
-    Tree 0: SplitPlaneNormal(SplitPlaneNormal<euclidean> { left: 1, right: 2, normal: "none" })
-    Tree 1: Descendants(Descendants { descendants: [1] })
-    Tree 2: Descendants(Descendants { descendants: [0, 2] })
+    Tree 0: SplitPlaneNormal(SplitPlaneNormal<euclidean> { left: 1, right: 2, normal: Leaf { header: NodeHeaderEuclidean { bias: 1.2666667 }, vector: [-1.0000, 0.0000] } })
+    Tree 1: Descendants(Descendants { descendants: [2] })
+    Tree 2: Descendants(Descendants { descendants: [0, 1] })
     Item 0: Leaf(Leaf { header: NodeHeaderEuclidean { bias: 0.0 }, vector: [0.0000, 0.0000] })
     Item 1: Leaf(Leaf { header: NodeHeaderEuclidean { bias: 0.0 }, vector: [1.0000, 0.0000] })
     Item 2: Leaf(Leaf { header: NodeHeaderEuclidean { bias: 0.0 }, vector: [2.0000, 0.0000] })
@@ -690,13 +690,13 @@ fn delete_one_item() {
     Dumping index 0
     Root: Metadata { dimensions: 2, items: RoaringBitmap<[0, 1, 2, 3, 4, 5]>, roots: [0], distance: "euclidean" }
     Version: Version { major: 0, minor: 7, patch: 0 }
-    Tree 0: SplitPlaneNormal(SplitPlaneNormal<euclidean> { left: 1, right: 6, normal: [1.0000, 0.0000] })
-    Tree 1: Descendants(Descendants { descendants: [0] })
-    Tree 2: Descendants(Descendants { descendants: [1, 5] })
-    Tree 3: Descendants(Descendants { descendants: [3, 4] })
-    Tree 4: Descendants(Descendants { descendants: [2] })
-    Tree 5: SplitPlaneNormal(SplitPlaneNormal<euclidean> { left: 3, right: 4, normal: "none" })
-    Tree 6: SplitPlaneNormal(SplitPlaneNormal<euclidean> { left: 2, right: 5, normal: "none" })
+    Tree 0: SplitPlaneNormal(SplitPlaneNormal<euclidean> { left: 3, right: 6, normal: Leaf { header: NodeHeaderEuclidean { bias: -2.5414658 }, vector: [1.0000, 0.0000] } })
+    Tree 1: Descendants(Descendants { descendants: [0, 1] })
+    Tree 2: Descendants(Descendants { descendants: [2] })
+    Tree 3: SplitPlaneNormal(SplitPlaneNormal<euclidean> { left: 1, right: 2, normal: Leaf { header: NodeHeaderEuclidean { bias: -1.2328244 }, vector: [1.0000, 0.0000] } })
+    Tree 4: Descendants(Descendants { descendants: [5] })
+    Tree 5: Descendants(Descendants { descendants: [3, 4] })
+    Tree 6: SplitPlaneNormal(SplitPlaneNormal<euclidean> { left: 4, right: 5, normal: Leaf { header: NodeHeaderEuclidean { bias: 4.253788 }, vector: [-1.0000, 0.0000] } })
     Item 0: Leaf(Leaf { header: NodeHeaderEuclidean { bias: 0.0 }, vector: [0.0000, 0.0000] })
     Item 1: Leaf(Leaf { header: NodeHeaderEuclidean { bias: 0.0 }, vector: [1.0000, 0.0000] })
     Item 2: Leaf(Leaf { header: NodeHeaderEuclidean { bias: 0.0 }, vector: [2.0000, 0.0000] })
@@ -718,11 +718,11 @@ fn delete_one_item() {
     Dumping index 0
     Root: Metadata { dimensions: 2, items: RoaringBitmap<[0, 1, 2, 4, 5]>, roots: [0], distance: "euclidean" }
     Version: Version { major: 0, minor: 7, patch: 0 }
-    Tree 0: SplitPlaneNormal(SplitPlaneNormal<euclidean> { left: 1, right: 6, normal: [1.0000, 0.0000] })
-    Tree 1: Descendants(Descendants { descendants: [0] })
-    Tree 2: Descendants(Descendants { descendants: [1, 5] })
-    Tree 5: Descendants(Descendants { descendants: [2, 4] })
-    Tree 6: SplitPlaneNormal(SplitPlaneNormal<euclidean> { left: 2, right: 5, normal: "none" })
+    Tree 0: SplitPlaneNormal(SplitPlaneNormal<euclidean> { left: 3, right: 6, normal: Leaf { header: NodeHeaderEuclidean { bias: -2.5414658 }, vector: [1.0000, 0.0000] } })
+    Tree 1: Descendants(Descendants { descendants: [0, 1] })
+    Tree 2: Descendants(Descendants { descendants: [2] })
+    Tree 3: SplitPlaneNormal(SplitPlaneNormal<euclidean> { left: 1, right: 2, normal: Leaf { header: NodeHeaderEuclidean { bias: -1.2328244 }, vector: [1.0000, 0.0000] } })
+    Tree 6: Descendants(Descendants { descendants: [4, 5] })
     Item 0: Leaf(Leaf { header: NodeHeaderEuclidean { bias: 0.0 }, vector: [0.0000, 0.0000] })
     Item 1: Leaf(Leaf { header: NodeHeaderEuclidean { bias: 0.0 }, vector: [1.0000, 0.0000] })
     Item 2: Leaf(Leaf { header: NodeHeaderEuclidean { bias: 0.0 }, vector: [2.0000, 0.0000] })
@@ -744,11 +744,9 @@ fn delete_one_item() {
     Dumping index 0
     Root: Metadata { dimensions: 2, items: RoaringBitmap<[0, 2, 4, 5]>, roots: [0], distance: "euclidean" }
     Version: Version { major: 0, minor: 7, patch: 0 }
-    Tree 0: SplitPlaneNormal(SplitPlaneNormal<euclidean> { left: 1, right: 6, normal: [1.0000, 0.0000] })
-    Tree 1: Descendants(Descendants { descendants: [0] })
-    Tree 2: Descendants(Descendants { descendants: [5] })
-    Tree 5: Descendants(Descendants { descendants: [2, 4] })
-    Tree 6: SplitPlaneNormal(SplitPlaneNormal<euclidean> { left: 2, right: 5, normal: "none" })
+    Tree 0: SplitPlaneNormal(SplitPlaneNormal<euclidean> { left: 3, right: 6, normal: Leaf { header: NodeHeaderEuclidean { bias: -2.5414658 }, vector: [1.0000, 0.0000] } })
+    Tree 3: Descendants(Descendants { descendants: [0, 2] })
+    Tree 6: Descendants(Descendants { descendants: [4, 5] })
     Item 0: Leaf(Leaf { header: NodeHeaderEuclidean { bias: 0.0 }, vector: [0.0000, 0.0000] })
     Item 2: Leaf(Leaf { header: NodeHeaderEuclidean { bias: 0.0 }, vector: [2.0000, 0.0000] })
     Item 4: Leaf(Leaf { header: NodeHeaderEuclidean { bias: 0.0 }, vector: [4.0000, 0.0000] })
@@ -856,9 +854,9 @@ fn add_one_item_incrementally_to_create_a_split_node() {
     Dumping index 0
     Root: Metadata { dimensions: 2, items: RoaringBitmap<[0, 1, 2]>, roots: [0], distance: "euclidean" }
     Version: Version { major: 0, minor: 7, patch: 0 }
-    Tree 0: SplitPlaneNormal(SplitPlaneNormal<euclidean> { left: 1, right: 2, normal: [-1.0000, 0.0000] })
-    Tree 1: Descendants(Descendants { descendants: [1, 2] })
-    Tree 2: Descendants(Descendants { descendants: [0] })
+    Tree 0: SplitPlaneNormal(SplitPlaneNormal<euclidean> { left: 1, right: 2, normal: Leaf { header: NodeHeaderEuclidean { bias: 1.2720588 }, vector: [-1.0000, 0.0000] } })
+    Tree 1: Descendants(Descendants { descendants: [2] })
+    Tree 2: Descendants(Descendants { descendants: [0, 1] })
     Item 0: Leaf(Leaf { header: NodeHeaderEuclidean { bias: 0.0 }, vector: [0.0000, 0.0000] })
     Item 1: Leaf(Leaf { header: NodeHeaderEuclidean { bias: 0.0 }, vector: [1.0000, 0.0000] })
     Item 2: Leaf(Leaf { header: NodeHeaderEuclidean { bias: 0.0 }, vector: [2.0000, 0.0000] })
@@ -883,13 +881,13 @@ fn add_one_item_incrementally() {
     Dumping index 0
     Root: Metadata { dimensions: 2, items: RoaringBitmap<[0, 1, 2, 3, 4, 5]>, roots: [0], distance: "euclidean" }
     Version: Version { major: 0, minor: 7, patch: 0 }
-    Tree 0: SplitPlaneNormal(SplitPlaneNormal<euclidean> { left: 1, right: 6, normal: [1.0000, 0.0000] })
-    Tree 1: Descendants(Descendants { descendants: [0] })
-    Tree 2: Descendants(Descendants { descendants: [1, 5] })
-    Tree 3: Descendants(Descendants { descendants: [3, 4] })
-    Tree 4: Descendants(Descendants { descendants: [2] })
-    Tree 5: SplitPlaneNormal(SplitPlaneNormal<euclidean> { left: 3, right: 4, normal: "none" })
-    Tree 6: SplitPlaneNormal(SplitPlaneNormal<euclidean> { left: 2, right: 5, normal: "none" })
+    Tree 0: SplitPlaneNormal(SplitPlaneNormal<euclidean> { left: 3, right: 6, normal: Leaf { header: NodeHeaderEuclidean { bias: -2.5414658 }, vector: [1.0000, 0.0000] } })
+    Tree 1: Descendants(Descendants { descendants: [0, 1] })
+    Tree 2: Descendants(Descendants { descendants: [2] })
+    Tree 3: SplitPlaneNormal(SplitPlaneNormal<euclidean> { left: 1, right: 2, normal: Leaf { header: NodeHeaderEuclidean { bias: -1.2328244 }, vector: [1.0000, 0.0000] } })
+    Tree 4: Descendants(Descendants { descendants: [5] })
+    Tree 5: Descendants(Descendants { descendants: [3, 4] })
+    Tree 6: SplitPlaneNormal(SplitPlaneNormal<euclidean> { left: 4, right: 5, normal: Leaf { header: NodeHeaderEuclidean { bias: 4.253788 }, vector: [-1.0000, 0.0000] } })
     Item 0: Leaf(Leaf { header: NodeHeaderEuclidean { bias: 0.0 }, vector: [0.0000, 0.0000] })
     Item 1: Leaf(Leaf { header: NodeHeaderEuclidean { bias: 0.0 }, vector: [1.0000, 0.0000] })
     Item 2: Leaf(Leaf { header: NodeHeaderEuclidean { bias: 0.0 }, vector: [2.0000, 0.0000] })
@@ -911,15 +909,13 @@ fn add_one_item_incrementally() {
     Dumping index 0
     Root: Metadata { dimensions: 2, items: RoaringBitmap<[0, 1, 2, 3, 4, 5, 25]>, roots: [0], distance: "euclidean" }
     Version: Version { major: 0, minor: 7, patch: 0 }
-    Tree 0: SplitPlaneNormal(SplitPlaneNormal<euclidean> { left: 1, right: 6, normal: [1.0000, 0.0000] })
-    Tree 1: Descendants(Descendants { descendants: [0] })
-    Tree 2: Descendants(Descendants { descendants: [1, 5] })
-    Tree 3: SplitPlaneNormal(SplitPlaneNormal<euclidean> { left: 7, right: 8, normal: "none" })
-    Tree 4: Descendants(Descendants { descendants: [2] })
-    Tree 5: SplitPlaneNormal(SplitPlaneNormal<euclidean> { left: 3, right: 4, normal: "none" })
-    Tree 6: SplitPlaneNormal(SplitPlaneNormal<euclidean> { left: 2, right: 5, normal: "none" })
-    Tree 7: Descendants(Descendants { descendants: [4, 25] })
-    Tree 8: Descendants(Descendants { descendants: [3] })
+    Tree 0: SplitPlaneNormal(SplitPlaneNormal<euclidean> { left: 3, right: 6, normal: Leaf { header: NodeHeaderEuclidean { bias: -2.5414658 }, vector: [1.0000, 0.0000] } })
+    Tree 1: Descendants(Descendants { descendants: [0, 1] })
+    Tree 2: Descendants(Descendants { descendants: [2] })
+    Tree 3: SplitPlaneNormal(SplitPlaneNormal<euclidean> { left: 1, right: 2, normal: Leaf { header: NodeHeaderEuclidean { bias: -1.2328244 }, vector: [1.0000, 0.0000] } })
+    Tree 4: Descendants(Descendants { descendants: [5, 25] })
+    Tree 5: Descendants(Descendants { descendants: [3, 4] })
+    Tree 6: SplitPlaneNormal(SplitPlaneNormal<euclidean> { left: 4, right: 5, normal: Leaf { header: NodeHeaderEuclidean { bias: 4.253788 }, vector: [-1.0000, 0.0000] } })
     Item 0: Leaf(Leaf { header: NodeHeaderEuclidean { bias: 0.0 }, vector: [0.0000, 0.0000] })
     Item 1: Leaf(Leaf { header: NodeHeaderEuclidean { bias: 0.0 }, vector: [1.0000, 0.0000] })
     Item 2: Leaf(Leaf { header: NodeHeaderEuclidean { bias: 0.0 }, vector: [2.0000, 0.0000] })
@@ -942,17 +938,15 @@ fn add_one_item_incrementally() {
     Dumping index 0
     Root: Metadata { dimensions: 2, items: RoaringBitmap<[0, 1, 2, 3, 4, 5, 8, 25]>, roots: [0], distance: "euclidean" }
     Version: Version { major: 0, minor: 7, patch: 0 }
-    Tree 0: SplitPlaneNormal(SplitPlaneNormal<euclidean> { left: 1, right: 6, normal: [1.0000, 0.0000] })
-    Tree 1: Descendants(Descendants { descendants: [0] })
-    Tree 2: SplitPlaneNormal(SplitPlaneNormal<euclidean> { left: 9, right: 10, normal: "none" })
-    Tree 3: SplitPlaneNormal(SplitPlaneNormal<euclidean> { left: 7, right: 8, normal: "none" })
-    Tree 4: Descendants(Descendants { descendants: [2] })
-    Tree 5: SplitPlaneNormal(SplitPlaneNormal<euclidean> { left: 3, right: 4, normal: "none" })
-    Tree 6: SplitPlaneNormal(SplitPlaneNormal<euclidean> { left: 2, right: 5, normal: "none" })
-    Tree 7: Descendants(Descendants { descendants: [4, 25] })
-    Tree 8: Descendants(Descendants { descendants: [3] })
-    Tree 9: Descendants(Descendants { descendants: [8] })
-    Tree 10: Descendants(Descendants { descendants: [1, 5] })
+    Tree 0: SplitPlaneNormal(SplitPlaneNormal<euclidean> { left: 3, right: 6, normal: Leaf { header: NodeHeaderEuclidean { bias: -2.5414658 }, vector: [1.0000, 0.0000] } })
+    Tree 1: Descendants(Descendants { descendants: [0, 1] })
+    Tree 2: Descendants(Descendants { descendants: [2] })
+    Tree 3: SplitPlaneNormal(SplitPlaneNormal<euclidean> { left: 1, right: 2, normal: Leaf { header: NodeHeaderEuclidean { bias: -1.2328244 }, vector: [1.0000, 0.0000] } })
+    Tree 4: SplitPlaneNormal(SplitPlaneNormal<euclidean> { left: 7, right: 8, normal: Leaf { header: NodeHeaderEuclidean { bias: 15.694853 }, vector: [-1.0000, 0.0000] } })
+    Tree 5: Descendants(Descendants { descendants: [3, 4] })
+    Tree 6: SplitPlaneNormal(SplitPlaneNormal<euclidean> { left: 4, right: 5, normal: Leaf { header: NodeHeaderEuclidean { bias: 4.253788 }, vector: [-1.0000, 0.0000] } })
+    Tree 7: Descendants(Descendants { descendants: [25] })
+    Tree 8: Descendants(Descendants { descendants: [5, 8] })
     Item 0: Leaf(Leaf { header: NodeHeaderEuclidean { bias: 0.0 }, vector: [0.0000, 0.0000] })
     Item 1: Leaf(Leaf { header: NodeHeaderEuclidean { bias: 0.0 }, vector: [1.0000, 0.0000] })
     Item 2: Leaf(Leaf { header: NodeHeaderEuclidean { bias: 0.0 }, vector: [2.0000, 0.0000] })
@@ -983,12 +977,12 @@ fn delete_extraneous_tree() {
     Dumping index 0
     Root: Metadata { dimensions: 4, items: RoaringBitmap<[0, 1, 2, 3, 4]>, roots: [0, 1], distance: "euclidean" }
     Version: Version { major: 0, minor: 7, patch: 0 }
-    Tree 0: SplitPlaneNormal(SplitPlaneNormal<euclidean> { left: 2, right: 3, normal: [-1.0000, 0.0000, 0.0000, 0.0000] })
-    Tree 1: SplitPlaneNormal(SplitPlaneNormal<euclidean> { left: 5, right: 6, normal: [1.0000, 0.0000, 0.0000, 0.0000] })
-    Tree 2: Descendants(Descendants { descendants: [1, 2, 3, 4] })
-    Tree 3: Descendants(Descendants { descendants: [0] })
-    Tree 5: Descendants(Descendants { descendants: [0] })
-    Tree 6: Descendants(Descendants { descendants: [1, 2, 3, 4] })
+    Tree 0: SplitPlaneNormal(SplitPlaneNormal<euclidean> { left: 2, right: 3, normal: Leaf { header: NodeHeaderEuclidean { bias: -1.7252748 }, vector: [1.0000, 0.0000, 0.0000, 0.0000] } })
+    Tree 1: SplitPlaneNormal(SplitPlaneNormal<euclidean> { left: 5, right: 6, normal: Leaf { header: NodeHeaderEuclidean { bias: 2.3133075 }, vector: [-1.0000, 0.0000, 0.0000, 0.0000] } })
+    Tree 2: Descendants(Descendants { descendants: [0, 1] })
+    Tree 3: Descendants(Descendants { descendants: [2, 3, 4] })
+    Tree 5: Descendants(Descendants { descendants: [3, 4] })
+    Tree 6: Descendants(Descendants { descendants: [0, 1, 2] })
     Item 0: Leaf(Leaf { header: NodeHeaderEuclidean { bias: 0.0 }, vector: [0.0000, 0.0000, 0.0000, 0.0000] })
     Item 1: Leaf(Leaf { header: NodeHeaderEuclidean { bias: 0.0 }, vector: [1.0000, 0.0000, 0.0000, 0.0000] })
     Item 2: Leaf(Leaf { header: NodeHeaderEuclidean { bias: 0.0 }, vector: [2.0000, 0.0000, 0.0000, 0.0000] })
@@ -1006,12 +1000,12 @@ fn delete_extraneous_tree() {
     Dumping index 0
     Root: Metadata { dimensions: 2, items: RoaringBitmap<[0, 1, 2, 3, 4]>, roots: [0, 1], distance: "euclidean" }
     Version: Version { major: 0, minor: 7, patch: 0 }
-    Tree 0: SplitPlaneNormal(SplitPlaneNormal<euclidean> { left: 2, right: 3, normal: [-1.0000, 0.0000, 0.0000, 0.0000] })
-    Tree 1: SplitPlaneNormal(SplitPlaneNormal<euclidean> { left: 5, right: 6, normal: [1.0000, 0.0000, 0.0000, 0.0000] })
-    Tree 2: Descendants(Descendants { descendants: [1, 2, 3, 4] })
-    Tree 3: Descendants(Descendants { descendants: [0] })
-    Tree 5: Descendants(Descendants { descendants: [0] })
-    Tree 6: Descendants(Descendants { descendants: [1, 2, 3, 4] })
+    Tree 0: SplitPlaneNormal(SplitPlaneNormal<euclidean> { left: 2, right: 3, normal: Leaf { header: NodeHeaderEuclidean { bias: -1.7252748 }, vector: [1.0000, 0.0000, 0.0000, 0.0000] } })
+    Tree 1: SplitPlaneNormal(SplitPlaneNormal<euclidean> { left: 5, right: 6, normal: Leaf { header: NodeHeaderEuclidean { bias: 2.3133075 }, vector: [-1.0000, 0.0000, 0.0000, 0.0000] } })
+    Tree 2: Descendants(Descendants { descendants: [0, 1] })
+    Tree 3: Descendants(Descendants { descendants: [2, 3, 4] })
+    Tree 5: Descendants(Descendants { descendants: [3, 4] })
+    Tree 6: Descendants(Descendants { descendants: [0, 1, 2] })
     Item 0: Leaf(Leaf { header: NodeHeaderEuclidean { bias: 0.0 }, vector: [0.0000, 0.0000, 0.0000, 0.0000] })
     Item 1: Leaf(Leaf { header: NodeHeaderEuclidean { bias: 0.0 }, vector: [1.0000, 0.0000, 0.0000, 0.0000] })
     Item 2: Leaf(Leaf { header: NodeHeaderEuclidean { bias: 0.0 }, vector: [2.0000, 0.0000, 0.0000, 0.0000] })
@@ -1029,9 +1023,9 @@ fn delete_extraneous_tree() {
     Dumping index 0
     Root: Metadata { dimensions: 2, items: RoaringBitmap<[0, 1, 2, 3, 4]>, roots: [1], distance: "euclidean" }
     Version: Version { major: 0, minor: 7, patch: 0 }
-    Tree 1: SplitPlaneNormal(SplitPlaneNormal<euclidean> { left: 5, right: 6, normal: [1.0000, 0.0000, 0.0000, 0.0000] })
-    Tree 5: Descendants(Descendants { descendants: [0] })
-    Tree 6: Descendants(Descendants { descendants: [1, 2, 3, 4] })
+    Tree 1: SplitPlaneNormal(SplitPlaneNormal<euclidean> { left: 5, right: 6, normal: Leaf { header: NodeHeaderEuclidean { bias: 2.3133075 }, vector: [-1.0000, 0.0000, 0.0000, 0.0000] } })
+    Tree 5: Descendants(Descendants { descendants: [3, 4] })
+    Tree 6: Descendants(Descendants { descendants: [0, 1, 2] })
     Item 0: Leaf(Leaf { header: NodeHeaderEuclidean { bias: 0.0 }, vector: [0.0000, 0.0000, 0.0000, 0.0000] })
     Item 1: Leaf(Leaf { header: NodeHeaderEuclidean { bias: 0.0 }, vector: [1.0000, 0.0000, 0.0000, 0.0000] })
     Item 2: Leaf(Leaf { header: NodeHeaderEuclidean { bias: 0.0 }, vector: [2.0000, 0.0000, 0.0000, 0.0000] })
@@ -1059,13 +1053,13 @@ fn create_root_split_node_with_empty_child() {
     Dumping index 0
     Root: Metadata { dimensions: 2, items: RoaringBitmap<[0, 1, 2, 3, 4, 5]>, roots: [0], distance: "euclidean" }
     Version: Version { major: 0, minor: 7, patch: 0 }
-    Tree 0: SplitPlaneNormal(SplitPlaneNormal<euclidean> { left: 1, right: 6, normal: [1.0000, 0.0000] })
-    Tree 1: Descendants(Descendants { descendants: [0] })
-    Tree 2: Descendants(Descendants { descendants: [1, 5] })
-    Tree 3: Descendants(Descendants { descendants: [3, 4] })
-    Tree 4: Descendants(Descendants { descendants: [2] })
-    Tree 5: SplitPlaneNormal(SplitPlaneNormal<euclidean> { left: 3, right: 4, normal: "none" })
-    Tree 6: SplitPlaneNormal(SplitPlaneNormal<euclidean> { left: 2, right: 5, normal: "none" })
+    Tree 0: SplitPlaneNormal(SplitPlaneNormal<euclidean> { left: 3, right: 6, normal: Leaf { header: NodeHeaderEuclidean { bias: -2.5414658 }, vector: [1.0000, 0.0000] } })
+    Tree 1: Descendants(Descendants { descendants: [0, 1] })
+    Tree 2: Descendants(Descendants { descendants: [2] })
+    Tree 3: SplitPlaneNormal(SplitPlaneNormal<euclidean> { left: 1, right: 2, normal: Leaf { header: NodeHeaderEuclidean { bias: -1.2328244 }, vector: [1.0000, 0.0000] } })
+    Tree 4: Descendants(Descendants { descendants: [5] })
+    Tree 5: Descendants(Descendants { descendants: [3, 4] })
+    Tree 6: SplitPlaneNormal(SplitPlaneNormal<euclidean> { left: 4, right: 5, normal: Leaf { header: NodeHeaderEuclidean { bias: 4.253788 }, vector: [-1.0000, 0.0000] } })
     Item 0: Leaf(Leaf { header: NodeHeaderEuclidean { bias: 0.0 }, vector: [0.0000, 0.0000] })
     Item 1: Leaf(Leaf { header: NodeHeaderEuclidean { bias: 0.0 }, vector: [1.0000, 0.0000] })
     Item 2: Leaf(Leaf { header: NodeHeaderEuclidean { bias: 0.0 }, vector: [2.0000, 0.0000] })
@@ -1088,11 +1082,9 @@ fn create_root_split_node_with_empty_child() {
     Dumping index 0
     Root: Metadata { dimensions: 2, items: RoaringBitmap<[0, 2, 3, 4]>, roots: [0], distance: "euclidean" }
     Version: Version { major: 0, minor: 7, patch: 0 }
-    Tree 0: SplitPlaneNormal(SplitPlaneNormal<euclidean> { left: 1, right: 5, normal: [1.0000, 0.0000] })
-    Tree 1: Descendants(Descendants { descendants: [0] })
-    Tree 3: Descendants(Descendants { descendants: [3, 4] })
-    Tree 4: Descendants(Descendants { descendants: [2] })
-    Tree 5: SplitPlaneNormal(SplitPlaneNormal<euclidean> { left: 3, right: 4, normal: "none" })
+    Tree 0: SplitPlaneNormal(SplitPlaneNormal<euclidean> { left: 3, right: 6, normal: Leaf { header: NodeHeaderEuclidean { bias: -2.5414658 }, vector: [1.0000, 0.0000] } })
+    Tree 3: Descendants(Descendants { descendants: [0, 2] })
+    Tree 6: Descendants(Descendants { descendants: [3, 4] })
     Item 0: Leaf(Leaf { header: NodeHeaderEuclidean { bias: 0.0 }, vector: [0.0000, 0.0000] })
     Item 2: Leaf(Leaf { header: NodeHeaderEuclidean { bias: 0.0 }, vector: [2.0000, 0.0000] })
     Item 3: Leaf(Leaf { header: NodeHeaderEuclidean { bias: 0.0 }, vector: [3.0000, 0.0000] })
@@ -1110,11 +1102,11 @@ fn create_root_split_node_with_empty_child() {
     insta::assert_snapshot!(handle, @r#"
     ==================
     Dumping index 0
-    Root: Metadata { dimensions: 2, items: RoaringBitmap<[2, 3, 4]>, roots: [5], distance: "euclidean" }
+    Root: Metadata { dimensions: 2, items: RoaringBitmap<[2, 3, 4]>, roots: [0], distance: "euclidean" }
     Version: Version { major: 0, minor: 7, patch: 0 }
-    Tree 3: Descendants(Descendants { descendants: [3, 4] })
-    Tree 4: Descendants(Descendants { descendants: [2] })
-    Tree 5: SplitPlaneNormal(SplitPlaneNormal<euclidean> { left: 3, right: 4, normal: "none" })
+    Tree 0: SplitPlaneNormal(SplitPlaneNormal<euclidean> { left: 3, right: 6, normal: Leaf { header: NodeHeaderEuclidean { bias: -2.5414658 }, vector: [1.0000, 0.0000] } })
+    Tree 3: Descendants(Descendants { descendants: [2] })
+    Tree 6: Descendants(Descendants { descendants: [3, 4] })
     Item 2: Leaf(Leaf { header: NodeHeaderEuclidean { bias: 0.0 }, vector: [2.0000, 0.0000] })
     Item 3: Leaf(Leaf { header: NodeHeaderEuclidean { bias: 0.0 }, vector: [3.0000, 0.0000] })
     Item 4: Leaf(Leaf { header: NodeHeaderEuclidean { bias: 0.0 }, vector: [4.0000, 0.0000] })
@@ -1139,13 +1131,13 @@ fn reuse_node_id() {
     Dumping index 0
     Root: Metadata { dimensions: 2, items: RoaringBitmap<[0, 1, 2, 3, 4, 5]>, roots: [0], distance: "euclidean" }
     Version: Version { major: 0, minor: 7, patch: 0 }
-    Tree 0: SplitPlaneNormal(SplitPlaneNormal<euclidean> { left: 1, right: 6, normal: [1.0000, 0.0000] })
-    Tree 1: Descendants(Descendants { descendants: [0] })
-    Tree 2: Descendants(Descendants { descendants: [1, 5] })
-    Tree 3: Descendants(Descendants { descendants: [3, 4] })
-    Tree 4: Descendants(Descendants { descendants: [2] })
-    Tree 5: SplitPlaneNormal(SplitPlaneNormal<euclidean> { left: 3, right: 4, normal: "none" })
-    Tree 6: SplitPlaneNormal(SplitPlaneNormal<euclidean> { left: 2, right: 5, normal: "none" })
+    Tree 0: SplitPlaneNormal(SplitPlaneNormal<euclidean> { left: 3, right: 6, normal: Leaf { header: NodeHeaderEuclidean { bias: -2.5414658 }, vector: [1.0000, 0.0000] } })
+    Tree 1: Descendants(Descendants { descendants: [0, 1] })
+    Tree 2: Descendants(Descendants { descendants: [2] })
+    Tree 3: SplitPlaneNormal(SplitPlaneNormal<euclidean> { left: 1, right: 2, normal: Leaf { header: NodeHeaderEuclidean { bias: -1.2328244 }, vector: [1.0000, 0.0000] } })
+    Tree 4: Descendants(Descendants { descendants: [5] })
+    Tree 5: Descendants(Descendants { descendants: [3, 4] })
+    Tree 6: SplitPlaneNormal(SplitPlaneNormal<euclidean> { left: 4, right: 5, normal: Leaf { header: NodeHeaderEuclidean { bias: 4.253788 }, vector: [-1.0000, 0.0000] } })
     Item 0: Leaf(Leaf { header: NodeHeaderEuclidean { bias: 0.0 }, vector: [0.0000, 0.0000] })
     Item 1: Leaf(Leaf { header: NodeHeaderEuclidean { bias: 0.0 }, vector: [1.0000, 0.0000] })
     Item 2: Leaf(Leaf { header: NodeHeaderEuclidean { bias: 0.0 }, vector: [2.0000, 0.0000] })
@@ -1168,11 +1160,11 @@ fn reuse_node_id() {
     Dumping index 0
     Root: Metadata { dimensions: 2, items: RoaringBitmap<[0, 1, 2, 5]>, roots: [0], distance: "euclidean" }
     Version: Version { major: 0, minor: 7, patch: 0 }
-    Tree 0: SplitPlaneNormal(SplitPlaneNormal<euclidean> { left: 1, right: 6, normal: [1.0000, 0.0000] })
-    Tree 1: Descendants(Descendants { descendants: [0] })
-    Tree 2: Descendants(Descendants { descendants: [1, 5] })
-    Tree 5: Descendants(Descendants { descendants: [2] })
-    Tree 6: SplitPlaneNormal(SplitPlaneNormal<euclidean> { left: 2, right: 5, normal: "none" })
+    Tree 0: SplitPlaneNormal(SplitPlaneNormal<euclidean> { left: 3, right: 6, normal: Leaf { header: NodeHeaderEuclidean { bias: -2.5414658 }, vector: [1.0000, 0.0000] } })
+    Tree 1: Descendants(Descendants { descendants: [0, 1] })
+    Tree 2: Descendants(Descendants { descendants: [2] })
+    Tree 3: SplitPlaneNormal(SplitPlaneNormal<euclidean> { left: 1, right: 2, normal: Leaf { header: NodeHeaderEuclidean { bias: -1.2328244 }, vector: [1.0000, 0.0000] } })
+    Tree 6: Descendants(Descendants { descendants: [5] })
     Item 0: Leaf(Leaf { header: NodeHeaderEuclidean { bias: 0.0 }, vector: [0.0000, 0.0000] })
     Item 1: Leaf(Leaf { header: NodeHeaderEuclidean { bias: 0.0 }, vector: [1.0000, 0.0000] })
     Item 2: Leaf(Leaf { header: NodeHeaderEuclidean { bias: 0.0 }, vector: [2.0000, 0.0000] })
@@ -1193,13 +1185,13 @@ fn reuse_node_id() {
     Dumping index 0
     Root: Metadata { dimensions: 2, items: RoaringBitmap<[0, 1, 2, 3, 4, 5]>, roots: [0], distance: "euclidean" }
     Version: Version { major: 0, minor: 7, patch: 0 }
-    Tree 0: SplitPlaneNormal(SplitPlaneNormal<euclidean> { left: 1, right: 6, normal: [1.0000, 0.0000] })
-    Tree 1: Descendants(Descendants { descendants: [0] })
-    Tree 2: SplitPlaneNormal(SplitPlaneNormal<euclidean> { left: 3, right: 4, normal: "none" })
-    Tree 3: Descendants(Descendants { descendants: [4, 5] })
-    Tree 4: Descendants(Descendants { descendants: [1] })
-    Tree 5: Descendants(Descendants { descendants: [2, 3] })
-    Tree 6: SplitPlaneNormal(SplitPlaneNormal<euclidean> { left: 2, right: 5, normal: "none" })
+    Tree 0: SplitPlaneNormal(SplitPlaneNormal<euclidean> { left: 3, right: 6, normal: Leaf { header: NodeHeaderEuclidean { bias: -2.5414658 }, vector: [1.0000, 0.0000] } })
+    Tree 1: Descendants(Descendants { descendants: [0, 1] })
+    Tree 2: Descendants(Descendants { descendants: [2] })
+    Tree 3: SplitPlaneNormal(SplitPlaneNormal<euclidean> { left: 1, right: 2, normal: Leaf { header: NodeHeaderEuclidean { bias: -1.2328244 }, vector: [1.0000, 0.0000] } })
+    Tree 4: Descendants(Descendants { descendants: [4, 5] })
+    Tree 5: Descendants(Descendants { descendants: [3] })
+    Tree 6: SplitPlaneNormal(SplitPlaneNormal<euclidean> { left: 4, right: 5, normal: Leaf { header: NodeHeaderEuclidean { bias: 3.773177 }, vector: [-1.0000, 0.0000] } })
     Item 0: Leaf(Leaf { header: NodeHeaderEuclidean { bias: 0.0 }, vector: [0.0000, 0.0000] })
     Item 1: Leaf(Leaf { header: NodeHeaderEuclidean { bias: 0.0 }, vector: [1.0000, 0.0000] })
     Item 2: Leaf(Leaf { header: NodeHeaderEuclidean { bias: 0.0 }, vector: [2.0000, 0.0000] })
@@ -1220,22 +1212,20 @@ fn reuse_node_id() {
     Dumping index 0
     Root: Metadata { dimensions: 2, items: RoaringBitmap<[0, 1, 2, 3, 4, 5]>, roots: [0, 7], distance: "euclidean" }
     Version: Version { major: 0, minor: 7, patch: 0 }
-    Tree 0: SplitPlaneNormal(SplitPlaneNormal<euclidean> { left: 1, right: 6, normal: [1.0000, 0.0000] })
-    Tree 1: Descendants(Descendants { descendants: [0] })
-    Tree 2: SplitPlaneNormal(SplitPlaneNormal<euclidean> { left: 3, right: 4, normal: "none" })
-    Tree 3: Descendants(Descendants { descendants: [4, 5] })
-    Tree 4: Descendants(Descendants { descendants: [1] })
-    Tree 5: Descendants(Descendants { descendants: [2, 3] })
-    Tree 6: SplitPlaneNormal(SplitPlaneNormal<euclidean> { left: 2, right: 5, normal: "none" })
-    Tree 7: SplitPlaneNormal(SplitPlaneNormal<euclidean> { left: 14, right: 15, normal: [-1.0000, 0.0000] })
-    Tree 8: Descendants(Descendants { descendants: [2] })
-    Tree 9: Descendants(Descendants { descendants: [4, 5] })
-    Tree 10: SplitPlaneNormal(SplitPlaneNormal<euclidean> { left: 8, right: 9, normal: "none" })
-    Tree 11: Descendants(Descendants { descendants: [] })
-    Tree 12: SplitPlaneNormal(SplitPlaneNormal<euclidean> { left: 10, right: 11, normal: "none" })
-    Tree 13: Descendants(Descendants { descendants: [1, 3] })
-    Tree 14: SplitPlaneNormal(SplitPlaneNormal<euclidean> { left: 12, right: 13, normal: "none" })
-    Tree 15: Descendants(Descendants { descendants: [0] })
+    Tree 0: SplitPlaneNormal(SplitPlaneNormal<euclidean> { left: 3, right: 6, normal: Leaf { header: NodeHeaderEuclidean { bias: -2.5414658 }, vector: [1.0000, 0.0000] } })
+    Tree 1: Descendants(Descendants { descendants: [0, 1] })
+    Tree 2: Descendants(Descendants { descendants: [2] })
+    Tree 3: SplitPlaneNormal(SplitPlaneNormal<euclidean> { left: 1, right: 2, normal: Leaf { header: NodeHeaderEuclidean { bias: -1.2328244 }, vector: [1.0000, 0.0000] } })
+    Tree 4: Descendants(Descendants { descendants: [4, 5] })
+    Tree 5: Descendants(Descendants { descendants: [3] })
+    Tree 6: SplitPlaneNormal(SplitPlaneNormal<euclidean> { left: 4, right: 5, normal: Leaf { header: NodeHeaderEuclidean { bias: 3.773177 }, vector: [-1.0000, 0.0000] } })
+    Tree 7: SplitPlaneNormal(SplitPlaneNormal<euclidean> { left: 10, right: 13, normal: Leaf { header: NodeHeaderEuclidean { bias: -2.5116758 }, vector: [1.0000, 0.0000] } })
+    Tree 8: Descendants(Descendants { descendants: [0, 1] })
+    Tree 9: Descendants(Descendants { descendants: [2] })
+    Tree 10: SplitPlaneNormal(SplitPlaneNormal<euclidean> { left: 8, right: 9, normal: Leaf { header: NodeHeaderEuclidean { bias: -1.2552449 }, vector: [1.0000, 0.0000] } })
+    Tree 11: Descendants(Descendants { descendants: [3] })
+    Tree 12: Descendants(Descendants { descendants: [4, 5] })
+    Tree 13: SplitPlaneNormal(SplitPlaneNormal<euclidean> { left: 11, right: 12, normal: Leaf { header: NodeHeaderEuclidean { bias: -3.7260265 }, vector: [1.0000, 0.0000] } })
     Item 0: Leaf(Leaf { header: NodeHeaderEuclidean { bias: 0.0 }, vector: [0.0000, 0.0000] })
     Item 1: Leaf(Leaf { header: NodeHeaderEuclidean { bias: 0.0 }, vector: [1.0000, 0.0000] })
     Item 2: Leaf(Leaf { header: NodeHeaderEuclidean { bias: 0.0 }, vector: [2.0000, 0.0000] })
