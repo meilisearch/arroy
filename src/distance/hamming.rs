@@ -35,7 +35,7 @@ impl Distance for Hamming {
     }
 
     fn new_header(_vector: &UnalignedVector<Self::VectorCodec>) -> Self::Header {
-        NodeHeaderHamming {idx: 0}
+        NodeHeaderHamming { idx: 0 }
     }
 
     fn built_distance(p: &Leaf<Self>, q: &Leaf<Self>) -> f32 {
@@ -57,8 +57,8 @@ impl Distance for Hamming {
         rng: &mut R,
     ) -> heed::Result<Leaf<'a, Self>> {
         // unlike other distances which build a seperating hyperplane we
-        // construct an LSH by bit sampling and store the random bit in a one-hot
-        // vector
+        // construct an LSH by bit sampling and storing the splitting index
+        // in the node header.
         // https://en.wikipedia.org/wiki/Locality-sensitive_hashing#Bit_sampling_for_Hamming_distance
 
         const ITERATION_STEPS: usize = 200;
@@ -67,7 +67,7 @@ impl Distance for Hamming {
             let mut count = 0;
             for _ in 0..ITERATION_STEPS {
                 let u = children.choose(rng)?.unwrap();
-                if <Self as Distance>::margin(n, &u) > 0.0 {
+                if <Self as Distance>::margin(n, &u).is_sign_positive() {
                     count += 1;
                 }
             }
@@ -96,24 +96,12 @@ impl Distance for Hamming {
         Ok(normal)
     }
 
-    fn margin(_p: &Leaf<Self>, _q: &Leaf<Self>) -> f32 {
-        todo!()
-    }
-
-    fn pq_distance(distance: f32, margin: f32, side: Side) -> f32 {
-        match side {
-            Side::Left => distance - margin,
-            Side::Right => distance - (1.0 - margin),
-        }
-    }
-
-    fn side(normal: &Leaf<Self>, node: &Leaf<Self>) -> Side {
-        // NOTE: don't do an is_sign_positive here cause +0.0 evals to true
-        let dot = Self::margin(&normal, node);
-        if dot > 0.0 {
-            Side::Right
+    fn margin(n: &Leaf<Self>, q: &Leaf<Self>) -> f32 {
+        let v = q.vector.to_vec();
+        if v[n.header.idx] == 1.0 {
+            return 1.0;
         } else {
-            Side::Left
+            return -1.0;
         }
     }
 }
