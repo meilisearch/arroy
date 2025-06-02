@@ -97,8 +97,10 @@ impl Distance for Hamming {
     }
 
     fn margin(n: &Leaf<Self>, q: &Leaf<Self>) -> f32 {
-        let v = q.vector.to_vec();
-        if v[n.header.idx] == 1.0 {
+        let v = q.vector.as_bytes();
+        let byte = n.header.idx / 8;
+        let bit = n.header.idx % 8;
+        if (v[byte] >> bit) & 1 == 1 {
             return 1.0;
         } else {
             return -1.0;
