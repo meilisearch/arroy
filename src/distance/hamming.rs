@@ -5,7 +5,6 @@ use crate::parallel::ImmutableSubsetLeafs;
 use crate::unaligned_vector::{Binary, UnalignedVector};
 use bytemuck::{Pod, Zeroable};
 use rand::Rng;
-use std::borrow::Cow;
 
 /// The Hamming distance between two vectors is the number of positions at
 /// which the corresponding symbols are different.
@@ -21,7 +20,9 @@ pub enum Hamming {}
 /// The header of BinaryEuclidean leaf nodes.
 #[repr(C)]
 #[derive(Pod, Zeroable, Debug, Clone, Copy)]
-pub struct NodeHeaderHamming {}
+pub struct NodeHeaderHamming {
+    idx: usize,
+}
 
 impl Distance for Hamming {
     const DEFAULT_OVERSAMPLING: usize = 3;
@@ -34,7 +35,7 @@ impl Distance for Hamming {
     }
 
     fn new_header(_vector: &UnalignedVector<Self::VectorCodec>) -> Self::Header {
-        NodeHeaderHamming {}
+        NodeHeaderHamming {idx: 0}
     }
 
     fn built_distance(p: &Leaf<Self>, q: &Leaf<Self>) -> f32 {
@@ -54,7 +55,7 @@ impl Distance for Hamming {
     fn create_split<'a, R: Rng>(
         children: &'a ImmutableSubsetLeafs<Self>,
         rng: &mut R,
-    ) -> heed::Result<Cow<'a, UnalignedVector<Self::VectorCodec>>> {
+    ) -> heed::Result<Leaf<'a, Self>> {
         // unlike other distances which build a seperating hyperplane we
         // construct an LSH by bit sampling and store the random bit in a one-hot
         // vector
@@ -62,11 +63,11 @@ impl Distance for Hamming {
 
         const ITERATION_STEPS: usize = 200;
 
-        let is_valid_split = |v: &UnalignedVector<Self::VectorCodec>, rng: &mut R| {
+        let is_valid_split = |n: &Leaf<'a, Self>, rng: &mut R| {
             let mut count = 0;
             for _ in 0..ITERATION_STEPS {
-                let u = children.choose(rng)?.unwrap().vector;
-                if <Self as Distance>::margin_no_header(v, u.as_ref()) > 0.0 {
+                let u = children.choose(rng)?.unwrap();
+                if <Self as Distance>::margin(n, &u) > 0.0 {
                     count += 1;
                 }
             }
@@ -75,38 +76,28 @@ impl Distance for Hamming {
 
         // first try random index
         let dim = children.choose(rng)?.unwrap().vector.len();
-        let mut n: Vec<f32> = vec![0.0; dim];
         let idx = rng.gen_range(0..dim);
-        n[idx] = 1.0;
-        let mut normal = UnalignedVector::from_vec(n);
+        let mut normal =
+            Leaf { header: NodeHeaderHamming { idx }, vector: UnalignedVector::from_vec(vec![]) };
 
         if is_valid_split(&normal, rng)? {
-            return Ok(Cow::Owned(normal.into_owned()));
+            return Ok(normal);
         }
 
         // otherwise brute-force search for a splitting coordinate
         for j in 0..dim {
-            let mut n: Vec<f32> = vec![0.0; dim];
-            n[j] = 1.0;
-            normal = UnalignedVector::from_vec(n);
-
+            normal.header.idx = j;
             if is_valid_split(&normal, rng)? {
-                return Ok(Cow::Owned(normal.into_owned()));
+                return Ok(normal);
             }
         }
 
         // fallback
-        Ok(Cow::Owned(normal.into_owned()))
+        Ok(normal)
     }
 
-    fn margin_no_header(
-        p: &UnalignedVector<Self::VectorCodec>,
-        q: &UnalignedVector<Self::VectorCodec>,
-    ) -> f32 {
-        // p is a mask with 1 bit set
-        let ret =
-            p.as_bytes().iter().zip(q.as_bytes()).map(|(u, v)| (u & v).count_ones()).sum::<u32>();
-        ret as f32
+    fn margin(_p: &Leaf<Self>, _q: &Leaf<Self>) -> f32 {
+        todo!()
     }
 
     fn pq_distance(distance: f32, margin: f32, side: Side) -> f32 {
@@ -116,12 +107,9 @@ impl Distance for Hamming {
         }
     }
 
-    fn side<R: Rng>(
-        normal_plane: &UnalignedVector<Self::VectorCodec>,
-        node: &Leaf<Self>,
-        _rng: &mut R,
-    ) -> Side {
-        let dot = Self::margin_no_header(&node.vector, normal_plane);
+    fn side(normal: &Leaf<Self>, node: &Leaf<Self>) -> Side {
+        // NOTE: don't do an is_sign_positive here cause +0.0 evals to true
+        let dot = Self::margin(&normal, node);
         if dot > 0.0 {
             Side::Right
         } else {
