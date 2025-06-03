@@ -1,0 +1,4 @@
+{
+    "rust-analyzer.cargo.features": ["pyo3"], //not extension-module
+    "rust-analyzer.check.command": "clippy",
+}

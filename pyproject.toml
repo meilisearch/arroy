@@ -1,0 +1,28 @@
+[build-system]
+requires = ["maturin>=1.0.0-beta.6"]
+build-backend = "maturin"
+
+[project]
+name = "arroy"
+authors = [
+    { name = "Kerollmops", email = "clement@meilisearch.com" },
+]
+license = "MIT"
+readme = "README.md"
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Programming Language :: Python :: 3",
+]
+urls.Source = "https://github.com/meilisearch/arroy"
+dynamic = ["version", "description"]
+requires-python = ">=3.9"
+dependencies = []
+
+[project.optional-dependencies]
+dev = ["maturin"]
+test = ["pytest"]
+
+[tool.maturin]
+module-name = "xdot_rs"
+features = ["extension-module"]
