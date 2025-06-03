@@ -6,6 +6,7 @@ build-backend = "maturin"
 name = "arroy"
 authors = [
     { name = "Kerollmops", email = "clement@meilisearch.com" },
+    { name = "Tamo", email = "tamo@meilisearch.com" },
 ]
 license = "MIT"
 readme = "README.md"
