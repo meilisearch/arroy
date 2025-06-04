@@ -1,4 +1,4 @@
-use std::borrow::Cow;
+use std::fmt;
 
 use bytemuck::{Pod, Zeroable};
 use rand::Rng;
@@ -21,10 +21,17 @@ pub enum BinaryQuantizedEuclidean {}
 
 /// The header of `BinaryQuantizedEuclidean` leaf nodes.
 #[repr(C)]
-#[derive(Pod, Zeroable, Debug, Clone, Copy)]
+#[derive(Pod, Zeroable, Clone, Copy)]
 pub struct NodeHeaderBinaryQuantizedEuclidean {
     /// An extra constant term to determine the offset of the plane
     bias: f32,
+}
+impl fmt::Debug for NodeHeaderBinaryQuantizedEuclidean {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("NodeHeaderBinaryQuantizedEuclidean")
+            .field("bias", &format!("{:.4}", self.bias))
+            .finish()
+    }
 }
 
 impl Distance for BinaryQuantizedEuclidean {
@@ -59,28 +66,29 @@ impl Distance for BinaryQuantizedEuclidean {
     fn create_split<'a, R: Rng>(
         children: &'a ImmutableSubsetLeafs<Self>,
         rng: &mut R,
-    ) -> heed::Result<Cow<'a, UnalignedVector<Self::VectorCodec>>> {
+    ) -> heed::Result<Leaf<'a, Self>> {
         let [node_p, node_q] = two_means::<Self, Euclidean, R>(rng, children, false)?;
         let vector: Vec<f32> =
             node_p.vector.iter().zip(node_q.vector.iter()).map(|(p, q)| p - q).collect();
         let mut normal = Leaf {
             header: NodeHeaderBinaryQuantizedEuclidean { bias: 0.0 },
-            vector: UnalignedVector::from_slice(&vector),
+            vector: UnalignedVector::from_vec(vector),
         };
         Self::normalize(&mut normal);
 
-        Ok(Cow::Owned(normal.vector.into_owned()))
+        normal.header.bias = normal
+            .vector
+            .iter()
+            .zip(UnalignedVector::<BinaryQuantized>::from_vec(node_p.vector.to_vec()).iter())
+            .zip(UnalignedVector::<BinaryQuantized>::from_vec(node_q.vector.to_vec()).iter())
+            .map(|((n, p), q)| -n * (p + q) / 2.0)
+            .sum();
+
+        Ok(normal)
     }
 
     fn margin(p: &Leaf<Self>, q: &Leaf<Self>) -> f32 {
         p.header.bias + dot_product_binary_quantized(&p.vector, &q.vector)
-    }
-
-    fn margin_no_header(
-        p: &UnalignedVector<Self::VectorCodec>,
-        q: &UnalignedVector<Self::VectorCodec>,
-    ) -> f32 {
-        dot_product_binary_quantized(p, q)
     }
 }
 
