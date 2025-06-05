@@ -1,10 +1,16 @@
-use std::path::PathBuf;
+use std::{path::PathBuf, sync::LazyLock};
 
-use heed::RwTxn;
+// TODO: replace with std::sync::Mutex once MutexGuard::map is stable.
+use parking_lot::{MutexGuard, MappedMutexGuard, Mutex};
 use numpy::PyReadonlyArray1;
+// TODO: replace with std::sync::OnceLock once get_or_try_init is stable.
+use once_cell::sync::{OnceCell as OnceLock};
 use pyo3::{exceptions::{PyIOError, PyRuntimeError}, prelude::*};
 
 use crate::{distance, Database, ItemId, Writer};
+
+static ENV: OnceLock<heed::Env> = OnceLock::new();
+static RW_TXN: LazyLock<Mutex<Option<heed::RwTxn<'static>>>> = LazyLock::new(|| Mutex::new(None));
 
 const TWENTY_HUNDRED_MIB: usize = 2 * 1024 * 1024 * 1024;
 
@@ -22,7 +28,7 @@ enum DynDatabase {
 }
 
 impl DynDatabase {
-    fn new(env: &heed::Env, wtxn: &mut RwTxn<'_>, name: Option<&str>, distance: DistanceType) -> heed::Result<DynDatabase> {
+    fn new(env: &heed::Env, wtxn: &mut heed::RwTxn<'_>, name: Option<&str>, distance: DistanceType) -> heed::Result<DynDatabase> {
         match distance {
             DistanceType::Euclidean => {
                 Ok(DynDatabase::Euclidean(env.create_database(wtxn, name)?))
@@ -44,10 +50,11 @@ impl PyDatabase {
     #[pyo3(signature = (path, name = None, size = None, distance = DistanceType::Euclidean))]
     fn new(path: PathBuf, name: Option<&str>, size: Option<usize>, distance: DistanceType) -> PyResult<PyDatabase> {
         let size = size.unwrap_or(TWENTY_HUNDRED_MIB);
-        let env = unsafe { heed::EnvOpenOptions::new().map_size(size).open(path) }.map_err(h2py_err)?;
+        // TODO: allow one per path, allow destroying and recreating, etc.
+        let env = ENV.get_or_try_init(|| unsafe { heed::EnvOpenOptions::new().map_size(size).open(path) }).map_err(h2py_err)?;
 
-        let mut wtxn = env.write_txn().map_err(h2py_err)?;
-        let db_impl = DynDatabase::new(&env, &mut wtxn, name, distance).map_err(h2py_err)?;
+        let mut wtxn = get_rw_txn()?;
+        let db_impl = DynDatabase::new(env, &mut wtxn, name, distance).map_err(h2py_err)?;
         Ok(PyDatabase(db_impl))
     }
 
@@ -55,6 +62,21 @@ impl PyDatabase {
         match self.0 {
             DynDatabase::Euclidean(db) => PyWriter(DynWriter::Euclidean(Writer::new(db, index, dimensions))),
             DynDatabase::Manhattan(db) => PyWriter(DynWriter::Manhattan(Writer::new(db, index, dimensions))),
+        }
+    }
+    
+    #[staticmethod]
+    fn commit_rw_txn() -> PyResult<()> {
+        if let Some(wtxn) = RW_TXN.lock().take() {
+            wtxn.commit().map_err(h2py_err)?;
+        }
+        Ok(())
+    }
+    
+    #[staticmethod]
+    fn abort_rw_txn() {
+        if let Some(wtxn) = RW_TXN.lock().take() {
+            wtxn.abort();
         }
     }
 }
@@ -71,7 +93,7 @@ struct PyWriter(DynWriter);
 #[pymethods]
 impl PyWriter {
     fn add_item(&mut self, item: ItemId, vector: PyReadonlyArray1<f32>) -> PyResult<()> {
-        let mut wtxn = get_txn();
+        let mut wtxn = get_rw_txn()?;
         match &self.0 {
             DynWriter::Euclidean(writer) => writer.add_item(&mut wtxn, item, vector.as_slice()?).map_err(h2py_err),
             DynWriter::Manhattan(writer) => writer.add_item(&mut wtxn, item, vector.as_slice()?).map_err(h2py_err),
@@ -79,8 +101,16 @@ impl PyWriter {
     }
 }
 
-fn get_txn() -> heed::RwTxn<'static> {
-    todo!("replace this with a Python context manager");
+/// Get the current transaction or start it.
+fn get_rw_txn<'a>() -> PyResult<MappedMutexGuard<'a, heed::RwTxn<'static>>> {
+    let mut maybe_txn = RW_TXN.lock();
+    if maybe_txn.is_none() {
+        let env = ENV.get().ok_or_else(|| PyRuntimeError::new_err("No environment"))?;
+        let rw_txn = env.write_txn().map_err(h2py_err)?;
+        *maybe_txn = Some(rw_txn);
+    };
+    // unwrapping since if the value was None when we got the lock, we just set it.
+    Ok(MutexGuard::map(maybe_txn, |txn| txn.as_mut().unwrap()))
 }
 
 fn h2py_err<E: Into<crate::error::Error>>(e: E) -> PyErr {

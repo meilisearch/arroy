@@ -30,6 +30,8 @@ page_size = "0.6.0"
 enum-iterator = "2.1.0"
 pyo3 = { version = "0.25.0", optional = true }
 numpy = { version = "0.25.0", optional = true }
+once_cell = { version = "1.21.3", optional = true }
+parking_lot = { version = "0.12.4", optional = true }
 
 [dev-dependencies]
 anyhow = "1.0.95"
@@ -55,7 +57,7 @@ assert-reader-validity = []
 extension-module = ["pyo3", "pyo3/extension-module"]
 
 # This feature only exists independently from `extension-module` to write tests for Python features.
-pyo3 = ["dep:pyo3", "dep:numpy"]
+pyo3 = ["dep:pyo3", "numpy", "once_cell", "parking_lot"]
 
 [[example]]
 name = "graph"
