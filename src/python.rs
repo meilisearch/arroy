@@ -116,6 +116,25 @@ enum DynWriter {
 #[pyclass(name = "Writer")]
 struct PyWriter(DynWriter);
 
+impl PyWriter {
+    fn build(&self) -> PyResult<()> {
+        use rand::SeedableRng as _;
+
+        let mut wtxn = get_rw_txn()?;
+        let mut rng = rand::rngs::StdRng::seed_from_u64(42); // TODO: https://github.com/PyO3/rust-numpy/issues/498
+
+        // TODO: allow configuring `n_trees`, `split_after`, and `progress`
+        match &self.0 {
+            DynWriter::Euclidean(writer) => {
+                writer.builder(&mut rng).build(&mut wtxn).map_err(h2py_err)
+            }
+            DynWriter::Manhattan(writer) => {
+                writer.builder(&mut rng).build(&mut wtxn).map_err(h2py_err)
+            }
+        }
+    }
+}
+
 #[pymethods]
 impl PyWriter {
     fn __enter__<'py>(slf: Bound<'py, Self>) -> Bound<'py, Self> {
@@ -128,6 +147,7 @@ impl PyWriter {
         _exc_value: Option<Bound<'py, PyBaseException>>,
         _traceback: Option<Bound<'py, PyTraceback>>,
     ) -> PyResult<()> {
+        self.build()?;
         PyDatabase::commit_rw_txn()?;
         Ok(())
     }
