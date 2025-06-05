@@ -6,8 +6,9 @@ use parking_lot::{MappedMutexGuard, Mutex, MutexGuard};
 // TODO: replace with std::sync::OnceLock once get_or_try_init is stable.
 use once_cell::sync::OnceCell as OnceLock;
 use pyo3::{
-    exceptions::{PyIOError, PyRuntimeError},
+    exceptions::{PyBaseException, PyIOError, PyRuntimeError},
     prelude::*,
+    types::{PyTraceback, PyType},
 };
 
 use crate::{distance, Database, ItemId, Writer};
@@ -117,6 +118,20 @@ struct PyWriter(DynWriter);
 
 #[pymethods]
 impl PyWriter {
+    fn __enter__<'py>(slf: Bound<'py, Self>) -> Bound<'py, Self> {
+        slf
+    }
+
+    fn __exit__<'py>(
+        &self,
+        _exc_type: Option<Bound<'py, PyType>>,
+        _exc_value: Option<Bound<'py, PyBaseException>>,
+        _traceback: Option<Bound<'py, PyTraceback>>,
+    ) -> PyResult<()> {
+        PyDatabase::commit_rw_txn()?;
+        Ok(())
+    }
+
     /// Store a vector associated with an item ID in the database.
     fn add_item(&mut self, item: ItemId, vector: PyReadonlyArray1<f32>) -> PyResult<()> {
         let mut wtxn = get_rw_txn()?;
