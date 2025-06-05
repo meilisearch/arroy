@@ -25,5 +25,4 @@ dev = ["maturin"]
 test = ["pytest"]
 
 [tool.maturin]
-module-name = "xdot_rs"
 features = ["extension-module"]

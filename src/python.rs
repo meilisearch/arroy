@@ -1,11 +1,14 @@
 use std::{path::PathBuf, sync::LazyLock};
 
 // TODO: replace with std::sync::Mutex once MutexGuard::map is stable.
-use parking_lot::{MutexGuard, MappedMutexGuard, Mutex};
 use numpy::PyReadonlyArray1;
+use parking_lot::{MappedMutexGuard, Mutex, MutexGuard};
 // TODO: replace with std::sync::OnceLock once get_or_try_init is stable.
-use once_cell::sync::{OnceCell as OnceLock};
-use pyo3::{exceptions::{PyIOError, PyRuntimeError}, prelude::*};
+use once_cell::sync::OnceCell as OnceLock;
+use pyo3::{
+    exceptions::{PyIOError, PyRuntimeError},
+    prelude::*,
+};
 
 use crate::{distance, Database, ItemId, Writer};
 
@@ -28,14 +31,15 @@ enum DynDatabase {
 }
 
 impl DynDatabase {
-    fn new(env: &heed::Env, wtxn: &mut heed::RwTxn<'_>, name: Option<&str>, distance: DistanceType) -> heed::Result<DynDatabase> {
+    fn new(
+        env: &heed::Env,
+        wtxn: &mut heed::RwTxn<'_>,
+        name: Option<&str>,
+        distance: DistanceType,
+    ) -> heed::Result<DynDatabase> {
         match distance {
-            DistanceType::Euclidean => {
-                Ok(DynDatabase::Euclidean(env.create_database(wtxn, name)?))
-            }
-            DistanceType::Manhattan => {
-                Ok(DynDatabase::Manhattan(env.create_database(wtxn, name)?))
-            }
+            DistanceType::Euclidean => Ok(DynDatabase::Euclidean(env.create_database(wtxn, name)?)),
+            DistanceType::Manhattan => Ok(DynDatabase::Manhattan(env.create_database(wtxn, name)?)),
         }
     }
 }
@@ -48,10 +52,17 @@ struct PyDatabase(DynDatabase);
 impl PyDatabase {
     #[new]
     #[pyo3(signature = (path, name = None, size = None, distance = DistanceType::Euclidean))]
-    fn new(path: PathBuf, name: Option<&str>, size: Option<usize>, distance: DistanceType) -> PyResult<PyDatabase> {
+    fn new(
+        path: PathBuf,
+        name: Option<&str>,
+        size: Option<usize>,
+        distance: DistanceType,
+    ) -> PyResult<PyDatabase> {
         let size = size.unwrap_or(TWENTY_HUNDRED_MIB);
         // TODO: allow one per path, allow destroying and recreating, etc.
-        let env = ENV.get_or_try_init(|| unsafe { heed::EnvOpenOptions::new().map_size(size).open(path) }).map_err(h2py_err)?;
+        let env = ENV
+            .get_or_try_init(|| unsafe { heed::EnvOpenOptions::new().map_size(size).open(path) })
+            .map_err(h2py_err)?;
 
         let mut wtxn = get_rw_txn()?;
         let db_impl = DynDatabase::new(env, &mut wtxn, name, distance).map_err(h2py_err)?;
@@ -60,11 +71,15 @@ impl PyDatabase {
 
     fn writer(&self, index: u16, dimensions: usize) -> PyWriter {
         match self.0 {
-            DynDatabase::Euclidean(db) => PyWriter(DynWriter::Euclidean(Writer::new(db, index, dimensions))),
-            DynDatabase::Manhattan(db) => PyWriter(DynWriter::Manhattan(Writer::new(db, index, dimensions))),
+            DynDatabase::Euclidean(db) => {
+                PyWriter(DynWriter::Euclidean(Writer::new(db, index, dimensions)))
+            }
+            DynDatabase::Manhattan(db) => {
+                PyWriter(DynWriter::Manhattan(Writer::new(db, index, dimensions)))
+            }
         }
     }
-    
+
     #[staticmethod]
     fn commit_rw_txn() -> PyResult<()> {
         if let Some(wtxn) = RW_TXN.lock().take() {
@@ -72,7 +87,7 @@ impl PyDatabase {
         }
         Ok(())
     }
-    
+
     #[staticmethod]
     fn abort_rw_txn() {
         if let Some(wtxn) = RW_TXN.lock().take() {
@@ -95,8 +110,12 @@ impl PyWriter {
     fn add_item(&mut self, item: ItemId, vector: PyReadonlyArray1<f32>) -> PyResult<()> {
         let mut wtxn = get_rw_txn()?;
         match &self.0 {
-            DynWriter::Euclidean(writer) => writer.add_item(&mut wtxn, item, vector.as_slice()?).map_err(h2py_err),
-            DynWriter::Manhattan(writer) => writer.add_item(&mut wtxn, item, vector.as_slice()?).map_err(h2py_err),
+            DynWriter::Euclidean(writer) => {
+                writer.add_item(&mut wtxn, item, vector.as_slice()?).map_err(h2py_err)
+            }
+            DynWriter::Manhattan(writer) => {
+                writer.add_item(&mut wtxn, item, vector.as_slice()?).map_err(h2py_err)
+            }
         }
     }
 }
@@ -115,7 +134,9 @@ fn get_rw_txn<'a>() -> PyResult<MappedMutexGuard<'a, heed::RwTxn<'static>>> {
 
 fn h2py_err<E: Into<crate::error::Error>>(e: E) -> PyErr {
     match e.into() {
-        crate::Error::Heed(heed::Error::Io(e)) | crate::Error::Io(e) => PyIOError::new_err(e.to_string()),
+        crate::Error::Heed(heed::Error::Io(e)) | crate::Error::Io(e) => {
+            PyIOError::new_err(e.to_string())
+        }
         e => PyRuntimeError::new_err(e.to_string()),
     }
 }
