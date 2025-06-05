@@ -17,6 +17,7 @@ static RW_TXN: LazyLock<Mutex<Option<heed::RwTxn<'static>>>> = LazyLock::new(|| 
 
 const TWENTY_HUNDRED_MIB: usize = 2 * 1024 * 1024 * 1024;
 
+/// The distance type to use.
 #[pyclass]
 #[derive(Debug, Clone, Copy)]
 enum DistanceType {
@@ -44,12 +45,14 @@ impl DynDatabase {
     }
 }
 
+/// A vector database for a specific distance type.
 #[pyclass(name = "Database")]
 #[derive(Debug, Clone)]
 struct PyDatabase(DynDatabase);
 
 #[pymethods]
 impl PyDatabase {
+    /// Create a new database.
     #[new]
     #[pyo3(signature = (path, name = None, size = None, distance = DistanceType::Euclidean))]
     fn new(
@@ -69,6 +72,7 @@ impl PyDatabase {
         Ok(PyDatabase(db_impl))
     }
 
+    /// Get a writer for a specific index and dimensions.
     fn writer(&self, index: u16, dimensions: usize) -> PyWriter {
         match self.0 {
             DynDatabase::Euclidean(db) => {
@@ -81,17 +85,22 @@ impl PyDatabase {
     }
 
     #[staticmethod]
-    fn commit_rw_txn() -> PyResult<()> {
+    fn commit_rw_txn() -> PyResult<bool> {
         if let Some(wtxn) = RW_TXN.lock().take() {
             wtxn.commit().map_err(h2py_err)?;
+            Ok(true)
+        } else {
+            Ok(false)
         }
-        Ok(())
     }
 
     #[staticmethod]
-    fn abort_rw_txn() {
+    fn abort_rw_txn() -> bool {
         if let Some(wtxn) = RW_TXN.lock().take() {
             wtxn.abort();
+            true
+        } else {
+            false
         }
     }
 }
@@ -102,11 +111,13 @@ enum DynWriter {
     Manhattan(Writer<distance::Manhattan>),
 }
 
+/// A writer for a specific index and dimensions.
 #[pyclass(name = "Writer")]
 struct PyWriter(DynWriter);
 
 #[pymethods]
 impl PyWriter {
+    /// Store a vector associated with an item ID in the database.
     fn add_item(&mut self, item: ItemId, vector: PyReadonlyArray1<f32>) -> PyResult<()> {
         let mut wtxn = get_rw_txn()?;
         match &self.0 {
