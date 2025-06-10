@@ -107,9 +107,9 @@ impl Distance for Hamming {
         let byte = n.header.idx / 8;
         let bit = n.header.idx % 8;
         if (v[byte] >> bit) & 1 == 1 {
-            return 1.0;
+            1.0
         } else {
-            return -1.0;
+            -1.0
         }
     }
 }
