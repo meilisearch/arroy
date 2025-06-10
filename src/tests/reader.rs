@@ -117,7 +117,10 @@ fn two_dimension_on_a_line() {
 
     // if we can't look into enough nodes we find some random points
     let ret = reader.nns(5).search_k(NonZeroUsize::new(1).unwrap()).by_item(&rtxn, 1).unwrap();
-    insta::assert_snapshot!(NnsRes(ret), @"id(63): distance(62)");
+    insta::assert_snapshot!(NnsRes(ret), @r"
+    id(24): distance(23)
+    id(60): distance(59)
+    ");
 
     // if we can look into all the node there is no inifinite loop and it works
     let ret =

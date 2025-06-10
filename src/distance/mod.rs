@@ -131,6 +131,10 @@ pub trait Distance: Send + Sync + Sized + Clone + fmt::Debug + 'static {
     ) -> heed::Result<()> {
         Ok(())
     }
+
+    fn size_of_item(dimensions: usize) -> usize {
+        std::mem::size_of::<Self::Header>() + Self::VectorCodec::size_of_item(dimensions)
+    }
 }
 
 fn two_means<D: Distance, R: Rng>(

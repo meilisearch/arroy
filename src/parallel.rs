@@ -15,7 +15,7 @@ use roaring::{RoaringBitmap, RoaringTreemap};
 
 use crate::internals::{KeyCodec, Leaf, NodeCodec};
 use crate::key::{Key, Prefix, PrefixCodec};
-use crate::node::{Node, SplitPlaneNormal};
+use crate::node::Node;
 use crate::{Database, Distance, Error, ItemId, Result};
 
 #[derive(Default, Debug)]
@@ -288,9 +288,35 @@ pub struct ImmutableLeafs<'t, D> {
 impl<'t, D: Distance> ImmutableLeafs<'t, D> {
     /// Creates the structure by fetching all the leaf pointers
     /// and keeping the transaction making the pointers valid.
+    pub fn new(
+        rtxn: &'t RoTxn,
+        database: Database<D>,
+        items: &RoaringBitmap,
+        index: u16,
+    ) -> heed::Result<Self> {
+        let mut leafs = IntMap::with_capacity_and_hasher(
+            items.len() as usize,
+            BuildNoHashHasher::default(),
+        );
+        let mut constant_length = None;
+
+        for item_id in items {
+            let bytes =
+                database.remap_data_type::<Bytes>().get(rtxn, &Key::item(index, item_id))?.unwrap();
+            assert_eq!(*constant_length.get_or_insert(bytes.len()), bytes.len());
+
+            let ptr = bytes.as_ptr();
+            leafs.insert(item_id, ptr);
+        }
+
+        Ok(ImmutableLeafs { leafs, constant_length, _marker: marker::PhantomData })
+    }
+
+        /// Creates the structure by fetching all the leaf pointers
+    /// and keeping the transaction making the pointers valid.
     /// Do not take more items than memory allows.
     /// Remove from the list of candidates all the items that were selected and return them.
-    pub fn new(
+    pub fn new_fits_in_memory(
         rtxn: &'t RoTxn,
         database: Database<D>,
         index: u16,
@@ -551,40 +577,6 @@ impl<'t, D: Distance> ImmutableTrees<'t, D> {
         }
 
         Ok(ImmutableTrees { trees, _marker: marker::PhantomData })
-    }
-
-    /// Creates the structure by fetching all the children of the `start`ing tree nodes specified.
-    /// Keeps a reference to the transaction to ensure the pointers stays valid.
-    pub fn sub_tree_from_id(
-        rtxn: &'t RoTxn,
-        database: Database<D>,
-        index: u16,
-        start: ItemId,
-    ) -> Result<Self> {
-        let mut trees = IntMap::default();
-        let mut explore = vec![start];
-        while let Some(current) = explore.pop() {
-            let bytes =
-                database.remap_data_type::<Bytes>().get(rtxn, &Key::tree(index, current))?.unwrap();
-            let node: Node<'_, D> = NodeCodec::bytes_decode(bytes).unwrap();
-            match node {
-                Node::Leaf(_leaf) => unreachable!(),
-                Node::Descendants(_descendants) => {
-                    trees.insert(current, (bytes.len(), bytes.as_ptr()));
-                }
-                Node::SplitPlaneNormal(SplitPlaneNormal { left, right, normal: _ }) => {
-                    trees.insert(current, (bytes.len(), bytes.as_ptr()));
-                    explore.push(left);
-                    explore.push(right);
-                }
-            }
-        }
-
-        Ok(Self { trees, _marker: marker::PhantomData })
-    }
-
-    pub fn empty() -> Self {
-        Self { trees: IntMap::default(), _marker: marker::PhantomData }
     }
 
     /// Returns the tree node identified by the given ID.
