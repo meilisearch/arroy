@@ -660,13 +660,13 @@ impl<D: Distance> Writer<D> {
         let available_memory = options.available_memory.unwrap_or(usize::MAX) / current_num_threads();
 
         // safe to unwrap because we know the descendant is large
-        let items_for_tree = fit_in_memory::<D>(available_memory, &mut to_insert, self.dimensions).unwrap();
+        let items_for_tree = fit_in_memory::<D, R>(available_memory, &mut to_insert, self.dimensions, &mut rng).unwrap();
 
         let (root_id, _nb_new_tree_nodes) =
             self.make_tree_in_file(options, &frozen_reader, &mut rng, &items_for_tree, &mut descendants, Some(descendant_id), &mut tmp_node)?;
         assert_eq!(root_id, descendant_id);
             
-        while let Some(to_insert) = fit_in_memory::<D>(available_memory, &mut to_insert, self.dimensions) {
+        while let Some(to_insert) = fit_in_memory::<D, R>(available_memory, &mut to_insert, self.dimensions, &mut rng) {
             options.cancelled()?;
 
             self.insert_items_in_descendants_from_tmpfile(
@@ -711,7 +711,7 @@ impl<D: Distance> Writer<D> {
 
         let mut descendants = IntMap::<ItemId, RoaringBitmap>::default();
 
-        while let Some(to_insert) = fit_in_memory::<D>(options.available_memory.unwrap_or(usize::MAX), &mut to_insert, self.dimensions) {
+        while let Some(to_insert) = fit_in_memory::<D, R>(options.available_memory.unwrap_or(usize::MAX), &mut to_insert, self.dimensions, rng) {
             options.cancelled()?;
 
             let desc = self.insert_items_in_tree(options, rng, roots, &to_insert, &frozen_reader)?;
@@ -1311,7 +1311,7 @@ pub(crate) fn target_n_trees(
 /// If there is no items to insert anymore, returns `None`.
 /// If everything fits in memory, returns the `to_insert` bitmap.
 /// TODO: We should randomize the items selected.
-fn fit_in_memory<D: Distance>(memory: usize, to_insert: &mut RoaringBitmap, dimensions: usize) -> Option<RoaringBitmap> {
+fn fit_in_memory<D: Distance, R: Rng>(memory: usize, to_insert: &mut RoaringBitmap, dimensions: usize, rng: &mut R) -> Option<RoaringBitmap> {
     if to_insert.is_empty() {
         return None;
     } else if to_insert.len() <= dimensions as u64 {
@@ -1343,9 +1343,10 @@ fn fit_in_memory<D: Distance>(memory: usize, to_insert: &mut RoaringBitmap, dime
     let mut items = RoaringBitmap::new();
 
     for _ in 0..nb_items {
+        let idx = rng.gen_range(0..to_insert.len());
         // Safe to unwrap because we know nb_items is smaller than the number of items in the bitmap
-        items.push(to_insert.select(0).unwrap());
-        to_insert.remove_smallest(1);
+        items.push(to_insert.select(idx as u32).unwrap());
+        to_insert.remove_smallest(idx);
     }
 
     Some(items)
