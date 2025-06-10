@@ -1,5 +1,6 @@
+use std::fmt;
+
 use crate::distance::Distance;
-use crate::internals::Side;
 use crate::node::Leaf;
 use crate::parallel::ImmutableSubsetLeafs;
 use crate::unaligned_vector::{Binary, UnalignedVector};
@@ -19,9 +20,14 @@ pub enum Hamming {}
 
 /// The header of BinaryEuclidean leaf nodes.
 #[repr(C)]
-#[derive(Pod, Zeroable, Debug, Clone, Copy)]
+#[derive(Pod, Zeroable, Clone, Copy)]
 pub struct NodeHeaderHamming {
     idx: usize,
+}
+impl fmt::Debug for NodeHeaderHamming {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("NodeHeaderHamming ").field("idx", &format!("{}", self.idx)).finish()
+    }
 }
 
 impl Distance for Hamming {
