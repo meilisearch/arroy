@@ -131,7 +131,7 @@ fn two_means<D: Distance, R: Rng>(
     // points to either one of them. We weight each centroid by the number of points
     // assigned to it, so to balance it.
 
-    const ITERATION_STEPS: usize = 200;
+    const ITERATION_STEPS: usize = 10;
 
     let [leaf_p, leaf_q] = leafs.choose_two(rng)?.unwrap();
     let (mut leaf_p, mut leaf_q) = (leaf_p.into_owned(), leaf_q.into_owned());
@@ -181,7 +181,7 @@ pub fn two_means_binary_quantized<D: Distance, NonBqDist: Distance, R: Rng>(
     // to move, we need to store it as f32. This requires us to convert every binary quantized
     // vectors to f32 vectors, but the recall suffers too much if we don't do it.
 
-    const ITERATION_STEPS: usize = 200;
+    const ITERATION_STEPS: usize = 10;
 
     let [leaf_p, leaf_q] = leafs.choose_two(rng)?.unwrap();
     let mut leaf_p: Leaf<'static, NonBqDist> = new_leaf(leaf_p.vector.to_vec());

@@ -154,6 +154,7 @@ pub struct GenericReadSplitPlaneNormal<'a, D: Distance> {
     pub right: NodeId,
     // Before version 0.7.0 instead of storing `None` for a missing normal, we were
     // storing a vector filled with zeros, that will be overwritten while creating this type.
+    // We were also storing a simple vector instead of a leaf
     pub normal: Option<Leaf<'a, D>>,
 }
 
