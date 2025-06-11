@@ -96,7 +96,6 @@ pub struct TmpNodes<DE> {
     ids: Vec<ItemId>,
     bounds: Vec<usize>,
     deleted: RoaringBitmap,
-    remap_ids: IntMap<ItemId, ItemId>,
     _marker: marker::PhantomData<DE>,
 }
 
@@ -108,7 +107,6 @@ impl<'a, D: Distance> TmpNodes<D> {
             ids: Vec::new(),
             bounds: vec![0],
             deleted: RoaringBitmap::new(),
-            remap_ids: IntMap::default(),
             _marker: marker::PhantomData,
         })
     }
@@ -120,7 +118,6 @@ impl<'a, D: Distance> TmpNodes<D> {
             ids: Vec::new(),
             bounds: vec![0],
             deleted: RoaringBitmap::new(),
-            remap_ids: IntMap::default(),
             _marker: marker::PhantomData,
         })
     }
@@ -160,15 +157,6 @@ impl<'a, D: Distance> TmpNodes<D> {
         Ok(Some(NodeCodec::bytes_decode(&bytes).map_err(heed::Error::Decoding)?.to_owned()))
     }
 
-    /// Remap the item id of an already inserted node to another node.
-    ///
-    /// Only applies to the nodes to insert. It won't interact with the to_delete nodes.
-    pub fn remap(&mut self, current: ItemId, new: ItemId) {
-        if current != new {
-            self.remap_ids.insert(current, new);
-        }
-    }
-
     /// Delete the tmp_nodes and the node in the database.
     pub fn remove(&mut self, item: ItemId) {
         let deleted = self.deleted.insert(item);
@@ -187,7 +175,6 @@ impl<'a, D: Distance> TmpNodes<D> {
             ids: self.ids,
             bounds: self.bounds,
             deleted: self.deleted,
-            remap_ids: self.remap_ids,
         })
     }
 }
@@ -198,7 +185,6 @@ pub struct TmpNodesReader {
     ids: Vec<ItemId>,
     bounds: Vec<usize>,
     deleted: RoaringBitmap,
-    remap_ids: IntMap<ItemId, ItemId>,
 }
 
 impl TmpNodesReader {
@@ -212,10 +198,6 @@ impl TmpNodesReader {
             .iter()
             .zip(self.bounds.windows(2))
             .filter(|(&id, _)| !self.deleted.contains(id))
-            .map(|(id, bounds)| match self.remap_ids.get(id) {
-                Some(new_id) => (new_id, bounds),
-                None => (id, bounds),
-            })
             .map(|(id, bounds)| {
                 let [start, end] = [bounds[0], bounds[1]];
                 (*id, &self.mmap[start..end])
