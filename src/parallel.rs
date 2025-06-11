@@ -154,7 +154,7 @@ impl<'a, D: Distance> TmpNodes<D> {
         };
         let bounds = &self.bounds[self.bounds.len() - position - 2..self.bounds.len() - position];
         let bytes = self.file.read_all((bounds[0], bounds[1]))?;
-        Ok(Some(NodeCodec::bytes_decode(&bytes).map_err(heed::Error::Decoding)?.to_owned()))
+        Ok(Some(NodeCodec::bytes_decode(&bytes).map_err(heed::Error::Decoding)?.into_owned()))
     }
 
     /// Delete the tmp_nodes and the node in the database.

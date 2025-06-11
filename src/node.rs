@@ -20,7 +20,7 @@ pub enum Node<'a, D: Distance> {
 }
 
 impl<'a, D: Distance> Node<'a, D> {
-    pub fn to_owned(self) -> Node<'static, D> {
+    pub fn into_owned(self) -> Node<'static, D> {
         match self {
             Node::Leaf(leaf) => Node::Leaf(leaf.into_owned()),
             Node::Descendants(descendants) => Node::Descendants(Descendants {

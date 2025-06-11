@@ -563,7 +563,7 @@ impl<D: Distance> Writer<D> {
                     let files_tls = files_tls.clone();
                     s.spawn( move |s| {
                         // TODO: find a way to return the error and stop the indexing process
-                        self.incremental_index_large_descendant(rng, options, s, (descendant_id, item_indices), &frozen_reader, files_tls).unwrap();
+                        self.incremental_index_large_descendant(rng, options, s, (descendant_id, item_indices), frozen_reader, files_tls).unwrap();
                     });
                 }
             }
@@ -663,15 +663,15 @@ impl<D: Distance> Writer<D> {
         let items_for_tree = fit_in_memory::<D, R>(available_memory, &mut to_insert, self.dimensions, &mut rng).unwrap();
 
         let (root_id, _nb_new_tree_nodes) =
-            self.make_tree_in_file(options, &frozen_reader, &mut rng, &items_for_tree, &mut descendants, Some(descendant_id), &mut tmp_node)?;
+            self.make_tree_in_file(options, frozen_reader, &mut rng, &items_for_tree, &mut descendants, Some(descendant_id), &mut tmp_node)?;
         assert_eq!(root_id, descendant_id);
             
         while let Some(to_insert) = fit_in_memory::<D, R>(available_memory, &mut to_insert, self.dimensions, &mut rng) {
             options.cancelled()?;
 
-            self.insert_items_in_descendants_from_tmpfile(
+            insert_items_in_descendants_from_tmpfile(
                 options,
-                &frozen_reader,
+                frozen_reader,
                 &mut tmp_node,
                 &mut rng,
                 descendant_id,
@@ -688,7 +688,7 @@ impl<D: Distance> Writer<D> {
                 let rng = StdRng::from_seed(rng.gen());
                 scope.spawn(move |s| {
                     // TODO: Find a way to return the error and stop the indexing process
-                    self.incremental_index_large_descendant(rng, options, s, (item_id, item_indices), &frozen_reader, tmp_nodes).unwrap();
+                    self.incremental_index_large_descendant(rng, options, s, (item_id, item_indices), frozen_reader, tmp_nodes).unwrap();
                 });
             }
         }
@@ -714,7 +714,7 @@ impl<D: Distance> Writer<D> {
         while let Some(to_insert) = fit_in_memory::<D, R>(options.available_memory.unwrap_or(usize::MAX), &mut to_insert, self.dimensions, rng) {
             options.cancelled()?;
 
-            let desc = self.insert_items_in_tree(options, rng, roots, &to_insert, &frozen_reader)?;
+            let desc = self.insert_items_in_tree(options, rng, roots, &to_insert, frozen_reader)?;
             for (item_id, desc) in desc {
                 descendants.entry(item_id).or_default().extend(desc);
             }
@@ -935,7 +935,6 @@ impl<D: Distance> Writer<D> {
     /// Insert items in the specified trees without creating new tree nodes.
     /// Return the list of nodes modified that must be inserted into the database and
     /// the roaring bitmap of descendants that became too large in the process.
-    #[allow(clippy::too_many_arguments)]
     fn insert_items_in_tree<R: Rng + SeedableRng>(
         &self,
         opt: &BuildOption,
@@ -951,7 +950,7 @@ impl<D: Distance> Writer<D> {
                 tracing::debug!("started updating tree {root:X}...");
                 let mut rng = R::seed_from_u64(seed.wrapping_add(*root as u64));
                 let mut descendants_to_update = IntMap::with_hasher(BuildNoHashHasher::default());
-                self.insert_items_in_descendants_from_frozen_reader(
+                insert_items_in_descendants_from_frozen_reader(
                     opt,
                     frozen_reader,
                     &mut rng,
@@ -977,133 +976,11 @@ impl<D: Distance> Writer<D> {
             )
     }
 
-    /// Find all the descendants that matches the list of items to insert and add them to the descendants_to_update map
-    #[allow(clippy::too_many_arguments)]
-    fn insert_items_in_descendants_from_frozen_reader<R: Rng>(
-        &self,
-        opt: &BuildOption,
-        frozen_reader: &FrozzenReader<D>,
-        rng: &mut R,
-        current_node: ItemId,
-        to_insert: &RoaringBitmap,
-        descendants_to_update: &mut IntMap<ItemId, RoaringBitmap>,
-    ) -> Result<()> {
-        opt.cancelled()?;
-        match frozen_reader.trees.get(current_node)?.unwrap() {
-            Node::Leaf(_) => unreachable!(),
-            Node::Descendants(Descendants { descendants: _ }) => {
-                descendants_to_update.insert(current_node, to_insert.clone());
-            }
-            Node::SplitPlaneNormal(SplitPlaneNormal { normal, left, right }) => {
-                // Split the to_insert into two bitmaps on the left and right of this normal
-                let mut left_ids = RoaringBitmap::new();
-                let mut right_ids = RoaringBitmap::new();
-
-                match normal {
-                    None => {
-                        randomly_split_children(rng, to_insert, &mut left_ids, &mut right_ids);
-                    }
-                    Some(ref normal) => {
-                        for leaf in to_insert {
-                            let node = frozen_reader.leafs.get(leaf)?.unwrap();
-                            match D::side(normal, &node, rng) {
-                                Side::Left => left_ids.insert(leaf),
-                                Side::Right => right_ids.insert(leaf),
-                            };
-                        }
-                    }
-                }
-
-                self.insert_items_in_descendants_from_frozen_reader(
-                    opt,
-                    frozen_reader,
-                    rng,
-                    left,
-                    &left_ids,
-                    descendants_to_update,
-                )?;
-                self.insert_items_in_descendants_from_frozen_reader(
-                    opt,
-                    frozen_reader,
-                    rng,
-                    right,
-                    &right_ids,
-                    descendants_to_update,
-                )?;
-            }
-        }
-        Ok(())
-    }
-
-
-    /// Find all the descendants that matches the list of items to insert and add them to the descendants_to_update map
-    #[allow(clippy::too_many_arguments)]
-    fn insert_items_in_descendants_from_tmpfile<R: Rng>(
-        &self,
-        opt: &BuildOption,
-        // We still need this to read the leafs
-        frozen_reader: &FrozzenReader<D>,
-        // Must be mutable because we're going to seek and read in it
-        tmp_nodes: &mut TmpNodes<D>,
-        rng: &mut R,
-        current_node: ItemId,
-        to_insert: &RoaringBitmap,
-        descendants_to_update: &mut IntMap<ItemId, RoaringBitmap>,
-    ) -> Result<()> {
-        opt.cancelled()?;
-        match tmp_nodes.get(current_node)?.unwrap() {
-            Node::Leaf(_) => unreachable!(),
-            Node::Descendants(Descendants { descendants: _ }) => {
-                descendants_to_update.insert(current_node, to_insert.clone());
-            }
-            Node::SplitPlaneNormal(SplitPlaneNormal { normal, left, right }) => {
-                // Split the to_insert into two bitmaps on the left and right of this normal
-                let mut left_ids = RoaringBitmap::new();
-                let mut right_ids = RoaringBitmap::new();
-
-                match normal {
-                    None => {
-                        randomly_split_children(rng, to_insert, &mut left_ids, &mut right_ids);
-                    }
-                    Some(ref normal) => {
-                        for leaf in to_insert {
-                            let node = frozen_reader.leafs.get(leaf)?.unwrap();
-                            match D::side(normal, &node, rng) {
-                                Side::Left => left_ids.insert(leaf),
-                                Side::Right => right_ids.insert(leaf),
-                            };
-                        }
-                    }
-                }
-
-                self.insert_items_in_descendants_from_tmpfile(
-                    opt,
-                    frozen_reader,
-                    tmp_nodes,
-                    rng,
-                    left,
-                    &left_ids,
-                    descendants_to_update,
-                )?;
-                self.insert_items_in_descendants_from_tmpfile(
-                    opt,
-                    frozen_reader,
-                    tmp_nodes,
-                    rng,
-                    right,
-                    &right_ids,
-                    descendants_to_update,
-                )?;
-            }
-        }
-        Ok(())
-    }
-
-
     /// Creates a tree of nodes from the frozzen items that lives
     /// in the database and generates descendants, split normal
     /// and root nodes in files that will be stored in the database later.
     /// Return the root node + the total number of tree node generated.
+    #[allow(clippy::too_many_arguments)]
     fn make_tree_in_file<R: Rng>(
         &self,
         opt: &BuildOption,
@@ -1305,6 +1182,127 @@ pub(crate) fn target_n_trees(
             nb_trees
         }
     }
+}
+
+
+/// Find all the descendants that matches the list of items to insert and add them to the descendants_to_update map
+#[allow(clippy::too_many_arguments)]
+fn insert_items_in_descendants_from_frozen_reader<D: Distance, R: Rng>(
+    opt: &BuildOption,
+    frozen_reader: &FrozzenReader<D>,
+    rng: &mut R,
+    current_node: ItemId,
+    to_insert: &RoaringBitmap,
+    descendants_to_update: &mut IntMap<ItemId, RoaringBitmap>,
+) -> Result<()> {
+    opt.cancelled()?;
+    match frozen_reader.trees.get(current_node)?.unwrap() {
+        Node::Leaf(_) => unreachable!(),
+        Node::Descendants(Descendants { descendants: _ }) => {
+            descendants_to_update.insert(current_node, to_insert.clone());
+        }
+        Node::SplitPlaneNormal(SplitPlaneNormal { normal, left, right }) => {
+            // Split the to_insert into two bitmaps on the left and right of this normal
+            let mut left_ids = RoaringBitmap::new();
+            let mut right_ids = RoaringBitmap::new();
+
+            match normal {
+                None => {
+                    randomly_split_children(rng, to_insert, &mut left_ids, &mut right_ids);
+                }
+                Some(ref normal) => {
+                    for leaf in to_insert {
+                        let node = frozen_reader.leafs.get(leaf)?.unwrap();
+                        match D::side(normal, &node, rng) {
+                            Side::Left => left_ids.insert(leaf),
+                            Side::Right => right_ids.insert(leaf),
+                        };
+                    }
+                }
+            }
+
+            insert_items_in_descendants_from_frozen_reader(
+                opt,
+                frozen_reader,
+                rng,
+                left,
+                &left_ids,
+                descendants_to_update,
+            )?;
+            insert_items_in_descendants_from_frozen_reader(
+                opt,
+                frozen_reader,
+                rng,
+                right,
+                &right_ids,
+                descendants_to_update,
+            )?;
+        }
+    }
+    Ok(())
+}
+
+
+/// Find all the descendants that matches the list of items to insert and add them to the descendants_to_update map
+#[allow(clippy::too_many_arguments)]
+fn insert_items_in_descendants_from_tmpfile<D: Distance, R: Rng>(
+    opt: &BuildOption,
+    // We still need this to read the leafs
+    frozen_reader: &FrozzenReader<D>,
+    // Must be mutable because we're going to seek and read in it
+    tmp_nodes: &mut TmpNodes<D>,
+    rng: &mut R,
+    current_node: ItemId,
+    to_insert: &RoaringBitmap,
+    descendants_to_update: &mut IntMap<ItemId, RoaringBitmap>,
+) -> Result<()> {
+    opt.cancelled()?;
+    match tmp_nodes.get(current_node)?.unwrap() {
+        Node::Leaf(_) => unreachable!(),
+        Node::Descendants(Descendants { descendants: _ }) => {
+            descendants_to_update.insert(current_node, to_insert.clone());
+        }
+        Node::SplitPlaneNormal(SplitPlaneNormal { normal, left, right }) => {
+            // Split the to_insert into two bitmaps on the left and right of this normal
+            let mut left_ids = RoaringBitmap::new();
+            let mut right_ids = RoaringBitmap::new();
+
+            match normal {
+                None => {
+                    randomly_split_children(rng, to_insert, &mut left_ids, &mut right_ids);
+                }
+                Some(ref normal) => {
+                    for leaf in to_insert {
+                        let node = frozen_reader.leafs.get(leaf)?.unwrap();
+                        match D::side(normal, &node, rng) {
+                            Side::Left => left_ids.insert(leaf),
+                            Side::Right => right_ids.insert(leaf),
+                        };
+                    }
+                }
+            }
+
+            insert_items_in_descendants_from_tmpfile(
+                opt,
+                frozen_reader,
+                tmp_nodes,
+                rng,
+                left,
+                &left_ids,
+                descendants_to_update,
+            )?;
+            insert_items_in_descendants_from_tmpfile(
+                opt,
+                frozen_reader,
+                tmp_nodes,
+                rng,
+                right,
+                &right_ids,
+                descendants_to_update,
+            )?;
+        }
+    }
+    Ok(())
 }
 
 /// Returns the items from the `to_insert` that fit in memory.
