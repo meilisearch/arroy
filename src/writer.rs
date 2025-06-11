@@ -471,7 +471,10 @@ impl<D: Distance> Writer<D> {
     }
 
     /// Returns an [`ArroyBuilder`] to configure the available options to build the database.
-    pub fn builder<'a, R: Rng + SeedableRng + Send + Sync>(&'a self, rng: &'a mut R) -> ArroyBuilder<'a, D, R> {
+    pub fn builder<'a, R: Rng + SeedableRng + Send + Sync>(
+        &'a self,
+        rng: &'a mut R,
+    ) -> ArroyBuilder<'a, D, R> {
         ArroyBuilder { writer: self, rng, inner: BuildOption::default() }
     }
 
@@ -519,7 +522,8 @@ impl<D: Distance> Writer<D> {
         // Each thread will have its own TmpNodes and we're going to write them all to the DB at the end.
 
         let leafs = ImmutableLeafs::new(wtxn, self.database, &item_indices, self.index)?;
-        let immutable_tree_nodes = ImmutableTrees::new(wtxn, self.database, self.index, nb_tree_nodes)?;
+        let immutable_tree_nodes =
+            ImmutableTrees::new(wtxn, self.database, self.index, nb_tree_nodes)?;
         let frozen_reader = FrozzenReader {
             leafs: &leafs,
             trees: &immutable_tree_nodes,
@@ -530,13 +534,8 @@ impl<D: Distance> Writer<D> {
 
         // The next method is called from multiple place so we have to update the progress here
         (options.progress)(WriterProgress { main: MainStep::InsertItemsInCurrentTrees, sub: None });
-        let mut descendants = self.insert_items_in_current_trees(
-            rng,
-            options,
-            to_insert,
-            &roots,
-            &frozen_reader,
-        )?;
+        let mut descendants =
+            self.insert_items_in_current_trees(rng, options, to_insert, &roots, &frozen_reader)?;
 
         // Create a new descendant that contains all items for every missing trees
         let nb_missing_trees = target_n_trees.saturating_sub(roots.len() as u64);
@@ -561,9 +560,17 @@ impl<D: Distance> Writer<D> {
                 } else {
                     let rng = StdRng::from_seed(rng.gen());
                     let files_tls = files_tls.clone();
-                    s.spawn( move |s| {
+                    s.spawn(move |s| {
                         // TODO: find a way to return the error and stop the indexing process
-                        self.incremental_index_large_descendant(rng, options, s, (descendant_id, item_indices), frozen_reader, files_tls).unwrap();
+                        self.incremental_index_large_descendant(
+                            rng,
+                            options,
+                            s,
+                            (descendant_id, item_indices),
+                            frozen_reader,
+                            files_tls,
+                        )
+                        .unwrap();
                     });
                 }
             }
@@ -573,12 +580,20 @@ impl<D: Distance> Writer<D> {
         for file in files_tls.into_iter() {
             let tmp_nodes = file.into_inner().into_bytes_reader()?;
             for (item_id, item_bytes) in tmp_nodes.to_insert() {
-                self.database.remap_data_type::<Bytes>().put(wtxn, &Key::tree(self.index, item_id), item_bytes)?;
+                self.database.remap_data_type::<Bytes>().put(
+                    wtxn,
+                    &Key::tree(self.index, item_id),
+                    item_bytes,
+                )?;
             }
         }
 
         for (descendant_id, item_indices) in new_descendants.into_iter() {
-            self.database.put(wtxn, &Key::tree(self.index, descendant_id), &Node::Descendants(Descendants { descendants: Cow::Borrowed(&item_indices) }))?;
+            self.database.put(
+                wtxn,
+                &Key::tree(self.index, descendant_id),
+                &Node::Descendants(Descendants { descendants: Cow::Borrowed(&item_indices) }),
+            )?;
         }
 
         tracing::debug!("write the metadata...");
@@ -646,27 +661,37 @@ impl<D: Distance> Writer<D> {
         });
         options.cancelled()?;
 
-        let tmp_node = tmp_nodes.get_or_try(|| {
-            match self.tmpdir.as_ref() {
-                Some(path) => TmpNodes::new_in(path).map(RefCell::new),
-                None => TmpNodes::new().map(RefCell::new),
-            }
+        let tmp_node = tmp_nodes.get_or_try(|| match self.tmpdir.as_ref() {
+            Some(path) => TmpNodes::new_in(path).map(RefCell::new),
+            None => TmpNodes::new().map(RefCell::new),
         })?;
         // Safe to borrow mut here because we're the only thread running with this variable
         let mut tmp_node = tmp_node.borrow_mut();
         let mut descendants = IntMap::<ItemId, RoaringBitmap>::default();
         let (descendant_id, mut to_insert) = descendant;
 
-        let available_memory = options.available_memory.unwrap_or(usize::MAX) / current_num_threads();
+        let available_memory =
+            options.available_memory.unwrap_or(usize::MAX) / current_num_threads();
 
         // safe to unwrap because we know the descendant is large
-        let items_for_tree = fit_in_memory::<D, R>(available_memory, &mut to_insert, self.dimensions, &mut rng).unwrap();
+        let items_for_tree =
+            fit_in_memory::<D, R>(available_memory, &mut to_insert, self.dimensions, &mut rng)
+                .unwrap();
 
-        let (root_id, _nb_new_tree_nodes) =
-            self.make_tree_in_file(options, frozen_reader, &mut rng, &items_for_tree, &mut descendants, Some(descendant_id), &mut tmp_node)?;
+        let (root_id, _nb_new_tree_nodes) = self.make_tree_in_file(
+            options,
+            frozen_reader,
+            &mut rng,
+            &items_for_tree,
+            &mut descendants,
+            Some(descendant_id),
+            &mut tmp_node,
+        )?;
         assert_eq!(root_id, descendant_id);
-            
-        while let Some(to_insert) = fit_in_memory::<D, R>(available_memory, &mut to_insert, self.dimensions, &mut rng) {
+
+        while let Some(to_insert) =
+            fit_in_memory::<D, R>(available_memory, &mut to_insert, self.dimensions, &mut rng)
+        {
             options.cancelled()?;
 
             insert_items_in_descendants_from_tmpfile(
@@ -682,17 +707,27 @@ impl<D: Distance> Writer<D> {
 
         for (item_id, item_indices) in descendants.into_iter() {
             if self.fit_in_descendant(options, item_indices.len()) {
-                tmp_node.put(item_id, &Node::Descendants(Descendants { descendants: Cow::Borrowed(&item_indices) }))?;
+                tmp_node.put(
+                    item_id,
+                    &Node::Descendants(Descendants { descendants: Cow::Borrowed(&item_indices) }),
+                )?;
             } else {
                 let tmp_nodes = tmp_nodes.clone();
                 let rng = StdRng::from_seed(rng.gen());
                 scope.spawn(move |s| {
                     // TODO: Find a way to return the error and stop the indexing process
-                    self.incremental_index_large_descendant(rng, options, s, (item_id, item_indices), frozen_reader, tmp_nodes).unwrap();
+                    self.incremental_index_large_descendant(
+                        rng,
+                        options,
+                        s,
+                        (item_id, item_indices),
+                        frozen_reader,
+                        tmp_nodes,
+                    )
+                    .unwrap();
                 });
             }
         }
-
 
         Ok(())
     }
@@ -703,7 +738,7 @@ impl<D: Distance> Writer<D> {
         options: &BuildOption,
         mut to_insert: RoaringBitmap,
         roots: &[ItemId],
-        frozen_reader: &FrozzenReader<D>
+        frozen_reader: &FrozzenReader<D>,
     ) -> Result<IntMap<ItemId, RoaringBitmap>> {
         if roots.is_empty() {
             return Ok(IntMap::default());
@@ -711,7 +746,12 @@ impl<D: Distance> Writer<D> {
 
         let mut descendants = IntMap::<ItemId, RoaringBitmap>::default();
 
-        while let Some(to_insert) = fit_in_memory::<D, R>(options.available_memory.unwrap_or(usize::MAX), &mut to_insert, self.dimensions, rng) {
+        while let Some(to_insert) = fit_in_memory::<D, R>(
+            options.available_memory.unwrap_or(usize::MAX),
+            &mut to_insert,
+            self.dimensions,
+            rng,
+        ) {
             options.cancelled()?;
 
             let desc = self.insert_items_in_tree(options, rng, roots, &to_insert, frozen_reader)?;
@@ -1044,8 +1084,17 @@ impl<D: Distance> Writer<D> {
                 )
             };
 
-        let (left, l) = self.make_tree_in_file(opt, reader, rng, &children_left, descendants, None, tmp_nodes)?;
-        let (right, r) = self.make_tree_in_file(opt, reader, rng, &children_right, descendants,None, tmp_nodes)?;
+        let (left, l) =
+            self.make_tree_in_file(opt, reader, rng, &children_left, descendants, None, tmp_nodes)?;
+        let (right, r) = self.make_tree_in_file(
+            opt,
+            reader,
+            rng,
+            &children_right,
+            descendants,
+            None,
+            tmp_nodes,
+        )?;
         let normal = SplitPlaneNormal { normal, left, right };
 
         let new_node_id = next_id.map(Ok).unwrap_or_else(|| reader.concurrent_node_ids.next())?;
@@ -1184,7 +1233,6 @@ pub(crate) fn target_n_trees(
     }
 }
 
-
 /// Find all the descendants that matches the list of items to insert and add them to the descendants_to_update map
 #[allow(clippy::too_many_arguments)]
 fn insert_items_in_descendants_from_frozen_reader<D: Distance, R: Rng>(
@@ -1241,7 +1289,6 @@ fn insert_items_in_descendants_from_frozen_reader<D: Distance, R: Rng>(
     }
     Ok(())
 }
-
 
 /// Find all the descendants that matches the list of items to insert and add them to the descendants_to_update map
 #[allow(clippy::too_many_arguments)]
@@ -1309,7 +1356,12 @@ fn insert_items_in_descendants_from_tmpfile<D: Distance, R: Rng>(
 /// If there is no items to insert anymore, returns `None`.
 /// If everything fits in memory, returns the `to_insert` bitmap.
 /// TODO: We should randomize the items selected.
-fn fit_in_memory<D: Distance, R: Rng>(memory: usize, to_insert: &mut RoaringBitmap, dimensions: usize, rng: &mut R) -> Option<RoaringBitmap> {
+fn fit_in_memory<D: Distance, R: Rng>(
+    memory: usize,
+    to_insert: &mut RoaringBitmap,
+    dimensions: usize,
+    rng: &mut R,
+) -> Option<RoaringBitmap> {
     if to_insert.is_empty() {
         return None;
     } else if to_insert.len() <= dimensions as u64 {
@@ -1326,7 +1378,7 @@ fn fit_in_memory<D: Distance, R: Rng>(memory: usize, to_insert: &mut RoaringBitm
 
     let nb_items = if nb_items_per_page > 1 {
         debug_assert_eq!(nb_page_per_item, 1);
-        nb_page_allowed * nb_items_per_page 
+        nb_page_allowed * nb_items_per_page
     } else if nb_page_per_item > 1 {
         debug_assert_eq!(nb_items_per_page, 1);
         nb_page_allowed / nb_page_per_item

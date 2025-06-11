@@ -170,12 +170,7 @@ impl<'a, D: Distance> TmpNodes<D> {
         let mmap = unsafe { Mmap::map(&file)? };
         #[cfg(unix)]
         mmap.advise(memmap2::Advice::Sequential)?;
-        Ok(TmpNodesReader {
-            mmap,
-            ids: self.ids,
-            bounds: self.bounds,
-            deleted: self.deleted,
-        })
+        Ok(TmpNodesReader { mmap, ids: self.ids, bounds: self.bounds, deleted: self.deleted })
     }
 }
 
@@ -276,10 +271,8 @@ impl<'t, D: Distance> ImmutableLeafs<'t, D> {
         items: &RoaringBitmap,
         index: u16,
     ) -> heed::Result<Self> {
-        let mut leafs = IntMap::with_capacity_and_hasher(
-            items.len() as usize,
-            BuildNoHashHasher::default(),
-        );
+        let mut leafs =
+            IntMap::with_capacity_and_hasher(items.len() as usize, BuildNoHashHasher::default());
         let mut constant_length = None;
 
         for item_id in items {
@@ -294,7 +287,7 @@ impl<'t, D: Distance> ImmutableLeafs<'t, D> {
         Ok(ImmutableLeafs { leafs, constant_length, _marker: marker::PhantomData })
     }
 
-        /// Creates the structure by fetching all the leaf pointers
+    /// Creates the structure by fetching all the leaf pointers
     /// and keeping the transaction making the pointers valid.
     /// Do not take more items than memory allows.
     /// Remove from the list of candidates all the items that were selected and return them.
