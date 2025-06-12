@@ -54,4 +54,8 @@ impl UnalignedVectorCodec for f32 {
     fn is_zero(vec: &UnalignedVector<Self>) -> bool {
         vec.iter().all(|v| v == 0.0)
     }
+
+    fn size_of_item(dimensions: usize) -> usize {
+        dimensions * size_of::<f32>()
+    }
 }

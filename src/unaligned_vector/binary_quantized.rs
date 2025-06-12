@@ -71,6 +71,10 @@ impl UnalignedVectorCodec for BinaryQuantized {
     fn is_zero(vec: &UnalignedVector<Self>) -> bool {
         vec.as_bytes().iter().all(|b| *b == 0)
     }
+
+    fn size_of_item(dimensions: usize) -> usize {
+        dimensions / QUANTIZED_WORD_BITS
+    }
 }
 
 pub(super) fn from_slice_non_optimized(slice: &[f32]) -> Vec<u8> {
