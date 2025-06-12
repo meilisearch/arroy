@@ -892,6 +892,8 @@ impl<D: Distance> Writer<D> {
 
     /// Remove items in O(n). We must explore the whole list of items.
     /// That could be reduced to O(log(n)) if we had a `RoTxn` of the previous state of the database.
+    /// Return the new node id and the list of all the items contained in this branch.
+    /// If there is too many items to create a single descendant, we return `None`.
     fn delete_items_in_file(
         &self,
         options: &BuildOption,
@@ -899,7 +901,7 @@ impl<D: Distance> Writer<D> {
         current_node: ItemId,
         tmp_nodes: &mut TmpNodes<D>,
         to_delete: &RoaringBitmap,
-    ) -> Result<(ItemId, RoaringBitmap)> {
+    ) -> Result<(ItemId, Option<RoaringBitmap>)> {
         options.cancelled()?;
         match self.database.get(rtxn, &Key::tree(self.index, current_node))?.unwrap() {
             Node::Leaf(_) => unreachable!(),
@@ -917,7 +919,7 @@ impl<D: Distance> Writer<D> {
                         }),
                     )?;
                 }
-                Ok((current_node, new_descendants))
+                Ok((current_node, Some(new_descendants)))
             }
             Node::SplitPlaneNormal(SplitPlaneNormal { normal, left, right }) => {
                 let (new_left, left_items) =
@@ -926,47 +928,64 @@ impl<D: Distance> Writer<D> {
                 let (new_right, right_items) =
                     self.delete_items_in_file(options, rtxn, right, tmp_nodes, to_delete)?;
 
-                let total_items = &left_items | &right_items;
-
-                if self.fit_in_descendant(options, total_items.len()) {
-                    // Since we're shrinking we KNOW that new_left and new_right are descendants
-                    // thus we can delete them directly knowing there is no sub-tree to look at.
-                    tmp_nodes.remove(new_left);
-                    tmp_nodes.remove(new_right);
-
-                    tmp_nodes.put(
-                        current_node,
-                        &Node::Descendants(Descendants {
-                            descendants: Cow::Owned(total_items.clone()),
-                        }),
-                    )?;
-
-                    // we should merge both branch and update ourselves to be a single descendant node
-                    Ok((current_node, total_items))
-
-                // If we don't have any items in either the left or right we can delete ourselves and point directly to our child
-                } else if left_items.is_empty() {
-                    tmp_nodes.remove(new_left);
-                    tmp_nodes.remove(current_node);
-                    Ok((new_right, total_items))
-                } else if right_items.is_empty() {
-                    tmp_nodes.remove(new_right);
-                    tmp_nodes.remove(current_node);
-                    Ok((new_left, total_items))
-                } else {
-                    // if either the left or the right changed we must update ourselves inplace
-                    if new_left != left || new_right != right {
-                        tmp_nodes.put(
-                            current_node,
-                            &Node::SplitPlaneNormal(SplitPlaneNormal {
-                                normal,
-                                left: new_left,
-                                right: new_right,
-                            }),
-                        )?;
+                match (left_items, right_items) {
+                    (Some(left_items), right_items) if left_items.is_empty() => {
+                        println!("left_items is empty");
+                        tmp_nodes.remove(new_left);
+                        tmp_nodes.remove(current_node);
+                        Ok((new_right, right_items))
                     }
+                    (left_items, Some(right_items)) if right_items.is_empty() => {
+                        println!("right_items is empty");
+                        tmp_nodes.remove(new_right);
+                        tmp_nodes.remove(current_node);
+                        Ok((new_left, left_items))
+                    }
+                    (Some(left_items), Some(right_items)) => {
+                        let total_items = left_items.len() + right_items.len();
+                        if self.fit_in_descendant(options, total_items as u64) {
+                            let total_items = left_items | right_items;
+                            // Since we're shrinking we KNOW that new_left and new_right are descendants
+                            // thus we can delete them directly knowing there is no sub-tree to look at.
+                            tmp_nodes.remove(new_left);
+                            tmp_nodes.remove(new_right);
 
-                    Ok((current_node, total_items))
+                            tmp_nodes.put(
+                                current_node,
+                                &Node::Descendants(Descendants {
+                                    descendants: Cow::Borrowed(&total_items),
+                                }),
+                            )?;
+
+                            // we should merge both branch and update ourselves to be a single descendant node
+                            Ok((current_node, Some(total_items)))
+                        } else {
+                            if new_left != left || new_right != right {
+                                tmp_nodes.put(
+                                    current_node,
+                                    &Node::SplitPlaneNormal(SplitPlaneNormal {
+                                        normal,
+                                        left: new_left,
+                                        right: new_right,
+                                    }),
+                                )?;
+                            }
+                            Ok((current_node, None))
+                        }
+                    }
+                    (None, Some(_)) | (Some(_), None) | (None, None) => {
+                        if new_left != left || new_right != right {
+                            tmp_nodes.put(
+                                current_node,
+                                &Node::SplitPlaneNormal(SplitPlaneNormal {
+                                    normal,
+                                    left: new_left,
+                                    right: new_right,
+                                }),
+                            )?;
+                        }
+                        Ok((current_node, None))
+                    }
                 }
             }
         }

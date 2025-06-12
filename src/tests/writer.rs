@@ -1072,6 +1072,7 @@ fn create_root_split_node_with_empty_child() {
     Item 5: Leaf(Leaf { header: NodeHeaderEuclidean { bias: 0.0 }, vector: [5.0000, 0.0000] })
     "#);
 
+    println!("HEEEEEERE");
     let mut wtxn = handle.env.write_txn().unwrap();
     let writer = Writer::new(handle.database, 0, 2);
 
@@ -1155,8 +1156,7 @@ fn reuse_node_id() {
     let mut wtxn = handle.env.write_txn().unwrap();
     let writer = Writer::new(handle.database, 0, 2);
 
-    // if we delete the 3 and 4 it should free the tree node 2
-    writer.del_item(&mut wtxn, 3).unwrap();
+    // if we delete 4 it should free the tree node 3 and 5
     writer.del_item(&mut wtxn, 4).unwrap();
     writer.builder(&mut rng).n_trees(1).build(&mut wtxn).unwrap();
     wtxn.commit().unwrap();
@@ -1164,24 +1164,24 @@ fn reuse_node_id() {
     insta::assert_snapshot!(handle, @r#"
     ==================
     Dumping index 0
-    Root: Metadata { dimensions: 2, items: RoaringBitmap<[0, 1, 2, 5]>, roots: [0], distance: "euclidean" }
+    Root: Metadata { dimensions: 2, items: RoaringBitmap<[0, 1, 2, 3, 5]>, roots: [0], distance: "euclidean" }
     Version: Version { major: 0, minor: 7, patch: 0 }
     Tree 0: SplitPlaneNormal(SplitPlaneNormal<euclidean> { left: 1, right: 6, normal: [1.0000, 0.0000] })
     Tree 1: Descendants(Descendants { descendants: [0] })
     Tree 2: Descendants(Descendants { descendants: [1, 5] })
-    Tree 5: Descendants(Descendants { descendants: [2] })
-    Tree 6: SplitPlaneNormal(SplitPlaneNormal<euclidean> { left: 2, right: 5, normal: "none" })
+    Tree 4: Descendants(Descendants { descendants: [2, 3] })
+    Tree 6: SplitPlaneNormal(SplitPlaneNormal<euclidean> { left: 2, right: 4, normal: "none" })
     Item 0: Leaf(Leaf { header: NodeHeaderEuclidean { bias: 0.0 }, vector: [0.0000, 0.0000] })
     Item 1: Leaf(Leaf { header: NodeHeaderEuclidean { bias: 0.0 }, vector: [1.0000, 0.0000] })
     Item 2: Leaf(Leaf { header: NodeHeaderEuclidean { bias: 0.0 }, vector: [2.0000, 0.0000] })
+    Item 3: Leaf(Leaf { header: NodeHeaderEuclidean { bias: 0.0 }, vector: [3.0000, 0.0000] })
     Item 5: Leaf(Leaf { header: NodeHeaderEuclidean { bias: 0.0 }, vector: [5.0000, 0.0000] })
     "#);
 
     let mut wtxn = handle.env.write_txn().unwrap();
     let writer = Writer::new(handle.database, 0, 2);
 
-    // if we re-insert both nodes, the id 2 should be re-used
-    writer.add_item(&mut wtxn, 3, &[3., 0.]).unwrap();
+    // if we re-insert both nodes, the ids 3 and 5 should be re-used
     writer.add_item(&mut wtxn, 4, &[4., 0.]).unwrap();
     writer.builder(&mut rng).n_trees(1).build(&mut wtxn).unwrap();
     wtxn.commit().unwrap();
@@ -1195,9 +1195,9 @@ fn reuse_node_id() {
     Tree 1: Descendants(Descendants { descendants: [0] })
     Tree 2: Descendants(Descendants { descendants: [1, 5] })
     Tree 3: Descendants(Descendants { descendants: [3] })
-    Tree 4: Descendants(Descendants { descendants: [2, 4] })
-    Tree 5: SplitPlaneNormal(SplitPlaneNormal<euclidean> { left: 3, right: 4, normal: "none" })
-    Tree 6: SplitPlaneNormal(SplitPlaneNormal<euclidean> { left: 2, right: 5, normal: "none" })
+    Tree 4: SplitPlaneNormal(SplitPlaneNormal<euclidean> { left: 3, right: 5, normal: "none" })
+    Tree 5: Descendants(Descendants { descendants: [2, 4] })
+    Tree 6: SplitPlaneNormal(SplitPlaneNormal<euclidean> { left: 2, right: 4, normal: "none" })
     Item 0: Leaf(Leaf { header: NodeHeaderEuclidean { bias: 0.0 }, vector: [0.0000, 0.0000] })
     Item 1: Leaf(Leaf { header: NodeHeaderEuclidean { bias: 0.0 }, vector: [1.0000, 0.0000] })
     Item 2: Leaf(Leaf { header: NodeHeaderEuclidean { bias: 0.0 }, vector: [2.0000, 0.0000] })
@@ -1222,9 +1222,9 @@ fn reuse_node_id() {
     Tree 1: Descendants(Descendants { descendants: [0] })
     Tree 2: Descendants(Descendants { descendants: [1, 5] })
     Tree 3: Descendants(Descendants { descendants: [3] })
-    Tree 4: Descendants(Descendants { descendants: [2, 4] })
-    Tree 5: SplitPlaneNormal(SplitPlaneNormal<euclidean> { left: 3, right: 4, normal: "none" })
-    Tree 6: SplitPlaneNormal(SplitPlaneNormal<euclidean> { left: 2, right: 5, normal: "none" })
+    Tree 4: SplitPlaneNormal(SplitPlaneNormal<euclidean> { left: 3, right: 5, normal: "none" })
+    Tree 5: Descendants(Descendants { descendants: [2, 4] })
+    Tree 6: SplitPlaneNormal(SplitPlaneNormal<euclidean> { left: 2, right: 4, normal: "none" })
     Tree 7: SplitPlaneNormal(SplitPlaneNormal<euclidean> { left: 14, right: 15, normal: [-1.0000, 0.0000] })
     Tree 8: Descendants(Descendants { descendants: [1] })
     Tree 9: Descendants(Descendants { descendants: [5] })
