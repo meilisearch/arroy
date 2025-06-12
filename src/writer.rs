@@ -943,7 +943,7 @@ impl<D: Distance> Writer<D> {
                     }
                     (Some(left_items), Some(right_items)) => {
                         let total_items = left_items.len() + right_items.len();
-                        if self.fit_in_descendant(options, total_items as u64) {
+                        if self.fit_in_descendant(options, total_items) {
                             let total_items = left_items | right_items;
                             // Since we're shrinking we KNOW that new_left and new_right are descendants
                             // thus we can delete them directly knowing there is no sub-tree to look at.
