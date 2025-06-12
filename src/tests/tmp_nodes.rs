@@ -4,9 +4,9 @@ use insta::assert_debug_snapshot;
 use roaring::RoaringBitmap;
 
 use crate::{
-    distance::Cosine,
+    distance::{Cosine, NodeHeaderCosine},
     internals::UnalignedVector,
-    node::{Descendants, Node, SplitPlaneNormal},
+    node::{Descendants, Leaf, Node, SplitPlaneNormal},
     parallel::TmpNodes,
 };
 
@@ -49,7 +49,7 @@ fn test_put_and_get_tmp_nodes() {
         let normal =
             if i % 2 == 0 { Some(UnalignedVector::from_vec(vec![i as f32])) } else { None };
         let node =
-            Node::SplitPlaneNormal(SplitPlaneNormal { left: i * 2, right: i * 2 + 1, normal });
+            Node::SplitPlaneNormal(SplitPlaneNormal { left: i * 2, right: i * 2 + 1, normal: normal.map(|v| Leaf { header: NodeHeaderCosine { norm: 0. }, vector: v }) });
         tmp_nodes.put(i, &node).unwrap();
     }
 

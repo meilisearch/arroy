@@ -1,4 +1,3 @@
-use std::borrow::Cow;
 use std::fmt;
 
 pub use binary_quantized_cosine::{BinaryQuantizedCosine, NodeHeaderBinaryQuantizedCosine};
@@ -97,29 +96,16 @@ pub trait Distance: Send + Sync + Sized + Clone + fmt::Debug + 'static {
     fn create_split<'a, R: Rng>(
         children: &'a ImmutableSubsetLeafs<Self>,
         rng: &mut R,
-    ) -> heed::Result<Cow<'a, UnalignedVector<Self::VectorCodec>>>;
+    ) -> heed::Result<Leaf<'a, Self>>;
 
-    fn margin(p: &Leaf<Self>, q: &Leaf<Self>) -> f32 {
-        Self::margin_no_header(&p.vector, &q.vector)
-    }
+    fn margin(p: &Leaf<Self>, q: &Leaf<Self>) -> f32;
 
-    fn margin_no_header(
-        p: &UnalignedVector<Self::VectorCodec>,
-        q: &UnalignedVector<Self::VectorCodec>,
-    ) -> f32;
-
-    fn side<R: Rng>(
-        normal_plane: &UnalignedVector<Self::VectorCodec>,
-        node: &Leaf<Self>,
-        rng: &mut R,
-    ) -> Side {
-        let dot = Self::margin_no_header(&node.vector, normal_plane);
-        if dot > 0.0 {
+    fn side(normal: &Leaf<Self>, node: &Leaf<Self>) -> Side {
+        let dot = Self::margin(normal, node);
+        if dot.is_sign_positive() {
             Side::Right
-        } else if dot < 0.0 {
-            Side::Left
         } else {
-            Side::random(rng)
+            Side::Left
         }
     }
 
@@ -147,7 +133,7 @@ fn two_means<D: Distance, R: Rng>(
     // points to either one of them. We weight each centroid by the number of points
     // assigned to it, so to balance it.
 
-    const ITERATION_STEPS: usize = 200;
+    const ITERATION_STEPS: usize = 10;
 
     let [leaf_p, leaf_q] = leafs.choose_two(rng)?.unwrap();
     let (mut leaf_p, mut leaf_q) = (leaf_p.into_owned(), leaf_q.into_owned());
@@ -197,7 +183,7 @@ pub fn two_means_binary_quantized<D: Distance, NonBqDist: Distance, R: Rng>(
     // to move, we need to store it as f32. This requires us to convert every binary quantized
     // vectors to f32 vectors, but the recall suffers too much if we don't do it.
 
-    const ITERATION_STEPS: usize = 200;
+    const ITERATION_STEPS: usize = 10;
 
     let [leaf_p, leaf_q] = leafs.choose_two(rng)?.unwrap();
     let mut leaf_p: Leaf<'static, NonBqDist> = new_leaf(leaf_p.vector.to_vec());

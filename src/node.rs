@@ -146,7 +146,7 @@ impl fmt::Debug for ItemIds<'_> {
 pub struct SplitPlaneNormal<'a, D: Distance> {
     pub left: ItemId,
     pub right: ItemId,
-    pub normal: Option<Cow<'a, UnalignedVector<D::VectorCodec>>>,
+    pub normal: Option<Leaf<'a, D>>,
 }
 
 impl<D: Distance> fmt::Debug for SplitPlaneNormal<'_, D> {
@@ -168,7 +168,7 @@ impl<D: Distance> SplitPlaneNormal<'_, D> {
         SplitPlaneNormal {
             left: self.left,
             right: self.right,
-            normal: self.normal.map(|normal| Cow::Owned(normal.into_owned())),
+            normal: self.normal.map(|normal| Leaf { header: normal.header, vector: Cow::Owned(normal.vector.into_owned()) }),
         }
     }
 }
@@ -185,7 +185,8 @@ pub struct GenericReadSplitPlaneNormal<'a, D: Distance> {
     pub right: NodeId,
     // Before version 0.7.0 instead of storing `None` for a missing normal, we were
     // storing a vector filled with zeros, that will be overwritten while creating this type.
-    pub normal: Option<Cow<'a, UnalignedVector<D::VectorCodec>>>,
+    // We were also storing a simple vector instead of a leaf
+    pub normal: Option<Leaf<'a, D>>,
 }
 
 impl<D: Distance> fmt::Debug for GenericReadSplitPlaneNormal<'_, D> {
@@ -227,7 +228,8 @@ impl<'a, D: Distance> BytesEncode<'a> for NodeCodec<D> {
                 bytes.extend_from_slice(&left.to_be_bytes());
                 bytes.extend_from_slice(&right.to_be_bytes());
                 if let Some(normal) = normal {
-                    bytes.extend_from_slice(normal.as_bytes());
+                    bytes.extend_from_slice(bytes_of(&normal.header));
+                    bytes.extend_from_slice(normal.vector.as_bytes());
                 }
             }
             Node::Descendants(Descendants { descendants }) => {
@@ -259,7 +261,10 @@ impl<'a, D: Distance> BytesDecode<'a> for NodeCodec<D> {
                 let normal = if bytes.is_empty() {
                     None
                 } else {
-                    Some(UnalignedVector::<D::VectorCodec>::from_bytes(bytes)?)
+                    let (header_bytes, remaining) = bytes.split_at(size_of::<D::Header>());
+                    let header = pod_read_unaligned::<D::Header>(header_bytes);
+                    let vector = UnalignedVector::<D::VectorCodec>::from_bytes(remaining)?;
+                    Some(Leaf { header, vector })
                 };
                 Ok(Node::SplitPlaneNormal(SplitPlaneNormal { normal, left, right }))
             }
@@ -293,11 +298,12 @@ impl<'a, D: Distance> BytesDecode<'a> for GenericReadNodeCodecFromV0_4_0<D> {
                 let (left, bytes) = NodeId::from_bytes(bytes);
                 let (right, bytes) = NodeId::from_bytes(bytes);
                 // And the normal could not be null, but it could be a vector filled with zeros.
-                let normal = UnalignedVector::<D::VectorCodec>::from_bytes(bytes)?;
-                let normal = if normal.is_zero() {
+                let vector = UnalignedVector::<D::VectorCodec>::from_bytes(bytes)?;
+                let normal = if vector.is_zero() {
                     None
                 } else {
-                    Some(normal)
+                    let header = D::new_header(&vector);
+                    Some(Leaf { header, vector })
                 };
                 Ok(GenericReadNode::SplitPlaneNormal(GenericReadSplitPlaneNormal { normal, left, right }))
             }
@@ -362,7 +368,7 @@ impl<'a, D: Distance> BytesEncode<'a> for WriteNodeCodecForV0_5_0<D> {
                 bytes.extend_from_slice(&left.to_bytes());
                 bytes.extend_from_slice(&right.to_bytes());
                 match normal {
-                    Some(normal) => bytes.extend_from_slice(normal.as_bytes()),
+                    Some(normal) => bytes.extend_from_slice(normal.vector.as_bytes()),
                     // If the normal is None, we need to write a vector filled with zeros.
                     None => bytes.extend_from_slice(&vec![0; item.1]),
                 }
