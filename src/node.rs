@@ -168,7 +168,10 @@ impl<D: Distance> SplitPlaneNormal<'_, D> {
         SplitPlaneNormal {
             left: self.left,
             right: self.right,
-            normal: self.normal.map(|normal| Leaf { header: normal.header, vector: Cow::Owned(normal.vector.into_owned()) }),
+            normal: self.normal.map(|normal| Leaf {
+                header: normal.header,
+                vector: Cow::Owned(normal.vector.into_owned()),
+            }),
         }
     }
 }
