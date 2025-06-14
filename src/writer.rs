@@ -1354,6 +1354,7 @@ fn split_imbalance(left_indices_len: u64, right_indices_len: u64) -> f64 {
 /// Return the number of trees we should have at the end of the indexing process.
 /// The number may be bigger or smaller than the current number of trees in the database
 /// but won't shrink too quickly if the number of items slightly decreases.
+// NOTE: we should consider n_deleted indices in here too, e.g. use to_insert not item_indices
 pub(crate) fn target_n_trees(
     options: &BuildOption,
     dimensions: u64,
@@ -1364,19 +1365,24 @@ pub(crate) fn target_n_trees(
         Some(n) => n as u64,
         // In the case we never made any tree we can roughly guess how many trees we want to build in total
         None => {
-            // Full Binary Tree Theorem: The number of leaves in a non-empty full binary tree is one more than the number of internal nodes.
-            // Source: https://opendsa-server.cs.vt.edu/ODSA/Books/CS3/html/BinaryTreeFullThm.html
+            // We notice that increasing the dataset size by an order of magnitude requires
+            // doubling the number of trees to saturate recall. [link pr]
+            // That relation looks like: n_trees = 2^{log10(item_indices.len()) + b}, with an adjustment
+            // factor b to center the trees.
             //
-            // That means we can exactly find the minimal number of tree node required to hold all the items
-            // 1. How many descendants do we need:
-            let descendant_required = item_indices.len() / dimensions;
-            // 2. Find the number of tree nodes required per trees
-            let tree_nodes_per_tree = descendant_required + 1;
-            // 3. Find the number of tree required to get as many tree nodes as item:
-            let mut nb_trees = item_indices.len() / tree_nodes_per_tree;
+            // For b = 3 we get :
+            // - item_indices.len() = 10^5 => n_trees = 256
+            // - item_indices.len() = 10^6 => n_trees = 512
+            // - item_indices.len() = 10^7 => n_trees = 1024
+            //
+            //  To account for different embedding dimensions we notice that most providers offer
+            //  embedings on ~O(10^3) and let `b` = log10(dim)
+            let exp = (item_indices.len() as f64).log10() + (dimensions as f64).log10() + 1.0;
+            let mut nb_trees = 2f64.powf(exp).ceil() as u64;
+            dbg!("{}", nb_trees);
 
-            // 4. We don't want to shrink too quickly when a user remove some documents.
-            //    We're only going to shrink if we should remove more than 20% of our trees.
+            // We don't want to shrink too quickly when a user remove some documents.
+            // We're only going to shrink if we should remove more than 20% of our trees.
             if (roots.len() as u64) > nb_trees {
                 let tree_to_remove = roots.len() as u64 - nb_trees;
                 if (tree_to_remove as f64 / nb_trees as f64) < 0.20 {
