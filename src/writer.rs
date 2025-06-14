@@ -1377,9 +1377,9 @@ pub(crate) fn target_n_trees(
             //
             //  To account for different embedding dimensions we notice that most providers offer
             //  embedings on ~O(10^3) and let `b` = log10(dim)
-            let exp = (item_indices.len() as f64).log10() + (dimensions as f64).log10() + 1.0;
+            let exp = (item_indices.len() as f64).log10() + (dimensions as f64).log10();
             let mut nb_trees = 2f64.powf(exp).ceil() as u64;
-            dbg!("{}", nb_trees);
+            nb_trees = nb_trees.min(item_indices.len());
 
             // We don't want to shrink too quickly when a user remove some documents.
             // We're only going to shrink if we should remove more than 20% of our trees.
