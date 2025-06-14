@@ -1366,17 +1366,12 @@ pub(crate) fn target_n_trees(
         // In the case we never made any tree we can roughly guess how many trees we want to build in total
         None => {
             // We notice that increasing the dataset size by an order of magnitude requires
-            // doubling the number of trees to saturate recall. [link pr]
+            // doubling the number of trees to saturate recall
             // That relation looks like: n_trees = 2^{log10(item_indices.len()) + b}, with an adjustment
             // factor b to center the trees.
             //
-            // For b = 3 we get :
-            // - item_indices.len() = 10^5 => n_trees = 256
-            // - item_indices.len() = 10^6 => n_trees = 512
-            // - item_indices.len() = 10^7 => n_trees = 1024
-            //
             //  To account for different embedding dimensions we notice that most providers offer
-            //  embedings on ~O(10^3) and let `b` = log10(dim)
+            //  embedings on ~O(10^3) and let `b` = log10(dim) + 1
             let exp = (item_indices.len() as f64).log10() + (dimensions as f64).log10() + 1.0;
             let mut nb_trees = 2f64.powf(exp).ceil() as u64;
             nb_trees = nb_trees.min(item_indices.len());
