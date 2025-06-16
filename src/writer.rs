@@ -3,7 +3,7 @@ use std::borrow::Cow;
 use std::cell::RefCell;
 use std::path::PathBuf;
 use std::sync::atomic::AtomicU32;
-use std::sync::Arc;
+use std::sync::{mpsc, Arc};
 
 use heed::types::{Bytes, DecodeIgnore, Unit};
 use heed::{MdbError, PutFlags, RoTxn, RwTxn};
@@ -545,36 +545,26 @@ impl<D: Distance> Writer<D> {
             descendants.insert(new_id, item_indices.clone());
         }
 
-        let mut new_descendants = IntMap::<ItemId, RoaringBitmap>::default();
+        let (error_snd, error_rcv) = mpsc::channel::<Error>();
 
         rayon::scope(|s| {
             let frozen_reader = &frozen_reader;
-            for (descendant_id, mut item_indices) in descendants.into_iter() {
-                // TODO: Unwrap is NOT safe and must be handled
-                let old_items = frozen_reader.trees.get(descendant_id).unwrap();
-                if let Some(old_items) = old_items {
-                    item_indices |= old_items.descendants().unwrap().descendants.as_ref();
+            let files_tls = files_tls.clone();
+            let error_snd = error_snd.clone();
+
+            // Spawn a thread that will create all the tasks
+            s.spawn(move |s| {
+                let rng = StdRng::from_seed(rng.gen());
+                let ret = self.insert_descendants_in_file_and_spawn_tasks(rng, options, s, &frozen_reader, files_tls, descendants);
+                if let Err(e) = ret {
+                    error_snd.send(e).unwrap();
                 }
-                if self.fit_in_descendant(options, item_indices.len()) {
-                    new_descendants.insert(descendant_id, item_indices);
-                } else {
-                    let rng = StdRng::from_seed(rng.gen());
-                    let files_tls = files_tls.clone();
-                    s.spawn(move |s| {
-                        // TODO: find a way to return the error and stop the indexing process
-                        self.incremental_index_large_descendant(
-                            rng,
-                            options,
-                            s,
-                            (descendant_id, item_indices),
-                            frozen_reader,
-                            files_tls,
-                        )
-                        .unwrap();
-                    });
-                }
-            }
+            });
         });
+
+        if let Ok(e) = error_rcv.try_recv() {
+            return Err(e);
+        }
 
         let files_tls = Arc::into_inner(files_tls).expect("Threads have all finished their works");
         for file in files_tls.into_iter() {
@@ -586,14 +576,6 @@ impl<D: Distance> Writer<D> {
                     item_bytes,
                 )?;
             }
-        }
-
-        for (descendant_id, item_indices) in new_descendants.into_iter() {
-            self.database.put(
-                wtxn,
-                &Key::tree(self.index, descendant_id),
-                &Node::Descendants(Descendants { descendants: Cow::Borrowed(&item_indices) }),
-            )?;
         }
 
         tracing::debug!("write the metadata...");
@@ -704,6 +686,30 @@ impl<D: Distance> Writer<D> {
                 &mut descendants,
             )?;
         }
+
+        drop(tmp_node);
+        self.insert_descendants_in_file_and_spawn_tasks(rng, options, scope, frozen_reader, tmp_nodes, descendants)?;
+
+        Ok(())
+    }
+
+    /// Explore the IntMap of descendants and when a descendant is too large to fit in memory, spawn a task to index it.
+    /// Otherwise, insert the descendant in the tempfile.
+    fn insert_descendants_in_file_and_spawn_tasks<'scope, R: Rng + SeedableRng + Send + Sync>(
+        &'scope self,
+        mut rng: R,
+        options: &'scope BuildOption,
+        scope: &Scope<'scope>,
+        frozen_reader: &'scope FrozzenReader<'_, D>,
+        tmp_nodes: Arc<ThreadLocal<RefCell<TmpNodes<D>>>>,
+        descendants: IntMap<ItemId, RoaringBitmap>,
+    ) -> Result<(), Error> {
+        let tmp_node = tmp_nodes.get_or_try(|| match self.tmpdir.as_ref() {
+            Some(path) => TmpNodes::new_in(path).map(RefCell::new),
+            None => TmpNodes::new().map(RefCell::new),
+        })?;
+        // Safe to borrow mut here because we're the only thread running with this variable
+        let mut tmp_node = tmp_node.borrow_mut();
 
         for (item_id, item_indices) in descendants.into_iter() {
             if self.fit_in_descendant(options, item_indices.len()) {
@@ -1265,8 +1271,8 @@ fn insert_items_in_descendants_from_frozen_reader<D: Distance, R: Rng>(
     opt.cancelled()?;
     match frozen_reader.trees.get(current_node)?.unwrap() {
         Node::Leaf(_) => unreachable!(),
-        Node::Descendants(Descendants { descendants: _ }) => {
-            descendants_to_update.insert(current_node, to_insert.clone());
+        Node::Descendants(Descendants { descendants }) => {
+            descendants_to_update.insert(current_node, descendants.into_owned() | to_insert);
         }
         Node::SplitPlaneNormal(SplitPlaneNormal { normal, left, right }) => {
             // Split the to_insert into two bitmaps on the left and right of this normal
