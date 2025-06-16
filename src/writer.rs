@@ -561,7 +561,7 @@ impl<D: Distance> Writer<D> {
                 let rng = StdRng::from_seed(rng.gen());
                 let ret = self.insert_descendants_in_file_and_spawn_tasks(rng, options, &error_snd, s, &frozen_reader, files_tls, descendants);
                 if let Err(e) = ret {
-                    let _ = error_snd.send(e);
+                    let _ = error_snd.try_send(e);
                 }
             });
         });
@@ -753,7 +753,7 @@ impl<D: Distance> Writer<D> {
                         tmp_nodes,
                     );
                     if let Err(e) = ret {
-                        let _ = error_snd.send(e);
+                        let _ = error_snd.try_send(e);
                     }
                 });
             }
