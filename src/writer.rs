@@ -3,8 +3,9 @@ use std::borrow::Cow;
 use std::cell::RefCell;
 use std::path::PathBuf;
 use std::sync::atomic::AtomicU32;
-use std::sync::{mpsc, Arc};
+use std::sync::{Arc};
 
+use crossbeam::channel::{bounded, Sender};
 use heed::types::{Bytes, DecodeIgnore, Unit};
 use heed::{MdbError, PutFlags, RoTxn, RwTxn};
 use nohash::{BuildNoHashHasher, IntMap};
@@ -545,7 +546,10 @@ impl<D: Distance> Writer<D> {
             descendants.insert(new_id, item_indices.clone());
         }
 
-        let (error_snd, error_rcv) = mpsc::channel::<Error>();
+        // When a task fails, a message must be sent in this channel.
+        // When a taks starts it must check if the channel contains something and stop asap.
+        // The channel will be openend only after all the tasks have been stopped.
+        let (error_snd, error_rcv) = bounded(1);
 
         rayon::scope(|s| {
             let frozen_reader = &frozen_reader;
@@ -555,9 +559,9 @@ impl<D: Distance> Writer<D> {
             // Spawn a thread that will create all the tasks
             s.spawn(move |s| {
                 let rng = StdRng::from_seed(rng.gen());
-                let ret = self.insert_descendants_in_file_and_spawn_tasks(rng, options, s, &frozen_reader, files_tls, descendants);
+                let ret = self.insert_descendants_in_file_and_spawn_tasks(rng, options, &error_snd, s, &frozen_reader, files_tls, descendants);
                 if let Err(e) = ret {
-                    error_snd.send(e).unwrap();
+                    let _ = error_snd.send(e);
                 }
             });
         });
@@ -632,6 +636,7 @@ impl<D: Distance> Writer<D> {
         &'scope self,
         mut rng: R,
         options: &'scope BuildOption,
+        error_snd: &Sender<Error>,
         scope: &Scope<'scope>,
         descendant: (ItemId, RoaringBitmap),
         frozen_reader: &'scope FrozzenReader<D>,
@@ -642,6 +647,9 @@ impl<D: Distance> Writer<D> {
             sub: None,
         });
         options.cancelled()?;
+        if error_snd.is_full() {
+            return Ok(());
+        }
 
         let tmp_node = tmp_nodes.get_or_try(|| match self.tmpdir.as_ref() {
             Some(path) => TmpNodes::new_in(path).map(RefCell::new),
@@ -663,6 +671,7 @@ impl<D: Distance> Writer<D> {
         let (root_id, _nb_new_tree_nodes) = self.make_tree_in_file(
             options,
             frozen_reader,
+            error_snd,
             &mut rng,
             &items_for_tree,
             &mut descendants,
@@ -675,6 +684,9 @@ impl<D: Distance> Writer<D> {
             fit_in_memory::<D, R>(available_memory, &mut to_insert, self.dimensions, &mut rng)
         {
             options.cancelled()?;
+            if error_snd.is_full() {
+                return Ok(());
+            }
 
             insert_items_in_descendants_from_tmpfile(
                 options,
@@ -688,7 +700,7 @@ impl<D: Distance> Writer<D> {
         }
 
         drop(tmp_node);
-        self.insert_descendants_in_file_and_spawn_tasks(rng, options, scope, frozen_reader, tmp_nodes, descendants)?;
+        self.insert_descendants_in_file_and_spawn_tasks(rng, options, &error_snd, scope, frozen_reader, tmp_nodes, descendants)?;
 
         Ok(())
     }
@@ -699,11 +711,16 @@ impl<D: Distance> Writer<D> {
         &'scope self,
         mut rng: R,
         options: &'scope BuildOption,
+        error_snd: &Sender<Error>,
         scope: &Scope<'scope>,
         frozen_reader: &'scope FrozzenReader<'_, D>,
         tmp_nodes: Arc<ThreadLocal<RefCell<TmpNodes<D>>>>,
         descendants: IntMap<ItemId, RoaringBitmap>,
     ) -> Result<(), Error> {
+        options.cancelled()?;
+        if error_snd.is_full() {
+            return Ok(());
+        }
         let tmp_node = tmp_nodes.get_or_try(|| match self.tmpdir.as_ref() {
             Some(path) => TmpNodes::new_in(path).map(RefCell::new),
             None => TmpNodes::new().map(RefCell::new),
@@ -712,6 +729,10 @@ impl<D: Distance> Writer<D> {
         let mut tmp_node = tmp_node.borrow_mut();
 
         for (item_id, item_indices) in descendants.into_iter() {
+            options.cancelled()?;
+            if error_snd.is_full() {
+                return Ok(());
+            }
             if self.fit_in_descendant(options, item_indices.len()) {
                 tmp_node.put(
                     item_id,
@@ -720,17 +741,20 @@ impl<D: Distance> Writer<D> {
             } else {
                 let tmp_nodes = tmp_nodes.clone();
                 let rng = StdRng::from_seed(rng.gen());
+                let error_snd = error_snd.clone();
                 scope.spawn(move |s| {
-                    // TODO: Find a way to return the error and stop the indexing process
-                    self.incremental_index_large_descendant(
+                    let ret = self.incremental_index_large_descendant(
                         rng,
                         options,
+                        &error_snd,
                         s,
                         (item_id, item_indices),
                         frozen_reader,
                         tmp_nodes,
-                    )
-                    .unwrap();
+                    );
+                    if let Err(e) = ret {
+                        let _ = error_snd.send(e);
+                    }
                 });
             }
         }
@@ -873,7 +897,6 @@ impl<D: Distance> Writer<D> {
             None => TmpNodes::new()?,
         };
 
-        // TODO: Parallelize
         for root in roots.iter_mut() {
             options.cancelled()?;
             let (new_root, _) =
@@ -1050,6 +1073,7 @@ impl<D: Distance> Writer<D> {
         &self,
         opt: &BuildOption,
         reader: &FrozzenReader<D>,
+        error_snd: &Sender<Error>,
         rng: &mut R,
         item_indices: &RoaringBitmap,
         descendants: &mut IntMap<ItemId, RoaringBitmap>,
@@ -1057,6 +1081,10 @@ impl<D: Distance> Writer<D> {
         tmp_nodes: &mut TmpNodes<D>,
     ) -> Result<(ItemId, u64)> {
         opt.cancelled()?;
+        if error_snd.is_full() {
+            // We can return anything as the whole process is being stopped and nothing will be written
+            return Ok((0, 0));
+        }
         if self.fit_in_descendant(opt, item_indices.len()) {
             let item_id = next_id.map(Ok).unwrap_or_else(|| reader.concurrent_node_ids.next())?;
             // Don't write the descendants to the tmp nodes yet because they may become too large later
@@ -1110,10 +1138,11 @@ impl<D: Distance> Writer<D> {
             };
 
         let (left, l) =
-            self.make_tree_in_file(opt, reader, rng, &children_left, descendants, None, tmp_nodes)?;
+            self.make_tree_in_file(opt, reader, error_snd, rng, &children_left, descendants, None, tmp_nodes)?;
         let (right, r) = self.make_tree_in_file(
             opt,
             reader,
+            error_snd,
             rng,
             &children_right,
             descendants,
@@ -1380,7 +1409,6 @@ fn insert_items_in_descendants_from_tmpfile<D: Distance, R: Rng>(
 /// Returns the items from the `to_insert` that fit in memory.
 /// If there is no items to insert anymore, returns `None`.
 /// If everything fits in memory, returns the `to_insert` bitmap.
-/// TODO: We should randomize the items selected.
 fn fit_in_memory<D: Distance, R: Rng>(
     memory: usize,
     to_insert: &mut RoaringBitmap,
