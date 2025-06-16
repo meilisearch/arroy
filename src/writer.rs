@@ -3,7 +3,7 @@ use std::borrow::Cow;
 use std::cell::RefCell;
 use std::path::PathBuf;
 use std::sync::atomic::AtomicU32;
-use std::sync::{Arc};
+use std::sync::Arc;
 
 use crossbeam::channel::{bounded, Sender};
 use heed::types::{Bytes, DecodeIgnore, Unit};
@@ -559,7 +559,15 @@ impl<D: Distance> Writer<D> {
             // Spawn a thread that will create all the tasks
             s.spawn(move |s| {
                 let rng = StdRng::from_seed(rng.gen());
-                let ret = self.insert_descendants_in_file_and_spawn_tasks(rng, options, &error_snd, s, &frozen_reader, files_tls, descendants);
+                let ret = self.insert_descendants_in_file_and_spawn_tasks(
+                    rng,
+                    options,
+                    &error_snd,
+                    s,
+                    frozen_reader,
+                    files_tls,
+                    descendants,
+                );
                 if let Err(e) = ret {
                     let _ = error_snd.try_send(e);
                 }
@@ -632,6 +640,7 @@ impl<D: Distance> Writer<D> {
     /// Returns the new descendants that are ready to store in the database.
     /// Push more tasks to the scope for all the descendants that are still too large to fit in memory.
     /// Write the tree squeleton to its local tmp file. That file must be written to the DB at the end.
+    #[allow(clippy::too_many_arguments)]
     fn incremental_index_large_descendant<'scope, R: Rng + SeedableRng + Send + Sync>(
         &'scope self,
         mut rng: R,
@@ -700,13 +709,22 @@ impl<D: Distance> Writer<D> {
         }
 
         drop(tmp_node);
-        self.insert_descendants_in_file_and_spawn_tasks(rng, options, &error_snd, scope, frozen_reader, tmp_nodes, descendants)?;
+        self.insert_descendants_in_file_and_spawn_tasks(
+            rng,
+            options,
+            error_snd,
+            scope,
+            frozen_reader,
+            tmp_nodes,
+            descendants,
+        )?;
 
         Ok(())
     }
 
     /// Explore the IntMap of descendants and when a descendant is too large to fit in memory, spawn a task to index it.
     /// Otherwise, insert the descendant in the tempfile.
+    #[allow(clippy::too_many_arguments)]
     fn insert_descendants_in_file_and_spawn_tasks<'scope, R: Rng + SeedableRng + Send + Sync>(
         &'scope self,
         mut rng: R,
@@ -1137,8 +1155,16 @@ impl<D: Distance> Writer<D> {
                 )
             };
 
-        let (left, l) =
-            self.make_tree_in_file(opt, reader, error_snd, rng, &children_left, descendants, None, tmp_nodes)?;
+        let (left, l) = self.make_tree_in_file(
+            opt,
+            reader,
+            error_snd,
+            rng,
+            &children_left,
+            descendants,
+            None,
+            tmp_nodes,
+        )?;
         let (right, r) = self.make_tree_in_file(
             opt,
             reader,
