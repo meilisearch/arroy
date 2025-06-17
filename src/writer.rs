@@ -1348,22 +1348,26 @@ fn insert_items_in_descendants_from_frozen_reader<D: Distance, R: Rng>(
                 }
             }
 
-            insert_items_in_descendants_from_frozen_reader(
-                opt,
-                frozen_reader,
-                rng,
-                left,
-                &left_ids,
-                descendants_to_update,
-            )?;
-            insert_items_in_descendants_from_frozen_reader(
-                opt,
-                frozen_reader,
-                rng,
-                right,
-                &right_ids,
-                descendants_to_update,
-            )?;
+            if !left_ids.is_empty() {
+                insert_items_in_descendants_from_frozen_reader(
+                    opt,
+                    frozen_reader,
+                    rng,
+                    left,
+                    &left_ids,
+                    descendants_to_update,
+                )?;
+            }
+            if !right_ids.is_empty() {
+                insert_items_in_descendants_from_frozen_reader(
+                    opt,
+                    frozen_reader,
+                    rng,
+                    right,
+                    &right_ids,
+                    descendants_to_update,
+                )?;
+            }
         }
     }
     Ok(())
@@ -1412,26 +1416,30 @@ fn insert_items_in_descendants_from_tmpfile<D: Distance, R: Rng>(
                 }
             }
 
-            insert_items_in_descendants_from_tmpfile(
-                opt,
-                frozen_reader,
-                tmp_nodes,
-                error_snd,
-                rng,
-                left,
-                &left_ids,
-                descendants_to_update,
-            )?;
-            insert_items_in_descendants_from_tmpfile(
-                opt,
-                frozen_reader,
-                tmp_nodes,
-                error_snd,
-                rng,
-                right,
-                &right_ids,
-                descendants_to_update,
-            )?;
+            if !left_ids.is_empty() {
+                insert_items_in_descendants_from_tmpfile(
+                    opt,
+                    frozen_reader,
+                    tmp_nodes,
+                    error_snd,
+                    rng,
+                    left,
+                    &left_ids,
+                    descendants_to_update,
+                )?;
+            }
+            if !right_ids.is_empty() {
+                insert_items_in_descendants_from_tmpfile(
+                    opt,
+                    frozen_reader,
+                    tmp_nodes,
+                    error_snd,
+                    rng,
+                    right,
+                    &right_ids,
+                    descendants_to_update,
+                )?;
+            }
         }
     }
     Ok(())
@@ -1479,8 +1487,9 @@ fn fit_in_memory<D: Distance, R: Rng>(
     for _ in 0..nb_items {
         let idx = rng.gen_range(0..to_insert.len());
         // Safe to unwrap because we know nb_items is smaller than the number of items in the bitmap
-        items.push(to_insert.select(idx as u32).unwrap());
-        to_insert.remove_smallest(idx);
+        let item = to_insert.select(idx as u32).unwrap();
+        items.push(item);
+        to_insert.remove(item);
     }
 
     Some(items)
