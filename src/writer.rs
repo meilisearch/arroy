@@ -1448,7 +1448,7 @@ fn insert_items_in_descendants_from_tmpfile<D: Distance, R: Rng>(
 /// Returns the items from the `to_insert` that fit in memory.
 /// If there is no items to insert anymore, returns `None`.
 /// If everything fits in memory, returns the `to_insert` bitmap.
-fn fit_in_memory<D: Distance, R: Rng>(
+pub(crate) fn fit_in_memory<D: Distance, R: Rng>(
     memory: usize,
     to_insert: &mut RoaringBitmap,
     dimensions: usize,
@@ -1478,6 +1478,15 @@ fn fit_in_memory<D: Distance, R: Rng>(
         nb_page_allowed
     };
 
+    dbg!(&nb_items);
+
+    // We must insert at least dimensions items to create a split
+    let nb_items = if nb_items < dimensions {
+        dimensions
+    } else {
+        nb_items
+    };
+
     if nb_items as u64 >= to_insert.len() {
         return Some(std::mem::take(to_insert));
     }
@@ -1488,7 +1497,7 @@ fn fit_in_memory<D: Distance, R: Rng>(
         let idx = rng.gen_range(0..to_insert.len());
         // Safe to unwrap because we know nb_items is smaller than the number of items in the bitmap
         let item = to_insert.select(idx as u32).unwrap();
-        items.push(item);
+        items.insert(item);
         to_insert.remove(item);
     }
 
