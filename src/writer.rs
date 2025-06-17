@@ -977,13 +977,11 @@ impl<D: Distance> Writer<D> {
 
                 match (left_items, right_items) {
                     (Some(left_items), right_items) if left_items.is_empty() => {
-                        println!("left_items is empty");
                         tmp_nodes.remove(new_left);
                         tmp_nodes.remove(current_node);
                         Ok((new_right, right_items))
                     }
                     (left_items, Some(right_items)) if right_items.is_empty() => {
-                        println!("right_items is empty");
                         tmp_nodes.remove(new_right);
                         tmp_nodes.remove(current_node);
                         Ok((new_left, left_items))
