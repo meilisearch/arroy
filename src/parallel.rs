@@ -8,7 +8,7 @@ use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering};
 use heed::types::Bytes;
 use heed::{BytesDecode, BytesEncode, RoTxn};
 use memmap2::Mmap;
-use nohash::{BuildNoHashHasher, IntMap, IntSet};
+use nohash::{BuildNoHashHasher, IntMap};
 use rand::seq::index;
 use rand::Rng;
 use roaring::{RoaringBitmap, RoaringTreemap};
@@ -285,62 +285,6 @@ impl<'t, D: Distance> ImmutableLeafs<'t, D> {
         }
 
         Ok(ImmutableLeafs { leafs, constant_length, _marker: marker::PhantomData })
-    }
-
-    /// Creates the structure by fetching all the leaf pointers
-    /// and keeping the transaction making the pointers valid.
-    /// Do not take more items than memory allows.
-    /// Remove from the list of candidates all the items that were selected and return them.
-    pub fn new_fits_in_memory(
-        rtxn: &'t RoTxn,
-        database: Database<D>,
-        index: u16,
-        candidates: &mut RoaringBitmap,
-        memory: usize,
-    ) -> heed::Result<(Self, RoaringBitmap)> {
-        let page_size = page_size::get();
-        let nb_page_allowed = (memory as f64 / page_size as f64).floor() as usize;
-
-        let mut leafs = IntMap::with_capacity_and_hasher(
-            nb_page_allowed.min(candidates.len() as usize), // We cannot approximate the capacity better because we don't know yet the size of an item
-            BuildNoHashHasher::default(),
-        );
-        let mut pages_used = IntSet::with_capacity_and_hasher(
-            nb_page_allowed.min(candidates.len() as usize),
-            BuildNoHashHasher::default(),
-        );
-        let mut selected_items = RoaringBitmap::new();
-        let mut constant_length = None;
-
-        while let Some(item_id) = candidates.select(0) {
-            let bytes =
-                database.remap_data_type::<Bytes>().get(rtxn, &Key::item(index, item_id))?.unwrap();
-            assert_eq!(*constant_length.get_or_insert(bytes.len()), bytes.len());
-
-            let ptr = bytes.as_ptr();
-            let addr = ptr as usize;
-            let start = addr / page_size;
-            let end = (addr + bytes.len()) / page_size;
-
-            pages_used.insert(start);
-            if start != end {
-                pages_used.insert(end);
-            }
-
-            if pages_used.len() >= nb_page_allowed && leafs.len() >= 200 {
-                break;
-            }
-
-            // Safe because the items comes from another roaring bitmap
-            selected_items.push(item_id);
-            candidates.remove_smallest(1);
-            leafs.insert(item_id, ptr);
-        }
-
-        Ok((
-            ImmutableLeafs { leafs, constant_length, _marker: marker::PhantomData },
-            selected_items,
-        ))
     }
 
     /// Returns the leafs identified by the given ID.
