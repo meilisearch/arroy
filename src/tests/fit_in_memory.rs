@@ -1,6 +1,6 @@
-use crate::writer::fit_in_memory;
-use crate::distances::Euclidean;
 use crate::distance::Distance;
+use crate::distances::Euclidean;
+use crate::writer::fit_in_memory;
 use rand::rngs::StdRng;
 use rand::SeedableRng;
 use roaring::RoaringBitmap;
@@ -50,23 +50,25 @@ fn test_partial_fit() {
 fn test_random_selection() {
     let mut rng = StdRng::seed_from_u64(24);
     let bitmap = RoaringBitmap::from_sorted_iter(0..1000).unwrap();
-    
+
     let dimensions = 128;
     let largest_item_size = Euclidean::size_of_item(dimensions);
     let memory = largest_item_size * 500;
 
     // Get first batch
     let mut bitmap_clone = bitmap.clone();
-    let result1 = fit_in_memory::<Euclidean, _>(memory, &mut bitmap_clone, dimensions, &mut rng).unwrap();
+    let result1 =
+        fit_in_memory::<Euclidean, _>(memory, &mut bitmap_clone, dimensions, &mut rng).unwrap();
     assert!(result1.len() > dimensions as u64);
     assert_eq!(1000, bitmap_clone.len() + result1.len());
-    
+
     // Get second batch
     let mut bitmap_clone = bitmap.clone();
-    let result2 = fit_in_memory::<Euclidean, _>(memory, &mut bitmap_clone, dimensions, &mut rng).unwrap();
+    let result2 =
+        fit_in_memory::<Euclidean, _>(memory, &mut bitmap_clone, dimensions, &mut rng).unwrap();
     assert!(result2.len() > dimensions as u64);
     assert_eq!(1000, bitmap_clone.len() + result2.len());
-    
+
     // Batch must be different because of random selection but they must contains the same number of items
     assert_eq!(result1.len(), result2.len());
     assert_ne!(result1, result2);
