@@ -1072,7 +1072,6 @@ fn create_root_split_node_with_empty_child() {
     Item 5: Leaf(Leaf { header: NodeHeaderEuclidean { bias: "0.0000" }, vector: [5.0000, 0.0000] })
     "#);
 
-    println!("HEEEEEERE");
     let mut wtxn = handle.env.write_txn().unwrap();
     let writer = Writer::new(handle.database, 0, 2);
 

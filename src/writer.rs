@@ -701,6 +701,7 @@ impl<D: Distance> Writer<D> {
                 options,
                 frozen_reader,
                 &mut tmp_node,
+                error_snd,
                 &mut rng,
                 descendant_id,
                 &to_insert,
@@ -1376,12 +1377,16 @@ fn insert_items_in_descendants_from_tmpfile<D: Distance, R: Rng>(
     frozen_reader: &FrozzenReader<D>,
     // Must be mutable because we're going to seek and read in it
     tmp_nodes: &mut TmpNodes<D>,
+    error_snd: &Sender<Error>,
     rng: &mut R,
     current_node: ItemId,
     to_insert: &RoaringBitmap,
     descendants_to_update: &mut IntMap<ItemId, RoaringBitmap>,
 ) -> Result<()> {
     opt.cancelled()?;
+    if error_snd.is_full() {
+        return Ok(());
+    }
     match tmp_nodes.get(current_node)? {
         Some(Node::Leaf(_) | Node::Descendants(_)) => unreachable!(),
         None => {
@@ -1411,6 +1416,7 @@ fn insert_items_in_descendants_from_tmpfile<D: Distance, R: Rng>(
                 opt,
                 frozen_reader,
                 tmp_nodes,
+                error_snd,
                 rng,
                 left,
                 &left_ids,
@@ -1420,6 +1426,7 @@ fn insert_items_in_descendants_from_tmpfile<D: Distance, R: Rng>(
                 opt,
                 frozen_reader,
                 tmp_nodes,
+                error_snd,
                 rng,
                 right,
                 &right_ids,
