@@ -1382,12 +1382,12 @@ fn insert_items_in_descendants_from_tmpfile<D: Distance, R: Rng>(
     descendants_to_update: &mut IntMap<ItemId, RoaringBitmap>,
 ) -> Result<()> {
     opt.cancelled()?;
-    match tmp_nodes.get(current_node)?.unwrap() {
-        Node::Leaf(_) => unreachable!(),
-        Node::Descendants(Descendants { descendants: _ }) => {
-            descendants_to_update.insert(current_node, to_insert.clone());
+    match tmp_nodes.get(current_node)? {
+        Some(Node::Leaf(_) | Node::Descendants(_)) => unreachable!(),
+        None => {
+            *descendants_to_update.get_mut(&current_node).unwrap() |= to_insert;
         }
-        Node::SplitPlaneNormal(SplitPlaneNormal { normal, left, right }) => {
+        Some(Node::SplitPlaneNormal(SplitPlaneNormal { normal, left, right })) => {
             // Split the to_insert into two bitmaps on the left and right of this normal
             let mut left_ids = RoaringBitmap::new();
             let mut right_ids = RoaringBitmap::new();
