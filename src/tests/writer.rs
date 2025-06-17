@@ -1371,3 +1371,31 @@ fn cancel_indexing_process() {
         .unwrap_err();
     assert_snapshot!(err, @"The corresponding build process has been cancelled");
 }
+
+#[test]
+fn write_and_update_lot_of_random_points_with_little_memory() {
+    let handle = create_database::<Cosine>();
+    let mut wtxn = handle.env.write_txn().unwrap();
+    let writer = Writer::new(handle.database, 0, 3);
+    let mut rng = rng();
+    for id in 0..100 {
+        let vector: [f32; 3] = std::array::from_fn(|_| rng.gen());
+        writer.add_item(&mut wtxn, id, &vector).unwrap();
+    }
+
+    // With 0 bytes of memory, the builder will default to the size of a descendant + 1
+    writer.builder(&mut rng).available_memory(0).n_trees(2).build(&mut wtxn).unwrap();
+    wtxn.commit().unwrap();
+    insta::assert_snapshot!(handle);
+
+    let mut wtxn = handle.env.write_txn().unwrap();
+    let writer = Writer::new(handle.database, 0, 3);
+    for id in (0..100).step_by(2).chain(100..150) {
+        let vector: [f32; 3] = std::array::from_fn(|_| rng.gen());
+        writer.add_item(&mut wtxn, id, &vector).unwrap();
+    }
+    writer.builder(&mut rng).available_memory(0).n_trees(3).build(&mut wtxn).unwrap();
+    wtxn.commit().unwrap();
+
+    insta::assert_snapshot!(handle);
+}

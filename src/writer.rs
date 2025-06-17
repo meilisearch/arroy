@@ -1481,8 +1481,8 @@ pub(crate) fn fit_in_memory<D: Distance, R: Rng>(
     dbg!(&nb_items);
 
     // We must insert at least dimensions items to create a split
-    let nb_items = if nb_items < dimensions {
-        dimensions
+    let nb_items = if nb_items <= dimensions {
+        dimensions + 1
     } else {
         nb_items
     };
