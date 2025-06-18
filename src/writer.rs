@@ -2,7 +2,7 @@ use std::any::TypeId;
 use std::borrow::Cow;
 use std::cell::RefCell;
 use std::path::PathBuf;
-use std::sync::atomic::{AtomicU32, Ordering};
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 
 use crossbeam::channel::{bounded, Sender};
@@ -53,15 +53,15 @@ pub struct SubStep {
     /// The name of what is being updated.
     pub unit: &'static str,
     /// The `current` iteration we're at. It's stored in an `AtomicU32` so arroy can update it very quickly without calling your closure again.
-    pub current: Arc<AtomicU32>,
+    pub current: Arc<AtomicU64>,
     /// The `max`imum number of iteration it'll do before updating the `MainStep` again.
-    pub max: u32,
+    pub max: u64,
 }
 
 impl SubStep {
     #[allow(unused)] // Keeping this method because we'll need it once the code is parallelized
-    fn new(unit: &'static str, max: u32) -> (Self, Arc<AtomicU32>) {
-        let current = Arc::new(AtomicU32::new(0));
+    fn new(unit: &'static str, max: u64) -> (Self, Arc<AtomicU64>) {
+        let current = Arc::new(AtomicU64::new(0));
         (Self { unit, current: current.clone(), max }, current)
     }
 }
@@ -544,7 +544,7 @@ impl<D: Distance> Writer<D> {
 
         let (sub, progress) = SubStep::new(
             "descendants",
-            (descendants.len() as u32).saturating_add(nb_missing_trees as u32),
+            (descendants.len() as u64).saturating_add(nb_missing_trees),
         );
         (options.progress)(WriterProgress {
             main: MainStep::RetrieveTheLargeDescendants,
@@ -660,7 +660,7 @@ impl<D: Distance> Writer<D> {
         mut rng: R,
         options: &'scope BuildOption,
         error_snd: &Sender<Error>,
-        nb_items_progress: Arc<AtomicU32>,
+        nb_items_progress: Arc<AtomicU64>,
         scope: &Scope<'scope>,
         descendant: (ItemId, RoaringBitmap),
         frozen_reader: &'scope FrozzenReader<D>,
@@ -747,9 +747,9 @@ impl<D: Distance> Writer<D> {
         // The progress increase by one for each descendant we inspected went through
         // If set to `Some`, it means we're being called from the main thread and must update the progress after spawning all the tasks.
         // It also means the items_progress must be set to `None`
-        nb_descendants_progress: Option<&AtomicU32>,
+        nb_descendants_progress: Option<&AtomicU64>,
         // The progress increase by the number of items we inserted in a file
-        nb_items_progress: Option<Arc<AtomicU32>>,
+        nb_items_progress: Option<Arc<AtomicU64>>,
         scope: &Scope<'scope>,
         frozen_reader: &'scope FrozzenReader<'_, D>,
         tmp_nodes: Arc<ThreadLocal<RefCell<TmpNodes<D>>>>,
@@ -763,7 +763,7 @@ impl<D: Distance> Writer<D> {
         let mut total_items = 0;
         let nb_items_progress = match nb_items_progress {
             Some(progress) => progress,
-            None => Arc::new(AtomicU32::new(0)),
+            None => Arc::new(AtomicU64::new(0)),
         };
 
         let tmp_node = tmp_nodes.get_or_try(|| match self.tmpdir.as_ref() {
@@ -783,7 +783,7 @@ impl<D: Distance> Writer<D> {
             }
             total_items += item_indices.len();
             if self.fit_in_descendant(options, item_indices.len()) {
-                nb_items_progress.fetch_add(item_indices.len() as u32, Ordering::Relaxed);
+                nb_items_progress.fetch_add(item_indices.len(), Ordering::Relaxed);
                 tmp_node.put(
                     item_id,
                     &Node::Descendants(Descendants { descendants: Cow::Borrowed(&item_indices) }),
@@ -817,7 +817,7 @@ impl<D: Distance> Writer<D> {
                 sub: Some(SubStep {
                     unit: "items",
                     current: nb_items_progress.clone(),
-                    max: total_items as u32,
+                    max: total_items,
                 }),
             });
         }
@@ -834,7 +834,7 @@ impl<D: Distance> Writer<D> {
         frozen_reader: &FrozzenReader<D>,
     ) -> Result<IntMap<ItemId, RoaringBitmap>> {
         let (sub, progress) =
-            SubStep::new("items", (to_insert.len() as u32).saturating_mul(roots.len() as u32));
+            SubStep::new("items", to_insert.len().saturating_mul(roots.len() as u64));
         (options.progress)(WriterProgress {
             main: MainStep::InsertItemsInCurrentTrees,
             sub: Some(sub),
@@ -1103,7 +1103,7 @@ impl<D: Distance> Writer<D> {
         opt: &BuildOption,
         rng: &mut R,
         roots: &[ItemId],
-        progress: &AtomicU32,
+        progress: &AtomicU64,
         to_insert: &RoaringBitmap,
         frozen_reader: &FrozzenReader<D>,
     ) -> Result<IntMap<ItemId, RoaringBitmap>> {
@@ -1376,7 +1376,7 @@ pub(crate) fn target_n_trees(
 #[allow(clippy::too_many_arguments)]
 fn insert_items_in_descendants_from_frozen_reader<D: Distance, R: Rng>(
     opt: &BuildOption,
-    progress: &AtomicU32,
+    progress: &AtomicU64,
     frozen_reader: &FrozzenReader<D>,
     rng: &mut R,
     current_node: ItemId,
@@ -1387,7 +1387,7 @@ fn insert_items_in_descendants_from_frozen_reader<D: Distance, R: Rng>(
     match frozen_reader.trees.get(current_node)?.unwrap() {
         Node::Leaf(_) => unreachable!(),
         Node::Descendants(Descendants { descendants }) => {
-            progress.fetch_add(to_insert.len() as u32, Ordering::Relaxed);
+            progress.fetch_add(to_insert.len(), Ordering::Relaxed);
             descendants_to_update.insert(current_node, descendants.into_owned() | to_insert);
         }
         Node::SplitPlaneNormal(SplitPlaneNormal { normal, left, right }) => {
