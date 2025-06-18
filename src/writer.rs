@@ -544,7 +544,7 @@ impl<D: Distance> Writer<D> {
 
         let (sub, progress) = SubStep::new(
             "descendants",
-            (descendants.len() as u64).saturating_add(nb_missing_trees as u64),
+            (descendants.len() as u64).saturating_add(nb_missing_trees),
         );
         (options.progress)(WriterProgress {
             main: MainStep::RetrieveTheLargeDescendants,
@@ -834,7 +834,7 @@ impl<D: Distance> Writer<D> {
         frozen_reader: &FrozzenReader<D>,
     ) -> Result<IntMap<ItemId, RoaringBitmap>> {
         let (sub, progress) =
-            SubStep::new("items", (to_insert.len() as u64).saturating_mul(roots.len() as u64));
+            SubStep::new("items", to_insert.len().saturating_mul(roots.len() as u64));
         (options.progress)(WriterProgress {
             main: MainStep::InsertItemsInCurrentTrees,
             sub: Some(sub),
