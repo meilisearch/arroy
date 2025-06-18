@@ -1478,7 +1478,6 @@ pub(crate) fn fit_in_memory<D: Distance, R: Rng>(
         nb_page_allowed
     };
 
-
     // We must insert at least dimensions items to create a split
     let nb_items = if nb_items <= dimensions { dimensions + 1 } else { nb_items };
 
