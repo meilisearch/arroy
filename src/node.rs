@@ -19,6 +19,20 @@ pub enum Node<'a, D: Distance> {
     SplitPlaneNormal(SplitPlaneNormal<'a, D>),
 }
 
+impl<'a, D: Distance> Node<'a, D> {
+    pub fn into_owned(self) -> Node<'static, D> {
+        match self {
+            Node::Leaf(leaf) => Node::Leaf(leaf.into_owned()),
+            Node::Descendants(descendants) => Node::Descendants(Descendants {
+                descendants: Cow::Owned(descendants.descendants.into_owned()),
+            }),
+            Node::SplitPlaneNormal(split_plane_normal) => {
+                Node::SplitPlaneNormal(split_plane_normal.into_owned())
+            }
+        }
+    }
+}
+
 /// A node generic over the version of the database.
 /// Should only be used while reading from the database.
 #[derive(Clone, Debug)]
@@ -40,8 +54,15 @@ impl<'a, D: Distance> Node<'a, D> {
             None
         }
     }
-}
 
+    pub fn descendants(self) -> Option<Descendants<'a>> {
+        if let Node::Descendants(descendants) = self {
+            Some(descendants)
+        } else {
+            None
+        }
+    }
+}
 /// A leaf node which corresponds to the vector inputed
 /// by the user and the distance header.
 pub struct Leaf<'a, D: Distance> {
@@ -139,6 +160,19 @@ impl<D: Distance> fmt::Debug for SplitPlaneNormal<'_, D> {
             None => debug.field("normal", &"none"),
         };
         debug.finish()
+    }
+}
+
+impl<D: Distance> SplitPlaneNormal<'_, D> {
+    pub fn into_owned(self) -> SplitPlaneNormal<'static, D> {
+        SplitPlaneNormal {
+            left: self.left,
+            right: self.right,
+            normal: self.normal.map(|normal| Leaf {
+                header: normal.header,
+                vector: Cow::Owned(normal.vector.into_owned()),
+            }),
+        }
     }
 }
 

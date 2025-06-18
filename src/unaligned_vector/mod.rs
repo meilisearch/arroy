@@ -43,6 +43,9 @@ pub trait UnalignedVectorCodec: std::borrow::ToOwned + Sized {
 
     /// Returns true if all the elements in the vector are equal to 0.
     fn is_zero(vec: &UnalignedVector<Self>) -> bool;
+
+    /// Returns the size of an item in bytes.
+    fn size_of_item(dimensions: usize) -> usize;
 }
 
 /// A wrapper struct that is used to read unaligned vectors directly from memory.

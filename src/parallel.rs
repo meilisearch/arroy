@@ -1,6 +1,6 @@
 use core::slice;
 use std::fs::File;
-use std::io::{BufWriter, Write};
+use std::io::{BufReader, BufWriter, Read, Seek, SeekFrom, Write};
 use std::marker;
 use std::path::Path;
 use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering};
@@ -8,47 +8,116 @@ use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering};
 use heed::types::Bytes;
 use heed::{BytesDecode, BytesEncode, RoTxn};
 use memmap2::Mmap;
-use nohash::{BuildNoHashHasher, IntMap, IntSet};
+use nohash::{BuildNoHashHasher, IntMap};
 use rand::seq::index;
 use rand::Rng;
 use roaring::{RoaringBitmap, RoaringTreemap};
 
 use crate::internals::{KeyCodec, Leaf, NodeCodec};
 use crate::key::{Key, Prefix, PrefixCodec};
-use crate::node::{Node, SplitPlaneNormal};
+use crate::node::Node;
 use crate::{Database, Distance, Error, ItemId, Result};
 
+#[derive(Default, Debug)]
+enum TmpNodesState {
+    Writing(BufWriter<File>),
+    Reading(BufReader<File>),
+    // Ugly trick because otherwise I can't take the value out of the enum. Can we do better?
+    // The enum should never be let in this state.
+    #[default]
+    Invalid,
+}
+
+impl TmpNodesState {
+    pub fn write_all(&mut self, bytes: &[u8]) -> Result<()> {
+        let this = match std::mem::take(self) {
+            TmpNodesState::Writing(mut writer) => {
+                writer.write_all(bytes)?;
+                TmpNodesState::Writing(writer)
+            }
+            TmpNodesState::Reading(reader) => {
+                let mut writer = BufWriter::new(reader.into_inner());
+                writer.write_all(bytes)?;
+                TmpNodesState::Writing(writer)
+            }
+            TmpNodesState::Invalid => unreachable!(),
+        };
+
+        debug_assert!(!matches!(this, TmpNodesState::Invalid));
+
+        *self = this;
+        Ok(())
+    }
+
+    pub fn read_all(&mut self, (start, end): (usize, usize)) -> Result<Vec<u8>> {
+        debug_assert!(start < end);
+        let mut buffer = vec![0; end - start];
+
+        let this = match std::mem::take(self) {
+            TmpNodesState::Writing(mut writer) => {
+                writer.flush()?;
+                let mut reader = BufReader::new(writer.into_inner().expect("Could not convert the writer to a file even thought it was flushed right before"));
+                reader.seek(SeekFrom::Start(start as u64))?;
+                reader.read_exact(&mut buffer)?;
+                TmpNodesState::Reading(reader)
+            }
+            TmpNodesState::Reading(mut reader) => {
+                reader.seek(SeekFrom::Start(start as u64))?;
+                reader.read_exact(&mut buffer)?;
+                TmpNodesState::Reading(reader)
+            }
+            TmpNodesState::Invalid => unreachable!(),
+        };
+
+        debug_assert!(!matches!(this, TmpNodesState::Invalid));
+
+        *self = this;
+        Ok(buffer)
+    }
+
+    pub fn into_inner(self) -> Result<File> {
+        let file = match self {
+            TmpNodesState::Writing(mut writer) => {
+                writer.flush()?;
+                writer.into_inner().expect("Could not convert the writer to a file even thought it was flushed right before")
+            }
+            TmpNodesState::Reading(reader) => reader.into_inner(),
+            TmpNodesState::Invalid => unreachable!(),
+        };
+        Ok(file)
+    }
+}
+
 /// A structure to store the tree nodes out of the heed database.
+/// You should avoid alternating between writing and reading as it flushes the file on each operation and lose the read buffer.
+/// The structure is optimized for reading the last written nodes.
 pub struct TmpNodes<DE> {
-    file: BufWriter<File>,
+    file: TmpNodesState,
     ids: Vec<ItemId>,
     bounds: Vec<usize>,
     deleted: RoaringBitmap,
-    remap_ids: IntMap<ItemId, ItemId>,
     _marker: marker::PhantomData<DE>,
 }
 
-impl<'a, DE: BytesEncode<'a>> TmpNodes<DE> {
+impl<'a, D: Distance> TmpNodes<D> {
     /// Creates an empty `TmpNodes`.
-    pub fn new() -> heed::Result<TmpNodes<DE>> {
+    pub fn new() -> heed::Result<TmpNodes<D>> {
         Ok(TmpNodes {
-            file: tempfile::tempfile().map(BufWriter::new)?,
+            file: TmpNodesState::Writing(tempfile::tempfile().map(BufWriter::new)?),
             ids: Vec::new(),
             bounds: vec![0],
             deleted: RoaringBitmap::new(),
-            remap_ids: IntMap::default(),
             _marker: marker::PhantomData,
         })
     }
 
     /// Creates an empty `TmpNodes` in the defined folder.
-    pub fn new_in(path: &Path) -> heed::Result<TmpNodes<DE>> {
+    pub fn new_in(path: &Path) -> heed::Result<TmpNodes<D>> {
         Ok(TmpNodes {
-            file: tempfile::tempfile_in(path).map(BufWriter::new)?,
+            file: TmpNodesState::Writing(tempfile::tempfile_in(path).map(BufWriter::new)?),
             ids: Vec::new(),
             bounds: vec![0],
             deleted: RoaringBitmap::new(),
-            remap_ids: IntMap::default(),
             _marker: marker::PhantomData,
         })
     }
@@ -59,10 +128,10 @@ impl<'a, DE: BytesEncode<'a>> TmpNodes<DE> {
         // TODO move that in the type
         &mut self,
         item: ItemId,
-        data: &'a DE::EItem,
-    ) -> heed::Result<()> {
+        data: &'a Node<D>,
+    ) -> Result<()> {
         assert!(item != ItemId::MAX);
-        let bytes = DE::bytes_encode(data).map_err(heed::Error::Encoding)?;
+        let bytes = NodeCodec::bytes_encode(data).map_err(heed::Error::Encoding)?;
         self.file.write_all(&bytes)?;
         let last_bound = self.bounds.last().unwrap();
         self.bounds.push(last_bound + bytes.len());
@@ -74,13 +143,18 @@ impl<'a, DE: BytesEncode<'a>> TmpNodes<DE> {
         Ok(())
     }
 
-    /// Remap the item id of an already inserted node to another node.
-    ///
-    /// Only applies to the nodes to insert. It won't interact with the to_delete nodes.
-    pub fn remap(&mut self, current: ItemId, new: ItemId) {
-        if current != new {
-            self.remap_ids.insert(current, new);
-        }
+    /// Get the node at the given item id.
+    /// Ignore the remapped ids and deletions, only suitable when appending to the file.
+    /// A flush will be executed on the file if the previous operation was a write.
+    pub fn get(&mut self, item: ItemId) -> Result<Option<Node<'static, D>>> {
+        // In our current implementation, when we starts retrieving the nodes, it's always the nodes of the last tree,
+        // so it makes sense to search in reverse order.
+        let Some(position) = self.ids.iter().rev().position(|id| *id == item) else {
+            return Ok(None);
+        };
+        let bounds = &self.bounds[self.bounds.len() - position - 2..self.bounds.len() - position];
+        let bytes = self.file.read_all((bounds[0], bounds[1]))?;
+        Ok(Some(NodeCodec::bytes_decode(&bytes).map_err(heed::Error::Decoding)?.into_owned()))
     }
 
     /// Delete the tmp_nodes and the node in the database.
@@ -91,18 +165,12 @@ impl<'a, DE: BytesEncode<'a>> TmpNodes<DE> {
 
     /// Converts it into a readers to read the nodes.
     pub fn into_bytes_reader(self) -> Result<TmpNodesReader> {
-        let file = self.file.into_inner().map_err(|iie| iie.into_error())?;
+        let file = self.file.into_inner()?;
         // safety: No one should move our files around
         let mmap = unsafe { Mmap::map(&file)? };
         #[cfg(unix)]
         mmap.advise(memmap2::Advice::Sequential)?;
-        Ok(TmpNodesReader {
-            mmap,
-            ids: self.ids,
-            bounds: self.bounds,
-            deleted: self.deleted,
-            remap_ids: self.remap_ids,
-        })
+        Ok(TmpNodesReader { mmap, ids: self.ids, bounds: self.bounds, deleted: self.deleted })
     }
 }
 
@@ -112,7 +180,6 @@ pub struct TmpNodesReader {
     ids: Vec<ItemId>,
     bounds: Vec<usize>,
     deleted: RoaringBitmap,
-    remap_ids: IntMap<ItemId, ItemId>,
 }
 
 impl TmpNodesReader {
@@ -126,10 +193,6 @@ impl TmpNodesReader {
             .iter()
             .zip(self.bounds.windows(2))
             .filter(|(&id, _)| !self.deleted.contains(id))
-            .map(|(id, bounds)| match self.remap_ids.get(id) {
-                Some(new_id) => (new_id, bounds),
-                None => (id, bounds),
-            })
             .map(|(id, bounds)| {
                 let [start, end] = [bounds[0], bounds[1]];
                 (*id, &self.mmap[start..end])
@@ -202,58 +265,26 @@ pub struct ImmutableLeafs<'t, D> {
 impl<'t, D: Distance> ImmutableLeafs<'t, D> {
     /// Creates the structure by fetching all the leaf pointers
     /// and keeping the transaction making the pointers valid.
-    /// Do not take more items than memory allows.
-    /// Remove from the list of candidates all the items that were selected and return them.
     pub fn new(
         rtxn: &'t RoTxn,
         database: Database<D>,
+        items: &RoaringBitmap,
         index: u16,
-        candidates: &mut RoaringBitmap,
-        memory: usize,
-    ) -> heed::Result<(Self, RoaringBitmap)> {
-        let page_size = page_size::get();
-        let nb_page_allowed = (memory as f64 / page_size as f64).floor() as usize;
-
-        let mut leafs = IntMap::with_capacity_and_hasher(
-            nb_page_allowed.min(candidates.len() as usize), // We cannot approximate the capacity better because we don't know yet the size of an item
-            BuildNoHashHasher::default(),
-        );
-        let mut pages_used = IntSet::with_capacity_and_hasher(
-            nb_page_allowed.min(candidates.len() as usize),
-            BuildNoHashHasher::default(),
-        );
-        let mut selected_items = RoaringBitmap::new();
+    ) -> heed::Result<Self> {
+        let mut leafs =
+            IntMap::with_capacity_and_hasher(items.len() as usize, BuildNoHashHasher::default());
         let mut constant_length = None;
 
-        while let Some(item_id) = candidates.select(0) {
+        for item_id in items {
             let bytes =
                 database.remap_data_type::<Bytes>().get(rtxn, &Key::item(index, item_id))?.unwrap();
             assert_eq!(*constant_length.get_or_insert(bytes.len()), bytes.len());
 
             let ptr = bytes.as_ptr();
-            let addr = ptr as usize;
-            let start = addr / page_size;
-            let end = (addr + bytes.len()) / page_size;
-
-            pages_used.insert(start);
-            if start != end {
-                pages_used.insert(end);
-            }
-
-            if pages_used.len() >= nb_page_allowed && leafs.len() >= 200 {
-                break;
-            }
-
-            // Safe because the items comes from another roaring bitmap
-            selected_items.push(item_id);
-            candidates.remove_smallest(1);
             leafs.insert(item_id, ptr);
         }
 
-        Ok((
-            ImmutableLeafs { leafs, constant_length, _marker: marker::PhantomData },
-            selected_items,
-        ))
+        Ok(ImmutableLeafs { leafs, constant_length, _marker: marker::PhantomData })
     }
 
     /// Returns the leafs identified by the given ID.
@@ -465,40 +496,6 @@ impl<'t, D: Distance> ImmutableTrees<'t, D> {
         }
 
         Ok(ImmutableTrees { trees, _marker: marker::PhantomData })
-    }
-
-    /// Creates the structure by fetching all the children of the `start`ing tree nodes specified.
-    /// Keeps a reference to the transaction to ensure the pointers stays valid.
-    pub fn sub_tree_from_id(
-        rtxn: &'t RoTxn,
-        database: Database<D>,
-        index: u16,
-        start: ItemId,
-    ) -> Result<Self> {
-        let mut trees = IntMap::default();
-        let mut explore = vec![start];
-        while let Some(current) = explore.pop() {
-            let bytes =
-                database.remap_data_type::<Bytes>().get(rtxn, &Key::tree(index, current))?.unwrap();
-            let node: Node<'_, D> = NodeCodec::bytes_decode(bytes).unwrap();
-            match node {
-                Node::Leaf(_leaf) => unreachable!(),
-                Node::Descendants(_descendants) => {
-                    trees.insert(current, (bytes.len(), bytes.as_ptr()));
-                }
-                Node::SplitPlaneNormal(SplitPlaneNormal { left, right, normal: _ }) => {
-                    trees.insert(current, (bytes.len(), bytes.as_ptr()));
-                    explore.push(left);
-                    explore.push(right);
-                }
-            }
-        }
-
-        Ok(Self { trees, _marker: marker::PhantomData })
-    }
-
-    pub fn empty() -> Self {
-        Self { trees: IntMap::default(), _marker: marker::PhantomData }
     }
 
     /// Returns the tree node identified by the given ID.

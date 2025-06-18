@@ -20,7 +20,7 @@ pub enum Cosine {}
 #[repr(C)]
 #[derive(Pod, Zeroable, Clone, Copy)]
 pub struct NodeHeaderCosine {
-    norm: f32,
+    pub(crate) norm: f32,
 }
 impl fmt::Debug for NodeHeaderCosine {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
