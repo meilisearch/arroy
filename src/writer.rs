@@ -2,7 +2,7 @@ use std::any::TypeId;
 use std::borrow::Cow;
 use std::cell::RefCell;
 use std::path::PathBuf;
-use std::sync::atomic::AtomicU32;
+use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::Arc;
 
 use crossbeam::channel::{bounded, Sender};
@@ -79,16 +79,19 @@ pub enum MainStep {
     RetrievingTheItemsIds,
     RetrieveTheUpdatedItems,
     WritingTheDescendantsAndMetadata,
-    RetrievingTheUsedTreeNodes,
     DeletingExtraTrees,
     RemoveItemsFromExistingTrees,
+    RetrievingTheUsedTreeNodes,
+    RetrievingTheItems,
+    RetrievingTheTreeNodes,
     InsertItemsInCurrentTrees,
-    IncrementalIndexLargeDescendants,
+    RetrieveTheLargeDescendants,
+    CreateTreesForItems,
     WriteTheMetadata,
 }
 
 /// The options available when building the arroy database.
-pub(crate) struct BuildOption<'a> {
+pub struct BuildOption<'a> {
     pub(crate) n_trees: Option<usize>,
     pub(crate) split_after: Option<usize>,
     pub(crate) available_memory: Option<usize>,
@@ -522,9 +525,9 @@ impl<D: Distance> Writer<D> {
         // From this point on, we're not going to write anything to the DB until the very end.
         // Each thread will have its own TmpNodes and we're going to write them all to the DB at the end.
 
-        let leafs = ImmutableLeafs::new(wtxn, self.database, &item_indices, self.index)?;
+        let leafs = ImmutableLeafs::new(wtxn, options, self.database, &item_indices, self.index)?;
         let immutable_tree_nodes =
-            ImmutableTrees::new(wtxn, self.database, self.index, nb_tree_nodes)?;
+            ImmutableTrees::new(wtxn, options, self.database, self.index, nb_tree_nodes)?;
         let frozen_reader = FrozzenReader {
             leafs: &leafs,
             trees: &immutable_tree_nodes,
@@ -533,14 +536,23 @@ impl<D: Distance> Writer<D> {
 
         let files_tls = Arc::new(ThreadLocal::new());
 
-        // The next method is called from multiple place so we have to update the progress here
-        (options.progress)(WriterProgress { main: MainStep::InsertItemsInCurrentTrees, sub: None });
         let mut descendants =
             self.insert_items_in_current_trees(rng, options, to_insert, &roots, &frozen_reader)?;
 
         // Create a new descendant that contains all items for every missing trees
         let nb_missing_trees = target_n_trees.saturating_sub(roots.len() as u64);
+
+        let (sub, progress) = SubStep::new(
+            "descendants",
+            (descendants.len() as u32).saturating_add(nb_missing_trees as u32),
+        );
+        (options.progress)(WriterProgress {
+            main: MainStep::RetrieveTheLargeDescendants,
+            sub: Some(sub),
+        });
+
         for _ in 0..nb_missing_trees {
+            progress.fetch_add(1, Ordering::Relaxed);
             let new_id = concurrent_node_ids.next()?;
             roots.push(new_id);
             descendants.insert(new_id, item_indices.clone());
@@ -563,6 +575,8 @@ impl<D: Distance> Writer<D> {
                     rng,
                     options,
                     &error_snd,
+                    Some(&progress),
+                    None,
                     s,
                     frozen_reader,
                     files_tls,
@@ -646,15 +660,12 @@ impl<D: Distance> Writer<D> {
         mut rng: R,
         options: &'scope BuildOption,
         error_snd: &Sender<Error>,
+        nb_items_progress: Arc<AtomicU32>,
         scope: &Scope<'scope>,
         descendant: (ItemId, RoaringBitmap),
         frozen_reader: &'scope FrozzenReader<D>,
         tmp_nodes: Arc<ThreadLocal<RefCell<TmpNodes<D>>>>,
     ) -> Result<()> {
-        (options.progress)(WriterProgress {
-            main: MainStep::IncrementalIndexLargeDescendants,
-            sub: None,
-        });
         options.cancelled()?;
         if error_snd.is_full() {
             return Ok(());
@@ -714,6 +725,8 @@ impl<D: Distance> Writer<D> {
             rng,
             options,
             error_snd,
+            None,
+            Some(nb_items_progress),
             scope,
             frozen_reader,
             tmp_nodes,
@@ -731,6 +744,12 @@ impl<D: Distance> Writer<D> {
         mut rng: R,
         options: &'scope BuildOption,
         error_snd: &Sender<Error>,
+        // The progress increase by one for each descendant we inspected went through
+        // If set to `Some`, it means we're being called from the main thread and must update the progress after spawning all the tasks.
+        // It also means the items_progress must be set to `None`
+        nb_descendants_progress: Option<&AtomicU32>,
+        // The progress increase by the number of items we inserted in a file
+        nb_items_progress: Option<Arc<AtomicU32>>,
         scope: &Scope<'scope>,
         frozen_reader: &'scope FrozzenReader<'_, D>,
         tmp_nodes: Arc<ThreadLocal<RefCell<TmpNodes<D>>>>,
@@ -740,6 +759,13 @@ impl<D: Distance> Writer<D> {
         if error_snd.is_full() {
             return Ok(());
         }
+
+        let mut total_items = 0;
+        let nb_items_progress = match nb_items_progress {
+            Some(progress) => progress,
+            None => Arc::new(AtomicU32::new(0)),
+        };
+
         let tmp_node = tmp_nodes.get_or_try(|| match self.tmpdir.as_ref() {
             Some(path) => TmpNodes::new_in(path).map(RefCell::new),
             None => TmpNodes::new().map(RefCell::new),
@@ -752,7 +778,12 @@ impl<D: Distance> Writer<D> {
             if error_snd.is_full() {
                 return Ok(());
             }
+            if let Some(nb_descendants_progress) = nb_descendants_progress {
+                nb_descendants_progress.fetch_add(1, Ordering::Relaxed);
+            }
+            total_items += item_indices.len();
             if self.fit_in_descendant(options, item_indices.len()) {
+                nb_items_progress.fetch_add(item_indices.len() as u32, Ordering::Relaxed);
                 tmp_node.put(
                     item_id,
                     &Node::Descendants(Descendants { descendants: Cow::Borrowed(&item_indices) }),
@@ -761,11 +792,13 @@ impl<D: Distance> Writer<D> {
                 let tmp_nodes = tmp_nodes.clone();
                 let rng = StdRng::from_seed(rng.gen());
                 let error_snd = error_snd.clone();
+                let nb_items_progress = nb_items_progress.clone();
                 scope.spawn(move |s| {
                     let ret = self.incremental_index_large_descendant(
                         rng,
                         options,
                         &error_snd,
+                        nb_items_progress,
                         s,
                         (item_id, item_indices),
                         frozen_reader,
@@ -776,6 +809,17 @@ impl<D: Distance> Writer<D> {
                     }
                 });
             }
+        }
+
+        if nb_descendants_progress.is_some() {
+            (options.progress)(WriterProgress {
+                main: MainStep::CreateTreesForItems,
+                sub: Some(SubStep {
+                    unit: "items",
+                    current: nb_items_progress.clone(),
+                    max: total_items as u32,
+                }),
+            });
         }
 
         Ok(())
@@ -789,6 +833,13 @@ impl<D: Distance> Writer<D> {
         roots: &[ItemId],
         frozen_reader: &FrozzenReader<D>,
     ) -> Result<IntMap<ItemId, RoaringBitmap>> {
+        let (sub, progress) =
+            SubStep::new("items", (to_insert.len() as u32).saturating_mul(roots.len() as u32));
+        (options.progress)(WriterProgress {
+            main: MainStep::InsertItemsInCurrentTrees,
+            sub: Some(sub),
+        });
+
         if roots.is_empty() {
             return Ok(IntMap::default());
         }
@@ -803,7 +854,14 @@ impl<D: Distance> Writer<D> {
         ) {
             options.cancelled()?;
 
-            let desc = self.insert_items_in_tree(options, rng, roots, &to_insert, frozen_reader)?;
+            let desc = self.insert_items_in_tree(
+                options,
+                rng,
+                roots,
+                &progress,
+                &to_insert,
+                frozen_reader,
+            )?;
             for (item_id, desc) in desc {
                 descendants.entry(item_id).or_default().extend(desc);
             }
@@ -1045,6 +1103,7 @@ impl<D: Distance> Writer<D> {
         opt: &BuildOption,
         rng: &mut R,
         roots: &[ItemId],
+        progress: &AtomicU32,
         to_insert: &RoaringBitmap,
         frozen_reader: &FrozzenReader<D>,
     ) -> Result<IntMap<ItemId, RoaringBitmap>> {
@@ -1057,6 +1116,7 @@ impl<D: Distance> Writer<D> {
                 let mut descendants_to_update = IntMap::with_hasher(BuildNoHashHasher::default());
                 insert_items_in_descendants_from_frozen_reader(
                     opt,
+                    progress,
                     frozen_reader,
                     &mut rng,
                     *root,
@@ -1316,6 +1376,7 @@ pub(crate) fn target_n_trees(
 #[allow(clippy::too_many_arguments)]
 fn insert_items_in_descendants_from_frozen_reader<D: Distance, R: Rng>(
     opt: &BuildOption,
+    progress: &AtomicU32,
     frozen_reader: &FrozzenReader<D>,
     rng: &mut R,
     current_node: ItemId,
@@ -1326,6 +1387,7 @@ fn insert_items_in_descendants_from_frozen_reader<D: Distance, R: Rng>(
     match frozen_reader.trees.get(current_node)?.unwrap() {
         Node::Leaf(_) => unreachable!(),
         Node::Descendants(Descendants { descendants }) => {
+            progress.fetch_add(to_insert.len() as u32, Ordering::Relaxed);
             descendants_to_update.insert(current_node, descendants.into_owned() | to_insert);
         }
         Node::SplitPlaneNormal(SplitPlaneNormal { normal, left, right }) => {
@@ -1351,6 +1413,7 @@ fn insert_items_in_descendants_from_frozen_reader<D: Distance, R: Rng>(
             if !left_ids.is_empty() {
                 insert_items_in_descendants_from_frozen_reader(
                     opt,
+                    progress,
                     frozen_reader,
                     rng,
                     left,
@@ -1361,6 +1424,7 @@ fn insert_items_in_descendants_from_frozen_reader<D: Distance, R: Rng>(
             if !right_ids.is_empty() {
                 insert_items_in_descendants_from_frozen_reader(
                     opt,
+                    progress,
                     frozen_reader,
                     rng,
                     right,

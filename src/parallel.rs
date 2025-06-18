@@ -11,12 +11,13 @@ use memmap2::Mmap;
 use nohash::{BuildNoHashHasher, IntMap};
 use rand::seq::index;
 use rand::Rng;
-use roaring::{RoaringBitmap, RoaringTreemap};
+use roaring::RoaringBitmap;
 
 use crate::internals::{KeyCodec, Leaf, NodeCodec};
 use crate::key::{Key, Prefix, PrefixCodec};
 use crate::node::Node;
-use crate::{Database, Distance, Error, ItemId, Result};
+use crate::writer::BuildOption;
+use crate::{Database, Distance, Error, ItemId, MainStep, Result, WriterProgress};
 
 #[derive(Default, Debug)]
 enum TmpNodesState {
@@ -267,10 +268,12 @@ impl<'t, D: Distance> ImmutableLeafs<'t, D> {
     /// and keeping the transaction making the pointers valid.
     pub fn new(
         rtxn: &'t RoTxn,
+        options: &BuildOption,
         database: Database<D>,
         items: &RoaringBitmap,
         index: u16,
     ) -> heed::Result<Self> {
+        (options.progress)(WriterProgress { main: MainStep::RetrievingTheItems, sub: None });
         let mut leafs =
             IntMap::with_capacity_and_hasher(items.len() as usize, BuildNoHashHasher::default());
         let mut constant_length = None;
@@ -303,106 +306,6 @@ impl<'t, D: Distance> ImmutableLeafs<'t, D> {
         // - len: All the items share the same dimensions and are the same size
         let bytes = unsafe { slice::from_raw_parts(ptr, len) };
         NodeCodec::bytes_decode(bytes).map_err(heed::Error::Decoding).map(|node| node.leaf())
-    }
-
-    /// Returns a set of items ID that fits in memory.
-    ///
-    /// The memory is specified in bytes and the sample size returned will contains at least 200 elements.
-    /// If there is less than 200 elements in the database then this number of elements will be returned.
-    pub fn sample<R: Rng>(&self, memory: usize, rng: &mut R) -> RoaringBitmap {
-        let page_size = page_size::get();
-        let leaf_size =
-            self.constant_length.expect("Constant length is missing even though there are vectors");
-        let theorical_vectors_per_page = page_size as f64 / leaf_size as f64;
-        let theorical_pages_per_vector = leaf_size as f64 / page_size as f64;
-
-        let memory_required_to_hold_everything =
-            page_size * theorical_vectors_per_page.ceil() as usize * self.leafs.len();
-
-        if self.leafs.len() <= 200 || memory >= memory_required_to_hold_everything {
-            return RoaringBitmap::from_iter(self.leafs.keys());
-        }
-
-        let pages_fit_in_ram = memory / page_size;
-        let theorical_nb_pages = self.leafs.len() as f64 / theorical_vectors_per_page;
-
-        // First step is to map both:
-        // - the page ptr with the items they contain
-        // - the items with the pages they're contained in
-        let mut pages_to_items = IntMap::with_capacity_and_hasher(
-            theorical_nb_pages.ceil() as usize,
-            BuildNoHashHasher::default(),
-        );
-        let mut items_to_pages =
-            IntMap::with_capacity_and_hasher(self.leafs.len(), BuildNoHashHasher::default());
-
-        for (item, addr) in self.leafs.iter() {
-            let a = *addr as usize;
-
-            let mut current = a;
-            let end = a + leaf_size;
-            let mut pages = Vec::with_capacity(theorical_pages_per_vector.ceil() as usize + 1);
-            while current < end {
-                let current_page_number = current / page_size;
-                let page_to_items_entry =
-                    pages_to_items.entry(current_page_number).or_insert_with(|| {
-                        Vec::with_capacity(theorical_vectors_per_page.ceil() as usize + 1)
-                    });
-                debug_assert!(!page_to_items_entry.contains(item));
-                page_to_items_entry.push(*item);
-                pages.push(current_page_number);
-                current += page_size;
-            }
-            items_to_pages.insert(*item, pages);
-        }
-
-        // We're going to select a random set of vectors that fits in RAM
-        let mut candidates: RoaringBitmap = self.leafs.keys().collect();
-        let mut vector_selected = RoaringBitmap::new();
-        let mut pages_selected = RoaringTreemap::new();
-
-        while !candidates.is_empty() {
-            let rank = rng.gen_range(0..candidates.len() as u32);
-            let item_id = candidates.select(rank).unwrap();
-            let pages = items_to_pages.get(&item_id).unwrap();
-
-            // We count how many pages would be added to the treemap to see if we're going
-            // to exceed the allowed number of pages
-            let new_pages_selected =
-                pages.iter().filter(|p| !pages_selected.contains(**p as u64)).count();
-
-            if (pages_selected.len() + new_pages_selected as u64) > pages_fit_in_ram as u64
-                && vector_selected.len() >= 200
-            {
-                break;
-            }
-
-            pages_selected.extend(pages.iter().map(|a| *a as u64));
-            vector_selected.insert(item_id);
-            candidates.remove(item_id);
-        }
-
-        // If we can't fit more than one and half vector per page we can skip the next step
-        // and immediately returns the current list of vectors. We're not going to find any
-        // "free" vector between pages
-        if theorical_vectors_per_page > 1.5 {
-            // To get the final list of vectors selected, we have to go through the whole list
-            // of pages selected, and retrieve all the complete vectors.
-            // We consider a vector complete if all the pages containing it have been selected.
-            for page in pages_selected {
-                let items = pages_to_items.get(&(page as usize)).unwrap();
-                for item in items {
-                    let pages = items_to_pages.get_mut(item).unwrap();
-                    let idx = pages.iter().position(|p| *p == page as usize).unwrap();
-                    pages.swap_remove(idx);
-                    if pages.is_empty() {
-                        vector_selected.insert(*item);
-                    }
-                }
-            }
-        }
-
-        vector_selected
     }
 }
 
@@ -477,10 +380,12 @@ impl<'t, D: Distance> ImmutableTrees<'t, D> {
     /// and keeping the transaction making the pointers valid.
     pub fn new(
         rtxn: &'t RoTxn,
+        options: &BuildOption,
         database: Database<D>,
         index: u16,
         nb_trees: u64,
     ) -> heed::Result<Self> {
+        (options.progress)(WriterProgress { main: MainStep::RetrievingTheTreeNodes, sub: None });
         let mut trees =
             IntMap::with_capacity_and_hasher(nb_trees as usize, BuildNoHashHasher::default());
 
