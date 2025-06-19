@@ -37,7 +37,9 @@ impl TmpNodesState {
                 TmpNodesState::Writing(writer)
             }
             TmpNodesState::Reading(reader) => {
-                let mut writer = BufWriter::new(reader.into_inner());
+                let mut file = reader.into_inner();
+                file.seek(SeekFrom::End(0))?;
+                let mut writer = BufWriter::new(file);
                 writer.write_all(bytes)?;
                 TmpNodesState::Writing(writer)
             }
