@@ -678,6 +678,8 @@ impl<D: Distance> Writer<D> {
             Some(path) => TmpNodes::new_in(path).map(RefCell::new),
             None => TmpNodes::new().map(RefCell::new),
         })?;
+        tracing::warn!("[INCREMENTAL INDEXING] got the tmp node");
+
         // Safe to borrow mut here because we're the only thread running with this variable
         let mut tmp_node = tmp_node.borrow_mut();
         let mut descendants = IntMap::<ItemId, RoaringBitmap>::default();
@@ -687,9 +689,13 @@ impl<D: Distance> Writer<D> {
             options.available_memory.unwrap_or(usize::MAX) / current_num_threads();
         let minimum_memory_required = D::size_of_item(self.dimensions) * (self.dimensions + 1);
 
+        tracing::warn!("[INCREMENTAL INDEXING] allocating the bump");
+
         let capacity = available_memory.max(minimum_memory_required);
         let mut bump = Bump::with_capacity(capacity);
         bump.set_allocation_limit(Some(capacity));
+
+        tracing::warn!("[INCREMENTAL INDEXING] filling the bump with the vectors that fits in {:?}B, should be close to {:?}B", capacity, capacity / D::size_of_item(self.dimensions));
 
         let now = Instant::now();
         // safe to unwrap because we know the descendant is large
