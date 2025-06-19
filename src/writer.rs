@@ -823,7 +823,7 @@ impl<D: Distance> Writer<D> {
                                     None => "Box<dyn Any>",
                                 },
                             };
-                            let _ = error_snd.try_send(Error::from(e));
+                            let _ = error_snd.try_send(Error::Panic(msg.to_string()));
                         }
                     }
                 });
