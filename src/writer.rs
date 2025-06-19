@@ -682,6 +682,7 @@ impl<D: Distance> Writer<D> {
 
         let available_memory =
             options.available_memory.unwrap_or(usize::MAX) / current_num_threads();
+        println!("available_memory: {}", available_memory);
 
         // safe to unwrap because we know the descendant is large
         let items_for_tree =
