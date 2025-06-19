@@ -1567,6 +1567,9 @@ pub(crate) fn fill_bump_with_vectors<'bump, D: Distance, R: Rng>(
     rng: &mut R,
 ) -> Result<Option<(RoaringBitmap, ImmutableLeafs<'bump, D>)>> {
     bump.reset();
+    if to_insert.len() == 0 {
+        return Ok(None);
+    }
     let mut immutable_leaves: ImmutableLeafs<'_, _> = ImmutableLeafs {
         leafs: IntMap::default(),
         constant_length: frozen_reader.leafs.constant_length,
