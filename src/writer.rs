@@ -1581,18 +1581,16 @@ pub(crate) fn fill_bump_with_vectors<'bump, D: Distance, R: Rng>(
         // Safe to unwrap because we know nb_items is smaller than the number of items in the bitmap
         let item = to_insert.select(0).unwrap();
         items.insert(item);
-        to_insert.remove_smallest(0);
+        to_insert.remove_smallest(1);
 
         let value = frozen_reader.leafs.get_raw(item)?.unwrap();
         used_memory += value.len();
-        tracing::warn!("[FILLING THE BUMP] used memory: {}B, capacity: {}B, items: {}", used_memory, capacity, items.len());
         if used_memory > capacity && items.len() > dimensions as u64 {
             break;
         }
         let now = Instant::now();
         match bump.try_alloc_slice_copy(value) {
             Ok(slice) => {
-                tracing::warn!("[FILLING THE BUMP] retrieving the vector took: {:.2?}", now.elapsed());
                 items.insert(item);
                 immutable_leaves.leafs.insert(item, slice.as_ptr());
             }
