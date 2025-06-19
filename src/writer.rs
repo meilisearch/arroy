@@ -688,6 +688,7 @@ impl<D: Distance> Writer<D> {
         let items_for_tree =
             fit_in_memory::<D, R>(available_memory, &mut to_insert, self.dimensions, &mut rng)
                 .unwrap();
+        println!("was able to select {} items for the tree of size {}", items_for_tree.len(), D::size_of_item(self.dimensions));
 
         let (root_id, _nb_new_tree_nodes) = self.make_tree_in_file(
             options,
