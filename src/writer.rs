@@ -683,13 +683,13 @@ impl<D: Distance> Writer<D> {
 
         let available_memory =
             options.available_memory.unwrap_or(usize::MAX) / current_num_threads();
-        println!("available_memory: {}", available_memory);
+        tracing::warn!("available_memory: {}", available_memory);
 
         // safe to unwrap because we know the descendant is large
         let items_for_tree =
             fit_in_memory::<D, R>(available_memory, &mut to_insert, self.dimensions, &mut rng)
                 .unwrap();
-        println!("was able to select {} items for the tree of size {}", items_for_tree.len(), D::size_of_item(self.dimensions));
+        tracing::warn!("was able to select {} items for the tree of size {}. Building the tree...", items_for_tree.len(), D::size_of_item(self.dimensions));
 
         let (root_id, _nb_new_tree_nodes) = self.make_tree_in_file(
             options,
@@ -702,6 +702,7 @@ impl<D: Distance> Writer<D> {
             &mut tmp_node,
         )?;
         assert_eq!(root_id, descendant_id);
+        tracing::warn!("tree built, inserting items by batch...");
 
         while let Some(to_insert) =
             fit_in_memory::<D, R>(available_memory, &mut to_insert, self.dimensions, &mut rng)
@@ -722,7 +723,7 @@ impl<D: Distance> Writer<D> {
                 &mut descendants,
             )?;
         }
-
+        tracing::warn!("inserted the items in the tree by batch");
         drop(tmp_node);
         self.insert_descendants_in_file_and_spawn_tasks(
             rng,
@@ -776,6 +777,7 @@ impl<D: Distance> Writer<D> {
         // Safe to borrow mut here because we're the only thread running with this variable
         let mut tmp_node = tmp_node.borrow_mut();
 
+        tracing::warn!("inserting {} descendants", descendants.len());
         for (item_id, item_indices) in descendants.into_iter() {
             options.cancelled()?;
             if error_snd.is_full() {
@@ -829,6 +831,7 @@ impl<D: Distance> Writer<D> {
                 });
             }
         }
+        tracing::warn!("inserted the descendants");
 
         if nb_descendants_progress.is_some() {
             (options.progress)(WriterProgress {

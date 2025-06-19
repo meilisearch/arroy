@@ -37,7 +37,9 @@ impl TmpNodesState {
                 TmpNodesState::Writing(writer)
             }
             TmpNodesState::Reading(reader) => {
-                let mut writer = BufWriter::new(reader.into_inner());
+                let mut file = reader.into_inner();
+                file.seek(SeekFrom::End(0))?;
+                let mut writer = BufWriter::new(file);
                 writer.write_all(bytes)?;
                 TmpNodesState::Writing(writer)
             }
@@ -131,6 +133,7 @@ impl<'a, D: Distance> TmpNodes<D> {
         item: ItemId,
         data: &'a Node<D>,
     ) -> Result<()> {
+        tracing::warn!("inserting node for item {}", item);
         assert!(item != ItemId::MAX);
         let bytes = NodeCodec::bytes_encode(data).map_err(heed::Error::Encoding)?;
         self.file.write_all(&bytes)?;
@@ -148,6 +151,7 @@ impl<'a, D: Distance> TmpNodes<D> {
     /// Ignore the remapped ids and deletions, only suitable when appending to the file.
     /// A flush will be executed on the file if the previous operation was a write.
     pub fn get(&mut self, item: ItemId) -> Result<Option<Node<'static, D>>> {
+        tracing::warn!("getting node for item {}", item);
         // In our current implementation, when we starts retrieving the nodes, it's always the nodes of the last tree,
         // so it makes sense to search in reverse order.
         let Some(position) = self.ids.iter().rev().position(|id| *id == item) else {
