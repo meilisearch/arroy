@@ -1,6 +1,7 @@
 use std::any::TypeId;
 use std::borrow::Cow;
 use std::cell::RefCell;
+use std::panic::AssertUnwindSafe;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
@@ -796,18 +797,34 @@ impl<D: Distance> Writer<D> {
                 let error_snd = error_snd.clone();
                 let nb_items_progress = nb_items_progress.clone();
                 scope.spawn(move |s| {
-                    let ret = self.incremental_index_large_descendant(
-                        rng,
-                        options,
-                        &error_snd,
-                        nb_items_progress,
-                        s,
-                        (item_id, item_indices),
-                        frozen_reader,
-                        tmp_nodes,
-                    );
-                    if let Err(e) = ret {
-                        let _ = error_snd.try_send(e);
+                    let ret = 
+                    std::panic::catch_unwind(AssertUnwindSafe(|| {
+                        self.incremental_index_large_descendant(
+                            rng,
+                            options,
+                            &error_snd,
+                            nb_items_progress,
+                            s,
+                            (item_id, item_indices),
+                            frozen_reader,
+                            tmp_nodes,
+                        )
+                    }));
+                    match ret {
+                        Ok(Ok(())) => (),
+                        Ok(Err(e)) => {
+                            let _ = error_snd.try_send(e);
+                        }
+                        Err(panic) => {
+                            let msg = match panic.downcast_ref::<&'static str>() {
+                                Some(s) => *s,
+                                None => match panic.downcast_ref::<String>() {
+                                    Some(s) => &s[..],
+                                    None => "Box<dyn Any>",
+                                },
+                            };
+                            let _ = error_snd.try_send(Error::from(e));
+                        }
                     }
                 });
             }
