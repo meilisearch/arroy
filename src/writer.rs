@@ -670,9 +670,12 @@ impl<D: Distance> Writer<D> {
     ) -> Result<()> {
         tracing::warn!("[INCREMENTAL INDEXING] starting to index the descendant");
         options.cancelled()?;
+        tracing::warn!("[INCREMENTAL INDEXING] after cancelling");
         if error_snd.is_full() {
+            tracing::warn!("[INCREMENTAL INDEXING] after checking if the channel is full, it was full, returning");
             return Ok(());
         }
+        tracing::warn!("[INCREMENTAL INDEXING] after checking if the channel is full, it was not");
 
         let tmp_node = tmp_nodes.get_or_try(|| match self.tmpdir.as_ref() {
             Some(path) => TmpNodes::new_in(path).map(RefCell::new),
