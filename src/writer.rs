@@ -14,7 +14,7 @@ use nohash::{BuildNoHashHasher, IntMap};
 use rand::rngs::StdRng;
 use rand::{Rng, SeedableRng};
 use rayon::iter::repeatn;
-use rayon::{current_num_threads, prelude::*, Scope};
+use rayon::{current_num_threads, prelude::*, yield_now, Scope};
 use roaring::RoaringBitmap;
 use thread_local::ThreadLocal;
 
@@ -699,6 +699,9 @@ impl<D: Distance> Writer<D> {
             if let Ok(bump) = Bump::try_with_capacity(capacity) {
                 bump.set_allocation_limit(Some(capacity));
                 break bump;
+            } else {
+                tracing::error!("[INCREMENTAL INDEXING] failed to allocate the bump, retrying later");
+                yield_now();
             }
         };
 
