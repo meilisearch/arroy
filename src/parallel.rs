@@ -154,7 +154,7 @@ impl<'a, D: Distance> TmpNodes<D> {
             return Ok(None);
         };
         let bounds = &self.bounds[self.bounds.len() - position - 2..self.bounds.len() - position];
-        let bytes = self.file.read_all((bounds[0], bounds[1]))?;
+        let bytes = self.file.read_all((bounds[0], bounds[1])).unwrap();
         Ok(Some(NodeCodec::bytes_decode(&bytes).map_err(heed::Error::Decoding)?.into_owned()))
     }
 
