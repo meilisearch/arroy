@@ -5,6 +5,7 @@ use std::path::PathBuf;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 
+use bumpalo::Bump;
 use crossbeam::channel::{bounded, Sender};
 use heed::types::{Bytes, DecodeIgnore, Unit};
 use heed::{MdbError, PutFlags, RoTxn, RwTxn};
@@ -682,15 +683,24 @@ impl<D: Distance> Writer<D> {
 
         let available_memory =
             options.available_memory.unwrap_or(usize::MAX) / current_num_threads();
+        let minimum_memory_required = D::size_of_item(self.dimensions) * (self.dimensions + 1);
+        
+        let capacity = available_memory.max(minimum_memory_required);
+        let mut bump = Bump::with_capacity(capacity);
+        bump.set_allocation_limit(Some(capacity));
 
         // safe to unwrap because we know the descendant is large
-        let items_for_tree =
-            fit_in_memory::<D, R>(available_memory, &mut to_insert, self.dimensions, &mut rng)
-                .unwrap();
+        let (items_for_tree, immutable_leaves) =
+            fill_bump_with_vectors::<D, R>(&mut bump, frozen_reader, &mut to_insert, &mut rng)?.unwrap();
+        let frozen_reader_for_building_tree = FrozzenReader {
+            leafs: &immutable_leaves,
+            trees: &frozen_reader.trees,
+            concurrent_node_ids: &frozen_reader.concurrent_node_ids,
+        };
 
         let (root_id, _nb_new_tree_nodes) = self.make_tree_in_file(
             options,
-            frozen_reader,
+            &frozen_reader_for_building_tree,
             error_snd,
             &mut rng,
             &items_for_tree,
@@ -700,9 +710,17 @@ impl<D: Distance> Writer<D> {
         )?;
         assert_eq!(root_id, descendant_id);
 
-        while let Some(to_insert) =
-            fit_in_memory::<D, R>(available_memory, &mut to_insert, self.dimensions, &mut rng)
+        bump.reset();
+
+        while let Some((to_insert, immutable_leaves)) =
+            fill_bump_with_vectors::<D, R>(&mut bump, frozen_reader, &mut to_insert, &mut rng)?
         {
+            let frozen_reader_for_inserting_elements = FrozzenReader {
+                leafs: &immutable_leaves,
+                trees: &frozen_reader.trees,
+                concurrent_node_ids: &frozen_reader.concurrent_node_ids,
+            };
+
             options.cancelled()?;
             if error_snd.is_full() {
                 return Ok(());
@@ -710,7 +728,7 @@ impl<D: Distance> Writer<D> {
 
             insert_items_in_descendants_from_tmpfile(
                 options,
-                frozen_reader,
+                &frozen_reader_for_inserting_elements,
                 &mut tmp_node,
                 error_snd,
                 &mut rng,
@@ -846,12 +864,13 @@ impl<D: Distance> Writer<D> {
 
         let mut descendants = IntMap::<ItemId, RoaringBitmap>::default();
 
-        while let Some(to_insert) = fit_in_memory::<D, R>(
-            options.available_memory.unwrap_or(usize::MAX),
+        while let Some((to_insert, immutable_leaves)) = fill_bump_with_vectors::<D, R>(
+            //&mut bump,
+            todo!(),
+            frozen_reader,
             &mut to_insert,
-            self.dimensions,
             rng,
-        ) {
+        )? {
             options.cancelled()?;
 
             let desc = self.insert_items_in_tree(
@@ -1512,52 +1531,38 @@ fn insert_items_in_descendants_from_tmpfile<D: Distance, R: Rng>(
 /// Returns the items from the `to_insert` that fit in memory.
 /// If there is no items to insert anymore, returns `None`.
 /// If everything fits in memory, returns the `to_insert` bitmap.
-pub(crate) fn fit_in_memory<D: Distance, R: Rng>(
-    memory: usize,
+pub(crate) fn fill_bump_with_vectors<'bump, D: Distance, R: Rng>(
+    bump: &'bump mut Bump,
+    frozen_reader: &FrozzenReader<D>,
     to_insert: &mut RoaringBitmap,
-    dimensions: usize,
     rng: &mut R,
-) -> Option<RoaringBitmap> {
-    if to_insert.is_empty() {
-        return None;
-    } else if to_insert.len() <= dimensions as u64 {
-        // We need at least dimensions + one extra item to create a split.
-        // If we return less than that it won't be used.
-        return Some(std::mem::take(to_insert));
-    }
-
-    let page_size = page_size::get();
-    let nb_page_allowed = (memory as f64 / page_size as f64).floor() as usize;
-    let largest_item_size = D::size_of_item(dimensions);
-    let nb_items_per_page = page_size / largest_item_size;
-    let nb_page_per_item = (largest_item_size as f64 / page_size as f64).ceil() as usize;
-
-    let nb_items = if nb_items_per_page > 1 {
-        debug_assert_eq!(nb_page_per_item, 1);
-        nb_page_allowed * nb_items_per_page
-    } else if nb_page_per_item > 1 {
-        debug_assert_eq!(nb_items_per_page, 1);
-        nb_page_allowed / nb_page_per_item
-    } else {
-        nb_page_allowed
+) -> Result<Option<(RoaringBitmap, ImmutableLeafs<'bump, D>)>> {
+    let mut immutable_leaves: ImmutableLeafs<'_, _> = ImmutableLeafs {
+        leafs: IntMap::default(),
+        constant_length: frozen_reader.leafs.constant_length,
+        _marker: std::marker::PhantomData,
     };
-
-    // We must insert at least dimensions items to create a split
-    let nb_items = if nb_items <= dimensions { dimensions + 1 } else { nb_items };
-
-    if nb_items as u64 >= to_insert.len() {
-        return Some(std::mem::take(to_insert));
-    }
 
     let mut items = RoaringBitmap::new();
 
-    for _ in 0..nb_items {
+    loop {
         let idx = rng.gen_range(0..to_insert.len());
         // Safe to unwrap because we know nb_items is smaller than the number of items in the bitmap
         let item = to_insert.select(idx as u32).unwrap();
         items.insert(item);
         to_insert.remove(item);
+
+        let value = frozen_reader.leafs.get_raw(item)?.unwrap();
+        match bump.try_alloc_slice_copy(value) {
+            Ok(slice) => {
+                items.insert(item);
+                immutable_leaves.leafs.insert(item, slice.as_ptr());
+            }
+            Err(bumpalo::AllocErr) => {
+                break;
+            }
+        };
     }
 
-    Some(items)
+    Ok(Some((items, immutable_leaves)))
 }

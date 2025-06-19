@@ -260,9 +260,9 @@ impl ConcurrentNodeIds {
 /// in the mmapped file and the transaction is kept here and therefore
 /// no longer touches the database.
 pub struct ImmutableLeafs<'t, D> {
-    leafs: IntMap<ItemId, *const u8>,
-    constant_length: Option<usize>,
-    _marker: marker::PhantomData<(&'t (), D)>,
+    pub leafs: IntMap<ItemId, *const u8>,
+    pub constant_length: Option<usize>,
+    pub _marker: marker::PhantomData<(&'t (), D)>,
 }
 
 impl<'t, D: Distance> ImmutableLeafs<'t, D> {
@@ -308,6 +308,25 @@ impl<'t, D: Distance> ImmutableLeafs<'t, D> {
         // - len: All the items share the same dimensions and are the same size
         let bytes = unsafe { slice::from_raw_parts(ptr, len) };
         NodeCodec::bytes_decode(bytes).map_err(heed::Error::Decoding).map(|node| node.leaf())
+    }
+
+
+    /// Returns the leafs identified by the given ID.
+    pub fn get_raw(&self, item_id: ItemId) -> heed::Result<Option<&'t [u8]>> {
+        let len = match self.constant_length {
+            Some(len) => len,
+            None => return Ok(None),
+        };
+        let ptr = match self.leafs.get(&item_id) {
+            Some(ptr) => *ptr,
+            None => return Ok(None),
+        };
+
+        // safety:
+        // - ptr: The pointer comes from LMDB. Since the database cannot be written to, it is still valid.
+        // - len: All the items share the same dimensions and are the same size
+        let bytes = unsafe { slice::from_raw_parts(ptr, len) };
+        Ok(Some(bytes))
     }
 }
 
