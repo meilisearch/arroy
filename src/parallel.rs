@@ -310,7 +310,6 @@ impl<'t, D: Distance> ImmutableLeafs<'t, D> {
         NodeCodec::bytes_decode(bytes).map_err(heed::Error::Decoding).map(|node| node.leaf())
     }
 
-
     /// Returns the leafs identified by the given ID.
     pub fn get_raw(&self, item_id: ItemId) -> heed::Result<Option<&'t [u8]>> {
         let len = match self.constant_length {

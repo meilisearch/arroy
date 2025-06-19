@@ -17,7 +17,8 @@ fn test_empty_bitmap() {
 fn test_all_items_fit() {
     let mut rng = StdRng::seed_from_u64(35);
     let mut bitmap = RoaringBitmap::from_sorted_iter(0..100).unwrap();
-    let result = fill_bump_with_vectors::<Euclidean, _>(usize::MAX, &mut bitmap, 128, &mut rng).unwrap();
+    let result =
+        fill_bump_with_vectors::<Euclidean, _>(usize::MAX, &mut bitmap, 128, &mut rng).unwrap();
     assert_eq!(result.len(), 100);
     assert!(bitmap.is_empty());
 }
@@ -40,7 +41,8 @@ fn test_partial_fit() {
     let largest_item_size = Euclidean::size_of_item(dimensions);
     let memory = largest_item_size * 500;
 
-    let result = fill_bump_with_vectors::<Euclidean, _>(memory, &mut bitmap, dimensions, &mut rng).unwrap();
+    let result =
+        fill_bump_with_vectors::<Euclidean, _>(memory, &mut bitmap, dimensions, &mut rng).unwrap();
     // We can't assert properly on the len of the result because the page_size vary depending on the system
     assert!(result.len() > dimensions as u64);
     assert_eq!(1000, bitmap.len() + result.len());
@@ -58,14 +60,16 @@ fn test_random_selection() {
     // Get first batch
     let mut bitmap_clone = bitmap.clone();
     let result1 =
-        fill_bump_with_vectors::<Euclidean, _>(memory, &mut bitmap_clone, dimensions, &mut rng).unwrap();
+        fill_bump_with_vectors::<Euclidean, _>(memory, &mut bitmap_clone, dimensions, &mut rng)
+            .unwrap();
     assert!(result1.len() > dimensions as u64);
     assert_eq!(1000, bitmap_clone.len() + result1.len());
 
     // Get second batch
     let mut bitmap_clone = bitmap.clone();
     let result2 =
-        fill_bump_with_vectors::<Euclidean, _>(memory, &mut bitmap_clone, dimensions, &mut rng).unwrap();
+        fill_bump_with_vectors::<Euclidean, _>(memory, &mut bitmap_clone, dimensions, &mut rng)
+            .unwrap();
     assert!(result2.len() > dimensions as u64);
     assert_eq!(1000, bitmap_clone.len() + result2.len());
 

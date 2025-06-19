@@ -4,6 +4,7 @@ use std::cell::RefCell;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
+use std::time::Instant;
 
 use bumpalo::Bump;
 use crossbeam::channel::{bounded, Sender};
@@ -684,20 +685,25 @@ impl<D: Distance> Writer<D> {
         let available_memory =
             options.available_memory.unwrap_or(usize::MAX) / current_num_threads();
         let minimum_memory_required = D::size_of_item(self.dimensions) * (self.dimensions + 1);
-        
+
         let capacity = available_memory.max(minimum_memory_required);
         let mut bump = Bump::with_capacity(capacity);
         bump.set_allocation_limit(Some(capacity));
 
+        let now = Instant::now();
         // safe to unwrap because we know the descendant is large
         let (items_for_tree, immutable_leaves) =
-            fill_bump_with_vectors::<D, R>(&mut bump, frozen_reader, &mut to_insert, &mut rng)?.unwrap();
+            fill_bump_with_vectors::<D, R>(&mut bump, frozen_reader, &mut to_insert, &mut rng)?
+                .unwrap();
         let frozen_reader_for_building_tree = FrozzenReader {
             leafs: &immutable_leaves,
             trees: &frozen_reader.trees,
             concurrent_node_ids: &frozen_reader.concurrent_node_ids,
         };
+        tracing::warn!("[BEFORE BUILDING THE TREE] filling the bump with vectors took: {:.2?}. It contains {} items, has a capacity of {}", now.elapsed(), items_for_tree.len(), capacity);
 
+
+        let now = Instant::now();
         let (root_id, _nb_new_tree_nodes) = self.make_tree_in_file(
             options,
             &frozen_reader_for_building_tree,
@@ -709,12 +715,15 @@ impl<D: Distance> Writer<D> {
             &mut tmp_node,
         )?;
         assert_eq!(root_id, descendant_id);
+        tracing::warn!("[BUILDING THE TREE] building the tree took: {:.2?} and we made a tree with {} nodes", now.elapsed(), _nb_new_tree_nodes);
 
         bump.reset();
 
+        let mut now = Instant::now();
         while let Some((to_insert, immutable_leaves)) =
             fill_bump_with_vectors::<D, R>(&mut bump, frozen_reader, &mut to_insert, &mut rng)?
         {
+            tracing::warn!("[INSERTING ELEMENTS] filling the bump with vectors took: {:.2?}. It contains {} items, has a capacity of {}", now.elapsed(), to_insert.len(), capacity);
             let frozen_reader_for_inserting_elements = FrozzenReader {
                 leafs: &immutable_leaves,
                 trees: &frozen_reader.trees,
@@ -726,6 +735,7 @@ impl<D: Distance> Writer<D> {
                 return Ok(());
             }
 
+            now = Instant::now();
             insert_items_in_descendants_from_tmpfile(
                 options,
                 &frozen_reader_for_inserting_elements,
@@ -736,6 +746,8 @@ impl<D: Distance> Writer<D> {
                 &to_insert,
                 &mut descendants,
             )?;
+            tracing::warn!("[INSERTING ELEMENTS] inserting the elements took: {:.2?}", now.elapsed());
+            now = Instant::now();
         }
 
         drop(tmp_node);
