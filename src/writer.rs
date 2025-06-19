@@ -668,6 +668,7 @@ impl<D: Distance> Writer<D> {
         frozen_reader: &'scope FrozzenReader<D>,
         tmp_nodes: Arc<ThreadLocal<RefCell<TmpNodes<D>>>>,
     ) -> Result<()> {
+        tracing::warn!("[INCREMENTAL INDEXING] starting to index the descendant");
         options.cancelled()?;
         if error_snd.is_full() {
             return Ok(());
@@ -785,6 +786,7 @@ impl<D: Distance> Writer<D> {
         tmp_nodes: Arc<ThreadLocal<RefCell<TmpNodes<D>>>>,
         descendants: IntMap<ItemId, RoaringBitmap>,
     ) -> Result<(), Error> {
+        tracing::warn!("[INSERTING DESCENDANTS] starting to insert the descendants");
         options.cancelled()?;
         if error_snd.is_full() {
             return Ok(());
