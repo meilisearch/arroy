@@ -695,8 +695,12 @@ impl<D: Distance> Writer<D> {
         tracing::warn!("[INCREMENTAL INDEXING] allocating the bump");
 
         let capacity = available_memory.max(minimum_memory_required);
-        let mut bump = Bump::with_capacity(capacity);
-        bump.set_allocation_limit(Some(capacity));
+        let mut bump = loop {
+            if let Ok(bump) = Bump::try_with_capacity(capacity) {
+                bump.set_allocation_limit(Some(capacity));
+                break bump;
+            }
+        };
 
         tracing::warn!("[INCREMENTAL INDEXING] filling the bump with the vectors that fits in {:?}B, should be close to {:?} items", capacity, capacity / D::size_of_item(self.dimensions));
 
