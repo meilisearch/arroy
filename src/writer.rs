@@ -703,7 +703,7 @@ impl<D: Distance> Writer<D> {
         let now = Instant::now();
         // safe to unwrap because we know the descendant is large
         let (items_for_tree, immutable_leaves) =
-            fill_bump_with_vectors::<D, R>(&mut bump, frozen_reader, &mut to_insert, &mut rng)?
+            fill_bump_with_vectors::<D, R>(&mut bump, capacity, self.dimensions, frozen_reader, &mut to_insert, &mut rng)?
                 .unwrap();
         let frozen_reader_for_building_tree = FrozzenReader {
             leafs: &immutable_leaves,
@@ -731,7 +731,7 @@ impl<D: Distance> Writer<D> {
 
         let mut now = Instant::now();
         while let Some((to_insert, immutable_leaves)) =
-            fill_bump_with_vectors::<D, R>(&mut bump, frozen_reader, &mut to_insert, &mut rng)?
+            fill_bump_with_vectors::<D, R>(&mut bump, capacity, self.dimensions, frozen_reader, &mut to_insert, &mut rng)?
         {
             tracing::warn!("[INSERTING ELEMENTS] filling the bump with vectors took: {:.2?}. It contains {} items, has a capacity of {}", now.elapsed(), to_insert.len(), capacity);
             let frozen_reader_for_inserting_elements = FrozzenReader {
@@ -892,6 +892,8 @@ impl<D: Distance> Writer<D> {
         while let Some((to_insert, immutable_leaves)) = fill_bump_with_vectors::<D, R>(
             //&mut bump,
             todo!(),
+            options.available_memory.unwrap_or(usize::MAX),
+            self.dimensions,
             frozen_reader,
             &mut to_insert,
             rng,
@@ -1558,6 +1560,8 @@ fn insert_items_in_descendants_from_tmpfile<D: Distance, R: Rng>(
 /// If everything fits in memory, returns the `to_insert` bitmap.
 pub(crate) fn fill_bump_with_vectors<'bump, D: Distance, R: Rng>(
     bump: &'bump mut Bump,
+    capacity: usize,
+    dimensions: usize,
     frozen_reader: &FrozzenReader<D>,
     to_insert: &mut RoaringBitmap,
     rng: &mut R,
@@ -1570,6 +1574,7 @@ pub(crate) fn fill_bump_with_vectors<'bump, D: Distance, R: Rng>(
     };
 
     let mut items = RoaringBitmap::new();
+    let mut used_memory = 0;
 
     loop {
         // let idx = rng.gen_range(0..to_insert.len());
@@ -1579,6 +1584,10 @@ pub(crate) fn fill_bump_with_vectors<'bump, D: Distance, R: Rng>(
         to_insert.remove_smallest(0);
 
         let value = frozen_reader.leafs.get_raw(item)?.unwrap();
+        used_memory += value.len();
+        if used_memory > capacity && items.len() > dimensions as u64 {
+            break;
+        }
         match bump.try_alloc_slice_copy(value) {
             Ok(slice) => {
                 items.insert(item);
