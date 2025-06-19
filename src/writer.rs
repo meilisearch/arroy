@@ -1579,7 +1579,9 @@ pub(crate) fn fill_bump_with_vectors<'bump, D: Distance, R: Rng>(
     loop {
         // let idx = rng.gen_range(0..to_insert.len());
         // Safe to unwrap because we know nb_items is smaller than the number of items in the bitmap
-        let item = to_insert.select(0).unwrap();
+        let Some(item) = to_insert.select(0) else {
+            break;
+        };
 
         let value = frozen_reader.leafs.get_raw(item)?.unwrap();
         used_memory += value.len();
