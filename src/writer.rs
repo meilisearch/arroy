@@ -698,7 +698,7 @@ impl<D: Distance> Writer<D> {
         let mut bump = Bump::with_capacity(capacity);
         bump.set_allocation_limit(Some(capacity));
 
-        tracing::warn!("[INCREMENTAL INDEXING] filling the bump with the vectors that fits in {:?}B, should be close to {:?}B", capacity, capacity / D::size_of_item(self.dimensions));
+        tracing::warn!("[INCREMENTAL INDEXING] filling the bump with the vectors that fits in {:?}B, should be close to {:?} items", capacity, capacity / D::size_of_item(self.dimensions));
 
         let now = Instant::now();
         // safe to unwrap because we know the descendant is large
@@ -1569,11 +1569,11 @@ pub(crate) fn fill_bump_with_vectors<'bump, D: Distance, R: Rng>(
     let mut items = RoaringBitmap::new();
 
     loop {
-        let idx = rng.gen_range(0..to_insert.len());
+        // let idx = rng.gen_range(0..to_insert.len());
         // Safe to unwrap because we know nb_items is smaller than the number of items in the bitmap
-        let item = to_insert.select(idx as u32).unwrap();
+        let item = to_insert.select(0).unwrap();
         items.insert(item);
-        to_insert.remove(item);
+        to_insert.remove_smallest(0);
 
         let value = frozen_reader.leafs.get_raw(item)?.unwrap();
         match bump.try_alloc_slice_copy(value) {
