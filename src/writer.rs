@@ -677,22 +677,10 @@ impl<D: Distance> Writer<D> {
         }
         tracing::warn!("[INCREMENTAL INDEXING] after checking if the channel is full, it was not");
 
-        let tmp_node = tmp_nodes.get_or_try(|| match self.tmpdir.as_ref() {
-            Some(path) => TmpNodes::new_in(path).map(RefCell::new),
-            None => TmpNodes::new().map(RefCell::new),
-        })?;
-        tracing::warn!("[INCREMENTAL INDEXING] got the tmp node");
-
-        // Safe to borrow mut here because we're the only thread running with this variable
-        let mut tmp_node = tmp_node.borrow_mut();
-        let mut descendants = IntMap::<ItemId, RoaringBitmap>::default();
-        let (descendant_id, mut to_insert) = descendant;
-
+        tracing::warn!("[INCREMENTAL INDEXING] allocating the bump");
         let available_memory =
             options.available_memory.unwrap_or(usize::MAX) / current_num_threads();
         let minimum_memory_required = D::size_of_item(self.dimensions) * (self.dimensions + 1);
-
-        tracing::warn!("[INCREMENTAL INDEXING] allocating the bump");
 
         let capacity = available_memory.max(minimum_memory_required);
         let mut bump = loop {
@@ -705,6 +693,17 @@ impl<D: Distance> Writer<D> {
                 yield_now();
             }
         };
+
+        let tmp_node = tmp_nodes.get_or_try(|| match self.tmpdir.as_ref() {
+            Some(path) => TmpNodes::new_in(path).map(RefCell::new),
+            None => TmpNodes::new().map(RefCell::new),
+        })?;
+        tracing::warn!("[INCREMENTAL INDEXING] got the tmp node");
+
+        // Safe to borrow mut here because we're the only thread running with this variable
+        let mut tmp_node = tmp_node.borrow_mut();
+        let mut descendants = IntMap::<ItemId, RoaringBitmap>::default();
+        let (descendant_id, mut to_insert) = descendant;
 
         tracing::warn!("[INCREMENTAL INDEXING] filling the bump with the vectors that fits in {:?}B, should be close to {:?} items", capacity, capacity / D::size_of_item(self.dimensions));
 
