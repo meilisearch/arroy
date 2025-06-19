@@ -760,6 +760,8 @@ impl<D: Distance> Writer<D> {
             now = Instant::now();
         }
 
+        drop(bump);
+
         drop(tmp_node);
         self.insert_descendants_in_file_and_spawn_tasks(
             rng,
@@ -1560,6 +1562,7 @@ pub(crate) fn fill_bump_with_vectors<'bump, D: Distance, R: Rng>(
     to_insert: &mut RoaringBitmap,
     rng: &mut R,
 ) -> Result<Option<(RoaringBitmap, ImmutableLeafs<'bump, D>)>> {
+    bump.reset();
     let mut immutable_leaves: ImmutableLeafs<'_, _> = ImmutableLeafs {
         leafs: IntMap::default(),
         constant_length: frozen_reader.leafs.constant_length,
