@@ -701,6 +701,7 @@ impl<D: Distance> Writer<D> {
                 break bump;
             } else {
                 tracing::error!("[INCREMENTAL INDEXING] failed to allocate the bump, retrying later");
+                std::thread::sleep(std::time::Duration::from_secs(1));
                 yield_now();
             }
         };
