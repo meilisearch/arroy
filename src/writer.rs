@@ -690,9 +690,11 @@ impl<D: Distance> Writer<D> {
                 .unwrap();
         let page_size = page_size::get();
         for item in items_for_tree.iter() {
-            let ptr = *frozen_reader.leafs.leafs.get(&item).unwrap() as usize;
-            let start_page = ptr - (page_size - (ptr % page_size));
-            let end_page = ptr + page_size + (ptr % page_size);
+            let ptr_start = *frozen_reader.leafs.leafs.get(&item).unwrap() as usize;
+            let len = frozen_reader.leafs.constant_length.unwrap();
+            let ptr_end = ptr_start + len;
+            let start_page = ptr_start - (ptr_start % page_size);
+            let end_page = ptr_end + (page_size - (ptr_end % page_size));
             unsafe {
                 madvise(
                     start_page as *const u8,
@@ -723,9 +725,11 @@ impl<D: Distance> Writer<D> {
             }
 
             for item in to_insert.iter() {
-                let ptr = *frozen_reader.leafs.leafs.get(&item).unwrap() as usize;
-                let start_page = ptr - (page_size - (ptr % page_size));
-                let end_page = ptr + page_size + (ptr % page_size);
+                let ptr_start = *frozen_reader.leafs.leafs.get(&item).unwrap() as usize;
+                let len = frozen_reader.leafs.constant_length.unwrap();
+                let ptr_end = ptr_start + len;
+                let start_page = ptr_start - (ptr_start % page_size);
+                let end_page = ptr_end + (page_size - (ptr_end % page_size));
                 unsafe {
                     madvise(
                         start_page as *const u8,
