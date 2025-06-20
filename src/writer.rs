@@ -4,6 +4,7 @@ use std::cell::RefCell;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
+use madvise::{AccessPattern, madvise};
 
 use crossbeam::channel::{bounded, Sender};
 use heed::types::{Bytes, DecodeIgnore, Unit};
@@ -687,6 +688,15 @@ impl<D: Distance> Writer<D> {
         let items_for_tree =
             fit_in_memory::<D, R>(available_memory, &mut to_insert, self.dimensions, &mut rng)
                 .unwrap();
+        for item in items_for_tree.iter() {
+            unsafe {
+                madvise(
+                    *frozen_reader.leafs.leafs.get(&item).unwrap(),
+                    frozen_reader.leafs.constant_length.unwrap(),
+                    AccessPattern::WillNeed,
+                ).expect("Advisory failed");
+            }
+        }
 
         let (root_id, _nb_new_tree_nodes) = self.make_tree_in_file(
             options,
@@ -706,6 +716,16 @@ impl<D: Distance> Writer<D> {
             options.cancelled()?;
             if error_snd.is_full() {
                 return Ok(());
+            }
+
+            for item in to_insert.iter() {
+                unsafe {
+                    madvise(
+                        *frozen_reader.leafs.leafs.get(&item).unwrap(),
+                        frozen_reader.leafs.constant_length.unwrap(),
+                        AccessPattern::WillNeed,
+                    ).expect("Advisory failed");
+                }
             }
 
             insert_items_in_descendants_from_tmpfile(
@@ -1283,7 +1303,7 @@ impl<D: Distance> Writer<D> {
 /// useful informations to synchronize the building threads.
 #[derive(Clone)]
 struct FrozzenReader<'a, D: Distance> {
-    leafs: &'a ImmutableLeafs<'a, D>,
+    pub leafs: &'a ImmutableLeafs<'a, D>,
     trees: &'a ImmutableTrees<'a, D>,
     concurrent_node_ids: &'a ConcurrentNodeIds,
 }

@@ -260,8 +260,8 @@ impl ConcurrentNodeIds {
 /// in the mmapped file and the transaction is kept here and therefore
 /// no longer touches the database.
 pub struct ImmutableLeafs<'t, D> {
-    leafs: IntMap<ItemId, *const u8>,
-    constant_length: Option<usize>,
+    pub leafs: IntMap<ItemId, *const u8>,
+    pub constant_length: Option<usize>,
     _marker: marker::PhantomData<(&'t (), D)>,
 }
 

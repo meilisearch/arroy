@@ -30,6 +30,7 @@ page_size = "0.6.0"
 enum-iterator = "2.1.0"
 thread_local = "1.1.8"
 crossbeam = "0.8.4"
+madvise = "0.1.0"
 
 [dev-dependencies]
 anyhow = "1.0.95"
