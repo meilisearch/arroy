@@ -688,11 +688,15 @@ impl<D: Distance> Writer<D> {
         let items_for_tree =
             fit_in_memory::<D, R>(available_memory, &mut to_insert, self.dimensions, &mut rng)
                 .unwrap();
+        let page_size = page_size::get();
         for item in items_for_tree.iter() {
+            let ptr = *frozen_reader.leafs.leafs.get(&item).unwrap() as usize;
+            let start_page = ptr - (page_size - (ptr % page_size));
+            let end_page = ptr + page_size + (ptr % page_size);
             unsafe {
                 madvise(
-                    *frozen_reader.leafs.leafs.get(&item).unwrap(),
-                    frozen_reader.leafs.constant_length.unwrap(),
+                    start_page as *const u8,
+                    end_page - start_page,
                     AccessPattern::WillNeed,
                 ).expect("Advisory failed");
             }
@@ -719,10 +723,13 @@ impl<D: Distance> Writer<D> {
             }
 
             for item in to_insert.iter() {
+                let ptr = *frozen_reader.leafs.leafs.get(&item).unwrap() as usize;
+                let start_page = ptr - (page_size - (ptr % page_size));
+                let end_page = ptr + page_size + (ptr % page_size);
                 unsafe {
                     madvise(
-                        *frozen_reader.leafs.leafs.get(&item).unwrap(),
-                        frozen_reader.leafs.constant_length.unwrap(),
+                        start_page as *const u8,
+                        end_page - start_page,
                         AccessPattern::WillNeed,
                     ).expect("Advisory failed");
                 }
