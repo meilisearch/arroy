@@ -4,6 +4,7 @@ use std::cell::RefCell;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
+use std::time::Instant;
 use bumpalo::Bump;
 use madvise::{AccessPattern, madvise};
 
@@ -17,6 +18,7 @@ use rayon::iter::repeatn;
 use rayon::{current_num_threads, prelude::*, Scope};
 use roaring::RoaringBitmap;
 use thread_local::ThreadLocal;
+use tracing::warn;
 
 use crate::distance::Distance;
 use crate::internals::{KeyCodec, Side};
@@ -1616,6 +1618,8 @@ pub(crate) fn fit_in_memory<'a, D: Distance, R: Rng>(
 
     let mut items = RoaringBitmap::new();
 
+    tracing::warn!("Madvising {} items", nb_items);
+    let now = Instant::now();
     for _ in 0..nb_items {
         let idx = rng.gen_range(0..to_insert.len());
         // Safe to unwrap because we know nb_items is smaller than the number of items in the bitmap
@@ -1637,17 +1641,22 @@ pub(crate) fn fit_in_memory<'a, D: Distance, R: Rng>(
             ).expect("Advisory failed");
         }
     }
+    tracing::warn!("Madvising took {:?}", now.elapsed());
 
     let mut immutable_leafs = ImmutableLeafs {
         leafs: IntMap::with_capacity_and_hasher(items.len() as usize, BuildNoHashHasher::default()),
         ..*frozen_reader.leafs
     };
 
+    tracing::warn!("Copying {} items", items.len());
+    let now = Instant::now();
     for item in items.iter() {
         let original_slice = frozen_reader.leafs.get_bytes(item)?.unwrap();
         let ptr = bumpalo.alloc_slice_copy(original_slice);
         immutable_leafs.leafs.insert(item, ptr.as_ptr() as *const u8);
     }
+
+    tracing::warn!("Copying took {:?}", now.elapsed());
 
     Ok(Some((items, immutable_leafs)))
 }
