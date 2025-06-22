@@ -1,5 +1,7 @@
 use std::io;
 
+use bumpalo::AllocErr;
+
 use crate::{key::Key, node_id::NodeMode, version::Version, ItemId};
 
 /// The different set of errors that arroy can encounter.
@@ -79,6 +81,16 @@ pub enum Error {
         /// The version that is unknown.
         version: Version,
     },
+
+    /// Failed to allocate memory
+    #[error("Failed to allocate memory: {0}")]
+    FailedToAllocateMemory(AllocErr),
+}
+
+impl From<AllocErr> for Error {
+    fn from(e: AllocErr) -> Self {
+        Self::FailedToAllocateMemory(e)
+    }
 }
 
 impl Error {

@@ -16,7 +16,7 @@ use roaring::RoaringBitmap;
 use crate::internals::{KeyCodec, Leaf, NodeCodec};
 use crate::key::{Key, Prefix, PrefixCodec};
 use crate::node::Node;
-use crate::writer::BuildOption;
+use crate::writer::{BuildOption, READ_COUNT};
 use crate::{Database, Distance, Error, ItemId, MainStep, Result, WriterProgress};
 
 #[derive(Default, Debug)]
@@ -259,10 +259,11 @@ impl ConcurrentNodeIds {
 /// It is safe to share between threads as the pointer are pointing
 /// in the mmapped file and the transaction is kept here and therefore
 /// no longer touches the database.
+#[derive(Clone)]
 pub struct ImmutableLeafs<'t, D> {
     pub leafs: IntMap<ItemId, *const u8>,
     pub constant_length: Option<usize>,
-    _marker: marker::PhantomData<(&'t (), D)>,
+    pub _marker: marker::PhantomData<(&'t (), D)>,
 }
 
 impl<'t, D: Distance> ImmutableLeafs<'t, D> {
@@ -308,6 +309,24 @@ impl<'t, D: Distance> ImmutableLeafs<'t, D> {
         // - len: All the items share the same dimensions and are the same size
         let bytes = unsafe { slice::from_raw_parts(ptr, len) };
         NodeCodec::bytes_decode(bytes).map_err(heed::Error::Decoding).map(|node| node.leaf())
+    }
+
+    /// Returns the leafs identified by the given ID.
+    pub fn get_bytes(&self, item_id: ItemId) -> heed::Result<Option<&[u8]>> {
+        let len = match self.constant_length {
+            Some(len) => len,
+            None => return Ok(None),
+        };
+        let ptr = match self.leafs.get(&item_id) {
+            Some(ptr) => *ptr,
+            None => return Ok(None),
+        };
+
+        // safety:
+        // - ptr: The pointer comes from LMDB. Since the database cannot be written to, it is still valid.
+        // - len: All the items share the same dimensions and are the same size
+        let slice = unsafe { slice::from_raw_parts(ptr, len) };
+        Ok(Some(slice))
     }
 }
 
@@ -359,6 +378,9 @@ impl<'t, D: Distance> ImmutableSubsetLeafs<'t, D> {
         } else {
             let ubound = (self.subset.len() - 1) as u32;
             let index = rng.gen_range(0..=ubound);
+            if index == 500 {
+                READ_COUNT.fetch_add(1, Ordering::Relaxed);
+            }
             match self.subset.select(index) {
                 Some(item_id) => self.leafs.get(item_id),
                 None => Ok(None),
