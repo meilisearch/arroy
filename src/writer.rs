@@ -1585,6 +1585,7 @@ pub(crate) fn fit_in_memory<'a, D: Distance, R: Rng>(
     dimensions: usize,
     rng: &mut R,
 ) -> Result<Option<(RoaringBitmap, ImmutableLeafs<'a, D>)>> {
+    bumpalo.reset();
     if to_insert.is_empty() {
         return Ok(None);
     } else if to_insert.len() <= dimensions as u64 {
