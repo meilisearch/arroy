@@ -35,9 +35,11 @@ use crate::{
     Result,
 };
 
-pub static READ_COUNT: AtomicU64 = AtomicU64::new(0);
+pub static VECTOR_ACCESS: AtomicU64 = AtomicU64::new(0);
 pub static SPLIT_ATTEMPTS: AtomicU64 = AtomicU64::new(0);
 pub static SPLIT_NODES: AtomicU64 = AtomicU64::new(0);
+pub static BUFFER_REFRESH: AtomicU64 = AtomicU64::new(0);
+pub static VECTOR_LOADED_IN_BUFFER: AtomicU64 = AtomicU64::new(0);
 
 
 /// The options available when building the arroy database.
@@ -573,7 +575,7 @@ impl<D: Distance> Writer<D> {
         // The channel will be openend only after all the tasks have been stopped.
         let (error_snd, error_rcv) = bounded(1);
 
-        tracing::warn!("read count before spawning tasks: {}", READ_COUNT.load(Ordering::Relaxed));
+        tracing::warn!("read count before spawning tasks: {}", VECTOR_ACCESS.load(Ordering::Relaxed));
 
         rayon::scope(|s| {
             let frozen_reader = &frozen_reader;
@@ -618,9 +620,17 @@ impl<D: Distance> Writer<D> {
             }
         }
 
-        let read_count = READ_COUNT.load(Ordering::Relaxed);
+        let mut max_alloc = 0;
+        for bump in Arc::into_inner(bumpalo).unwrap().into_iter() {
+            let bump = bump.into_inner();
+            max_alloc = max_alloc.max(bump.chunk_capacity());
+        }
+
+        let read_count = VECTOR_ACCESS.load(Ordering::Relaxed);
         let split_attempts = SPLIT_ATTEMPTS.load(Ordering::Relaxed);
         let split_nodes = SPLIT_NODES.load(Ordering::Relaxed);
+        let buffer_refresh = BUFFER_REFRESH.load(Ordering::Relaxed);
+        let vector_loaded_in_buffer = VECTOR_LOADED_IN_BUFFER.load(Ordering::Relaxed);
         tracing::warn!("read count: {}", read_count);
         let page_per_vector = (D::size_of_item(self.dimensions) / page_size::get()).max(1);
         tracing::warn!("total page read: {}", read_count * page_per_vector as u64);
@@ -628,6 +638,9 @@ impl<D: Distance> Writer<D> {
         tracing::warn!("total split attempts: {}", split_attempts);
         tracing::warn!("total split nodes: {}", split_nodes);
         tracing::warn!("split failure: {}", split_attempts - split_nodes);
+        tracing::warn!("buffer refresh: {}", buffer_refresh);
+        tracing::warn!("vector loaded in buffer: {}", vector_loaded_in_buffer);
+        tracing::warn!("Which mean we had to read: {} bytes from disk", vector_loaded_in_buffer * page_per_vector as u64 * page_size::get() as u64);
 
         tracing::debug!("write the metadata...");
         (options.progress)(WriterProgress { main: MainStep::WriteTheMetadata, sub: None });
@@ -723,7 +736,7 @@ impl<D: Distance> Writer<D> {
             ..*frozen_reader
         };
 
-        let before_make_tree = READ_COUNT.load(Ordering::Relaxed);
+        let before_make_tree = VECTOR_ACCESS.load(Ordering::Relaxed);
         let (root_id, _nb_new_tree_nodes) = self.make_tree_in_file(
             options,
             &frozen_reader_to_build_tree,
@@ -735,9 +748,9 @@ impl<D: Distance> Writer<D> {
             &mut tmp_node,
         )?;
         assert_eq!(root_id, descendant_id);
-        tracing::warn!("making tree increased read count by: {}", READ_COUNT.load(Ordering::Relaxed) - before_make_tree);
+        tracing::warn!("making tree increased read count by: {}", VECTOR_ACCESS.load(Ordering::Relaxed) - before_make_tree);
 
-        let before_insert_items = READ_COUNT.load(Ordering::Relaxed);
+        let before_insert_items = VECTOR_ACCESS.load(Ordering::Relaxed);
 
         while let Some((to_insert, immutable_leafs_to_insert_items)) =
             fit_in_memory::<D, R>(available_memory, &mut to_insert, frozen_reader, &mut bump, self.dimensions, &mut rng)?
@@ -764,7 +777,7 @@ impl<D: Distance> Writer<D> {
             )?;
         }
 
-        tracing::warn!("inserting items increased read count by: {}", READ_COUNT.load(Ordering::Relaxed) - before_insert_items);
+        tracing::warn!("inserting items increased read count by: {}", VECTOR_ACCESS.load(Ordering::Relaxed) - before_insert_items);
 
         drop(tmp_node);
         drop(bump);
@@ -1242,7 +1255,7 @@ impl<D: Distance> Writer<D> {
             SPLIT_ATTEMPTS.fetch_add(1, Ordering::Relaxed);
             let normal = D::create_split(&children, rng)?;
             for item_id in item_indices.iter() {
-                READ_COUNT.fetch_add(1, Ordering::Relaxed);
+                VECTOR_ACCESS.fetch_add(1, Ordering::Relaxed);
                 let node = reader.leafs.get(item_id)?.unwrap();
                 match D::side(&normal, &node) {
                     Side::Left => children_left.push(item_id),
@@ -1534,7 +1547,7 @@ fn insert_items_in_descendants_from_tmpfile<D: Distance, R: Rng>(
                 }
                 Some(ref normal) => {
                     for leaf in to_insert {
-                        READ_COUNT.fetch_add(1, Ordering::Relaxed);
+                        VECTOR_ACCESS.fetch_add(1, Ordering::Relaxed);
                         let node = frozen_reader.leafs.get(leaf)?.unwrap();
                         match D::side(normal, &node) {
                             Side::Left => left_ids.insert(leaf),
@@ -1586,13 +1599,10 @@ pub(crate) fn fit_in_memory<'a, D: Distance, R: Rng>(
     rng: &mut R,
 ) -> Result<Option<(RoaringBitmap, ImmutableLeafs<'a, D>)>> {
     bumpalo.reset();
+    BUFFER_REFRESH.fetch_add(1, Ordering::Relaxed);
     if to_insert.is_empty() {
         return Ok(None);
-    } else if to_insert.len() <= dimensions as u64 {
-        // We need at least dimensions + one extra item to create a split.
-        // If we return less than that it won't be used.
-        return Ok(Some((std::mem::take(to_insert), frozen_reader.leafs.clone())));
-    }
+    };
     
     let page_size = page_size::get();
     let nb_page_allowed = (memory as f64 / page_size as f64).floor() as usize;
@@ -1611,10 +1621,11 @@ pub(crate) fn fit_in_memory<'a, D: Distance, R: Rng>(
     };
 
     // We must insert at least dimensions items to create a split
-    let nb_items = if nb_items <= dimensions { dimensions + 1 } else { nb_items };
+    let mut nb_items = if nb_items <= dimensions { dimensions + 1 } else { nb_items };
 
-    if nb_items as u64 >= to_insert.len() {
-        return Ok(Some((std::mem::take(to_insert), frozen_reader.leafs.clone())));
+    if nb_items as u64 >= to_insert.len() || to_insert.len() <= dimensions.try_into().unwrap() {
+        nb_items = to_insert.len() as usize;
+        // return Ok(Some((std::mem::take(to_insert), frozen_reader.leafs.clone())));
     }
 
     let mut items = RoaringBitmap::new();
@@ -1652,6 +1663,7 @@ pub(crate) fn fit_in_memory<'a, D: Distance, R: Rng>(
     tracing::warn!("Copying {} items", items.len());
     let now = Instant::now();
     for item in items.iter() {
+        VECTOR_LOADED_IN_BUFFER.fetch_add(1, Ordering::Relaxed);
         let original_slice = frozen_reader.leafs.get_bytes(item)?.unwrap();
         let ptr = bumpalo.alloc_slice_copy(original_slice);
         immutable_leafs.leafs.insert(item, ptr.as_ptr() as *const u8);

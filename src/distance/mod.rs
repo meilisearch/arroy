@@ -20,7 +20,7 @@ use crate::internals::{KeyCodec, Side};
 use crate::node::Leaf;
 use crate::parallel::ImmutableSubsetLeafs;
 use crate::unaligned_vector::{UnalignedVector, UnalignedVectorCodec};
-use crate::writer::READ_COUNT;
+use crate::writer::VECTOR_ACCESS;
 use crate::NodeCodec;
 
 mod binary_quantized_cosine;
@@ -139,7 +139,7 @@ fn two_means<D: Distance, R: Rng>(
 
     let [leaf_p, leaf_q] = leafs.choose_two(rng)?.unwrap();
     let (mut leaf_p, mut leaf_q) = (leaf_p.into_owned(), leaf_q.into_owned());
-    READ_COUNT.fetch_add(2, Ordering::Relaxed);
+    VECTOR_ACCESS.fetch_add(2, Ordering::Relaxed);
 
     if cosine {
         D::normalize(&mut leaf_p);
@@ -153,7 +153,7 @@ fn two_means<D: Distance, R: Rng>(
     let mut jc = 1.0;
     for _ in 0..ITERATION_STEPS {
         let node_k = leafs.choose(rng)?.unwrap();
-        READ_COUNT.fetch_add(1, Ordering::Relaxed);
+        VECTOR_ACCESS.fetch_add(1, Ordering::Relaxed);
         let di = ic * D::non_built_distance(&leaf_p, &node_k);
         let dj = jc * D::non_built_distance(&leaf_q, &node_k);
         let norm = if cosine { D::norm(&node_k) } else { 1.0 };

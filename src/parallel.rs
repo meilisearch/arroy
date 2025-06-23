@@ -16,7 +16,7 @@ use roaring::RoaringBitmap;
 use crate::internals::{KeyCodec, Leaf, NodeCodec};
 use crate::key::{Key, Prefix, PrefixCodec};
 use crate::node::Node;
-use crate::writer::{BuildOption, READ_COUNT};
+use crate::writer::{BuildOption, VECTOR_ACCESS};
 use crate::{Database, Distance, Error, ItemId, MainStep, Result, WriterProgress};
 
 #[derive(Default, Debug)]
@@ -379,7 +379,7 @@ impl<'t, D: Distance> ImmutableSubsetLeafs<'t, D> {
             let ubound = (self.subset.len() - 1) as u32;
             let index = rng.gen_range(0..=ubound);
             if index == 500 {
-                READ_COUNT.fetch_add(1, Ordering::Relaxed);
+                VECTOR_ACCESS.fetch_add(1, Ordering::Relaxed);
             }
             match self.subset.select(index) {
                 Some(item_id) => self.leafs.get(item_id),
