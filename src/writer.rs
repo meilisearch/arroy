@@ -813,6 +813,7 @@ impl<D: Distance> Writer<D> {
                             let _ = error_snd.try_send(e);
                         }
                         Err(panic) => {
+                            // In case of a panic, the error message is either a static `str` or a `String`. If it's something else, we don't know how to display it.
                             let msg = match panic.downcast_ref::<&'static str>() {
                                 Some(s) => *s,
                                 None => match panic.downcast_ref::<String>() {
