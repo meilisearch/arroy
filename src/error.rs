@@ -79,6 +79,10 @@ pub enum Error {
         /// The version that is unknown.
         version: Version,
     },
+
+    /// Unexpected panic.
+    #[error("Unexpected panic in: {0}")]
+    Panic(String),
 }
 
 impl Error {
