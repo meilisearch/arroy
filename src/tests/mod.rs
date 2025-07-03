@@ -11,6 +11,7 @@ use tempfile::TempDir;
 use crate::version::VersionCodec;
 use crate::{Database, Distance, MetadataCodec, NodeCodec, NodeMode, Reader};
 
+mod binary;
 mod binary_quantized;
 mod fit_in_memory;
 mod reader;
