@@ -1364,19 +1364,22 @@ pub(crate) fn target_n_trees(
         Some(n) => n as u64,
         // In the case we never made any tree we can roughly guess how many trees we want to build in total
         None => {
-            // Full Binary Tree Theorem: The number of leaves in a non-empty full binary tree is one more than the number of internal nodes.
-            // Source: https://opendsa-server.cs.vt.edu/ODSA/Books/CS3/html/BinaryTreeFullThm.html
-            //
-            // That means we can exactly find the minimal number of tree node required to hold all the items
-            // 1. How many descendants do we need:
-            let descendant_required = item_indices.len() / dimensions;
-            // 2. Find the number of tree nodes required per trees
-            let tree_nodes_per_tree = descendant_required + 1;
-            // 3. Find the number of tree required to get as many tree nodes as item:
-            let mut nb_trees = item_indices.len() / tree_nodes_per_tree;
+            // See https://github.com/meilisearch/guess-right-number-of-trees for more details on how we got this formula.
 
-            // 4. We don't want to shrink too quickly when a user remove some documents.
-            //    We're only going to shrink if we should remove more than 20% of our trees.
+            let nb_vec = item_indices.len() as f64;
+            let nb_trees = if nb_vec < 10_000. {
+                2.0_f64.powf(nb_vec.log2() - 6.0)
+            } else {
+                2.0_f64.powf(
+                    nb_vec.log10()
+                        + (dimensions as f64).log10()
+                        + (768.0 / dimensions as f64).powf(4.0),
+                )
+            };
+            let mut nb_trees = nb_trees.ceil() as u64;
+
+            // We don't want to shrink too quickly when a user remove some documents.
+            // We're only going to shrink if we should remove more than 20% of our trees.
             if (roots.len() as u64) > nb_trees {
                 let tree_to_remove = roots.len() as u64 - nb_trees;
                 if (tree_to_remove as f64 / nb_trees as f64) < 0.20 {
