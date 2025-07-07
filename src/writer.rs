@@ -1365,12 +1365,16 @@ pub(crate) fn target_n_trees(
         // In the case we never made any tree we can roughly guess how many trees we want to build in total
         None => {
             // See https://github.com/meilisearch/guess-right-number-of-trees for more details on how we got this formula.
-            
+
             let nb_vec = item_indices.len() as f64;
             let nb_trees = if nb_vec < 10_000. {
                 2.0_f64.powf(nb_vec.log2() - 6.0)
             } else {
-                2.0_f64.powf(nb_vec.log10() + (dimensions as f64).log10() + (768.0 / dimensions as f64).powf(4.0))
+                2.0_f64.powf(
+                    nb_vec.log10()
+                        + (dimensions as f64).log10()
+                        + (768.0 / dimensions as f64).powf(4.0),
+                )
             };
             let mut nb_trees = nb_trees.ceil() as u64;
 
