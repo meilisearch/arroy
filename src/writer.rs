@@ -1364,16 +1364,15 @@ pub(crate) fn target_n_trees(
         Some(n) => n as u64,
         // In the case we never made any tree we can roughly guess how many trees we want to build in total
         None => {
-            // We notice that increasing the dataset size by an order of magnitude requires
-            // doubling the number of trees to saturate recall
-            // That relation looks like: n_trees = 2^{log10(item_indices.len()) + b}, with an adjustment
-            // factor b to center the trees.
-            //
-            //  To account for different embedding dimensions we notice that most providers offer
-            //  embedings on ~O(10^3) and let `b` = log10(dim) + 1
-            let exp = (item_indices.len() as f64).log10() + (dimensions as f64).log10() + 1.0;
-            let mut nb_trees = 2f64.powf(exp).ceil() as u64;
-            nb_trees = nb_trees.min(item_indices.len());
+            // See https://github.com/meilisearch/guess-right-number-of-trees for more details on how we got this formula.
+            
+            let nb_vec = item_indices.len() as f64;
+            let nb_trees = if nb_vec < 10_000. {
+                2.0_f64.powf(nb_vec.log2() - 6.0)
+            } else {
+                2.0_f64.powf(nb_vec.log10() + (dimensions as f64).log10() + (768.0 / dimensions as f64).powf(4.0))
+            };
+            let mut nb_trees = nb_trees.ceil() as u64;
 
             // We don't want to shrink too quickly when a user remove some documents.
             // We're only going to shrink if we should remove more than 20% of our trees.

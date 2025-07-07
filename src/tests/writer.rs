@@ -48,9 +48,9 @@ fn guess_right_number_of_tree_while_growing() {
     let quick_target = |dim, bitmap| target_n_trees(&BuildOption::default(), dim, bitmap, &[]);
 
     assert_snapshot!(quick_target(768, &b1), @"1");
-    assert_snapshot!(quick_target(768, &b10), @"10");
-    assert_snapshot!(quick_target(768, &b100), @"60");
-    assert_snapshot!(quick_target(768, &b1000), @"119");
+    assert_snapshot!(quick_target(768, &b10), @"1");
+    assert_snapshot!(quick_target(768, &b100), @"2");
+    assert_snapshot!(quick_target(768, &b1000), @"16");
     assert_snapshot!(quick_target(768, &b10_000), @"237");
     assert_snapshot!(quick_target(768, &b100_000), @"473");
     assert_snapshot!(quick_target(768, &b1_000_000), @"946");
@@ -58,24 +58,24 @@ fn guess_right_number_of_tree_while_growing() {
     assert_snapshot!(quick_target(768, &b100_000_000), @"3784");
 
     assert_snapshot!(quick_target(1512, &b1), @"1");
-    assert_snapshot!(quick_target(1512, &b10), @"10");
-    assert_snapshot!(quick_target(1512, &b100), @"73");
-    assert_snapshot!(quick_target(1512, &b1000), @"145");
-    assert_snapshot!(quick_target(1512, &b10_000), @"290");
-    assert_snapshot!(quick_target(1512, &b100_000), @"580");
-    assert_snapshot!(quick_target(1512, &b1_000_000), @"1160");
-    assert_snapshot!(quick_target(1512, &b10_000_000), @"2320");
-    assert_snapshot!(quick_target(1512, &b100_000_000), @"4639");
+    assert_snapshot!(quick_target(1512, &b10), @"1");
+    assert_snapshot!(quick_target(1512, &b100), @"2");
+    assert_snapshot!(quick_target(1512, &b1000), @"16");
+    assert_snapshot!(quick_target(1512, &b10_000), @"152");
+    assert_snapshot!(quick_target(1512, &b100_000), @"304");
+    assert_snapshot!(quick_target(1512, &b1_000_000), @"608");
+    assert_snapshot!(quick_target(1512, &b10_000_000), @"1215");
+    assert_snapshot!(quick_target(1512, &b100_000_000), @"2429");
 
     assert_snapshot!(quick_target(3072, &b1), @"1");
-    assert_snapshot!(quick_target(3072, &b10), @"10");
-    assert_snapshot!(quick_target(3072, &b100), @"90");
-    assert_snapshot!(quick_target(3072, &b1000), @"180");
-    assert_snapshot!(quick_target(3072, &b10_000), @"359");
-    assert_snapshot!(quick_target(3072, &b100_000), @"718");
-    assert_snapshot!(quick_target(3072, &b1_000_000), @"1436");
-    assert_snapshot!(quick_target(3072, &b10_000_000), @"2872");
-    assert_snapshot!(quick_target(3072, &b100_000_000), @"5743");
+    assert_snapshot!(quick_target(3072, &b10), @"1");
+    assert_snapshot!(quick_target(3072, &b100), @"2");
+    assert_snapshot!(quick_target(3072, &b1000), @"16");
+    assert_snapshot!(quick_target(3072, &b10_000), @"180");
+    assert_snapshot!(quick_target(3072, &b100_000), @"360");
+    assert_snapshot!(quick_target(3072, &b1_000_000), @"720");
+    assert_snapshot!(quick_target(3072, &b10_000_000), @"1440");
+    assert_snapshot!(quick_target(3072, &b100_000_000), @"2879");
 }
 
 #[ignore = "strange test"]
@@ -980,23 +980,11 @@ fn delete_extraneous_tree() {
     insta::assert_snapshot!(handle, @r#"
     ==================
     Dumping index 0
-    Root: Metadata { dimensions: 4, items: RoaringBitmap<[0, 1, 2, 3, 4]>, roots: [0, 1, 2, 3, 4], distance: "euclidean" }
+    Root: Metadata { dimensions: 4, items: RoaringBitmap<[0, 1, 2, 3, 4]>, roots: [0], distance: "euclidean" }
     Version: Version { major: 0, minor: 7, patch: 0 }
-    Tree 0: SplitPlaneNormal(SplitPlaneNormal<euclidean> { left: 13, right: 14, normal: Leaf { header: NodeHeaderEuclidean { bias: "1.5952" }, vector: [-1.0000, 0.0000, 0.0000, 0.0000] } })
-    Tree 1: SplitPlaneNormal(SplitPlaneNormal<euclidean> { left: 11, right: 12, normal: Leaf { header: NodeHeaderEuclidean { bias: "-2.2778" }, vector: [1.0000, 0.0000, 0.0000, 0.0000] } })
-    Tree 2: SplitPlaneNormal(SplitPlaneNormal<euclidean> { left: 9, right: 10, normal: Leaf { header: NodeHeaderEuclidean { bias: "-2.3125" }, vector: [1.0000, 0.0000, 0.0000, 0.0000] } })
-    Tree 3: SplitPlaneNormal(SplitPlaneNormal<euclidean> { left: 7, right: 8, normal: Leaf { header: NodeHeaderEuclidean { bias: "-1.8857" }, vector: [1.0000, 0.0000, 0.0000, 0.0000] } })
-    Tree 4: SplitPlaneNormal(SplitPlaneNormal<euclidean> { left: 5, right: 6, normal: Leaf { header: NodeHeaderEuclidean { bias: "1.7500" }, vector: [-1.0000, 0.0000, 0.0000, 0.0000] } })
-    Tree 5: Descendants(Descendants { descendants: [2, 3, 4] })
-    Tree 6: Descendants(Descendants { descendants: [0, 1] })
-    Tree 7: Descendants(Descendants { descendants: [0, 1] })
-    Tree 8: Descendants(Descendants { descendants: [2, 3, 4] })
-    Tree 9: Descendants(Descendants { descendants: [0, 1, 2] })
-    Tree 10: Descendants(Descendants { descendants: [3, 4] })
-    Tree 11: Descendants(Descendants { descendants: [0, 1, 2] })
-    Tree 12: Descendants(Descendants { descendants: [3, 4] })
-    Tree 13: Descendants(Descendants { descendants: [2, 3, 4] })
-    Tree 14: Descendants(Descendants { descendants: [0, 1] })
+    Tree 0: SplitPlaneNormal(SplitPlaneNormal<euclidean> { left: 1, right: 2, normal: Leaf { header: NodeHeaderEuclidean { bias: "1.5952" }, vector: [-1.0000, 0.0000, 0.0000, 0.0000] } })
+    Tree 1: Descendants(Descendants { descendants: [2, 3, 4] })
+    Tree 2: Descendants(Descendants { descendants: [0, 1] })
     Item 0: Leaf(Leaf { header: NodeHeaderEuclidean { bias: "0.0000" }, vector: [0.0000, 0.0000, 0.0000, 0.0000] })
     Item 1: Leaf(Leaf { header: NodeHeaderEuclidean { bias: "0.0000" }, vector: [1.0000, 0.0000, 0.0000, 0.0000] })
     Item 2: Leaf(Leaf { header: NodeHeaderEuclidean { bias: "0.0000" }, vector: [2.0000, 0.0000, 0.0000, 0.0000] })
@@ -1012,14 +1000,16 @@ fn delete_extraneous_tree() {
     insta::assert_snapshot!(handle, @r#"
     ==================
     Dumping index 0
-    Root: Metadata { dimensions: 2, items: RoaringBitmap<[0, 1, 2, 3, 4]>, roots: [1, 2], distance: "euclidean" }
+    Root: Metadata { dimensions: 2, items: RoaringBitmap<[0, 1, 2, 3, 4]>, roots: [0, 3], distance: "euclidean" }
     Version: Version { major: 0, minor: 7, patch: 0 }
-    Tree 1: SplitPlaneNormal(SplitPlaneNormal<euclidean> { left: 11, right: 12, normal: Leaf { header: NodeHeaderEuclidean { bias: "-2.2778" }, vector: [1.0000, 0.0000, 0.0000, 0.0000] } })
-    Tree 2: SplitPlaneNormal(SplitPlaneNormal<euclidean> { left: 9, right: 10, normal: Leaf { header: NodeHeaderEuclidean { bias: "-2.3125" }, vector: [1.0000, 0.0000, 0.0000, 0.0000] } })
-    Tree 9: Descendants(Descendants { descendants: [0, 1, 2] })
-    Tree 10: Descendants(Descendants { descendants: [3, 4] })
-    Tree 11: Descendants(Descendants { descendants: [0, 1, 2] })
-    Tree 12: Descendants(Descendants { descendants: [3, 4] })
+    Tree 0: SplitPlaneNormal(SplitPlaneNormal<euclidean> { left: 1, right: 2, normal: Leaf { header: NodeHeaderEuclidean { bias: "1.5952" }, vector: [-1.0000, 0.0000, 0.0000, 0.0000] } })
+    Tree 1: Descendants(Descendants { descendants: [2, 3, 4] })
+    Tree 2: Descendants(Descendants { descendants: [0, 1] })
+    Tree 3: SplitPlaneNormal(SplitPlaneNormal<euclidean> { left: 6, right: 7, normal: Leaf { header: NodeHeaderEuclidean { bias: "-2.1857" }, vector: [1.0000, 0.0000, 0.0000, 0.0000] } })
+    Tree 4: Descendants(Descendants { descendants: [0] })
+    Tree 5: Descendants(Descendants { descendants: [1, 2] })
+    Tree 6: SplitPlaneNormal(SplitPlaneNormal<euclidean> { left: 4, right: 5, normal: Leaf { header: NodeHeaderEuclidean { bias: "-0.6000" }, vector: [1.0000, 0.0000, 0.0000, 0.0000] } })
+    Tree 7: Descendants(Descendants { descendants: [3, 4] })
     Item 0: Leaf(Leaf { header: NodeHeaderEuclidean { bias: "0.0000" }, vector: [0.0000, 0.0000, 0.0000, 0.0000] })
     Item 1: Leaf(Leaf { header: NodeHeaderEuclidean { bias: "0.0000" }, vector: [1.0000, 0.0000, 0.0000, 0.0000] })
     Item 2: Leaf(Leaf { header: NodeHeaderEuclidean { bias: "0.0000" }, vector: [2.0000, 0.0000, 0.0000, 0.0000] })
@@ -1035,11 +1025,13 @@ fn delete_extraneous_tree() {
     insta::assert_snapshot!(handle, @r#"
     ==================
     Dumping index 0
-    Root: Metadata { dimensions: 2, items: RoaringBitmap<[0, 1, 2, 3, 4]>, roots: [2], distance: "euclidean" }
+    Root: Metadata { dimensions: 2, items: RoaringBitmap<[0, 1, 2, 3, 4]>, roots: [3], distance: "euclidean" }
     Version: Version { major: 0, minor: 7, patch: 0 }
-    Tree 2: SplitPlaneNormal(SplitPlaneNormal<euclidean> { left: 9, right: 10, normal: Leaf { header: NodeHeaderEuclidean { bias: "-2.3125" }, vector: [1.0000, 0.0000, 0.0000, 0.0000] } })
-    Tree 9: Descendants(Descendants { descendants: [0, 1, 2] })
-    Tree 10: Descendants(Descendants { descendants: [3, 4] })
+    Tree 3: SplitPlaneNormal(SplitPlaneNormal<euclidean> { left: 6, right: 7, normal: Leaf { header: NodeHeaderEuclidean { bias: "-2.1857" }, vector: [1.0000, 0.0000, 0.0000, 0.0000] } })
+    Tree 4: Descendants(Descendants { descendants: [0] })
+    Tree 5: Descendants(Descendants { descendants: [1, 2] })
+    Tree 6: SplitPlaneNormal(SplitPlaneNormal<euclidean> { left: 4, right: 5, normal: Leaf { header: NodeHeaderEuclidean { bias: "-0.6000" }, vector: [1.0000, 0.0000, 0.0000, 0.0000] } })
+    Tree 7: Descendants(Descendants { descendants: [3, 4] })
     Item 0: Leaf(Leaf { header: NodeHeaderEuclidean { bias: "0.0000" }, vector: [0.0000, 0.0000, 0.0000, 0.0000] })
     Item 1: Leaf(Leaf { header: NodeHeaderEuclidean { bias: "0.0000" }, vector: [1.0000, 0.0000, 0.0000, 0.0000] })
     Item 2: Leaf(Leaf { header: NodeHeaderEuclidean { bias: "0.0000" }, vector: [2.0000, 0.0000, 0.0000, 0.0000] })
