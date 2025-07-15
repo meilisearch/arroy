@@ -1,4 +1,4 @@
-use std::borrow::Cow;
+use std::fmt;
 
 use bytemuck::{Pod, Zeroable};
 use rand::Rng;
@@ -18,9 +18,14 @@ pub enum Cosine {}
 
 /// The header of Cosine leaf nodes.
 #[repr(C)]
-#[derive(Pod, Zeroable, Debug, Clone, Copy)]
+#[derive(Pod, Zeroable, Clone, Copy)]
 pub struct NodeHeaderCosine {
-    norm: f32,
+    pub(crate) norm: f32,
+}
+impl fmt::Debug for NodeHeaderCosine {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("NodeHeaderCosine").field("norm", &format!("{:.4}", self.norm)).finish()
+    }
 }
 
 impl Distance for Cosine {
@@ -68,7 +73,7 @@ impl Distance for Cosine {
     fn create_split<'a, R: Rng>(
         children: &'a ImmutableSubsetLeafs<Self>,
         rng: &mut R,
-    ) -> heed::Result<Cow<'a, UnalignedVector<Self::VectorCodec>>> {
+    ) -> heed::Result<Leaf<'a, Self>> {
         let [node_p, node_q] = two_means(rng, children, true)?;
         let vector: Vec<f32> =
             node_p.vector.iter().zip(node_q.vector.iter()).map(|(p, q)| p - q).collect();
@@ -76,13 +81,10 @@ impl Distance for Cosine {
         let mut normal = Leaf { header: NodeHeaderCosine { norm: 0.0 }, vector: unaligned_vector };
         Self::normalize(&mut normal);
 
-        Ok(normal.vector)
+        Ok(normal)
     }
 
-    fn margin_no_header(
-        p: &UnalignedVector<Self::VectorCodec>,
-        q: &UnalignedVector<Self::VectorCodec>,
-    ) -> f32 {
-        dot_product(p, q)
+    fn margin(p: &Leaf<Self>, q: &Leaf<Self>) -> f32 {
+        dot_product(&p.vector, &q.vector)
     }
 }

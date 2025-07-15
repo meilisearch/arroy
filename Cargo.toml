@@ -28,6 +28,8 @@ thiserror = "2.0.9"
 nohash = "0.2.0"
 page_size = "0.6.0"
 enum-iterator = "2.1.0"
+thread_local = "1.1.8"
+crossbeam = "0.8.4"
 pyo3 = { version = "0.25.0", optional = true }
 numpy = { version = "0.25.0", optional = true }
 once_cell = { version = "1.21.3", optional = true }
