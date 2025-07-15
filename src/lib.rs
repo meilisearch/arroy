@@ -93,7 +93,7 @@ mod version;
 mod writer;
 
 #[cfg(feature = "pyo3")]
-mod python;
+pub mod python;
 #[cfg(test)]
 mod tests;
 mod unaligned_vector;

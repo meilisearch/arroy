@@ -1,3 +1,4 @@
+//! Python bindings for arroy.
 use std::{path::PathBuf, sync::LazyLock};
 
 // TODO: replace with std::sync::Mutex once MutexGuard::map is stable.
@@ -10,6 +11,8 @@ use pyo3::{
     prelude::*,
     types::{PyTraceback, PyType},
 };
+use pyo3_stub_gen::define_stub_info_gatherer;
+use pyo3_stub_gen::derive::*;
 
 use crate::{distance, Database, ItemId, Writer};
 
@@ -19,6 +22,7 @@ static RW_TXN: LazyLock<Mutex<Option<heed::RwTxn<'static>>>> = LazyLock::new(|| 
 const TWENTY_HUNDRED_MIB: usize = 2 * 1024 * 1024 * 1024;
 
 /// The distance type to use.
+#[gen_stub_pyclass_enum]
 #[pyclass]
 #[derive(Debug, Clone, Copy)]
 enum DistanceType {
@@ -47,10 +51,12 @@ impl DynDatabase {
 }
 
 /// A vector database for a specific distance type.
+#[gen_stub_pyclass]
 #[pyclass(name = "Database")]
 #[derive(Debug, Clone)]
 struct PyDatabase(DynDatabase);
 
+#[gen_stub_pymethods]
 #[pymethods]
 impl PyDatabase {
     /// Create a new database.
@@ -113,6 +119,12 @@ enum DynWriter {
 }
 
 /// A writer for a specific index and dimensions.
+///
+/// Usage:
+///
+/// >>> with db.writer(0, 2) as writer:
+/// ...     writer.add_item(0, [0.1, 0.2])
+#[gen_stub_pyclass]
 #[pyclass(name = "Writer")]
 struct PyWriter(DynWriter);
 
@@ -151,7 +163,11 @@ impl PyWriter {
         PyDatabase::commit_rw_txn()?;
         Ok(())
     }
+}
 
+#[gen_stub_pymethods]
+#[pymethods]
+impl PyWriter {
     /// Store a vector associated with an item ID in the database.
     fn add_item(&mut self, item: ItemId, vector: PyReadonlyArray1<f32>) -> PyResult<()> {
         let mut wtxn = get_rw_txn()?;
@@ -187,10 +203,14 @@ fn h2py_err<E: Into<crate::error::Error>>(e: E) -> PyErr {
     }
 }
 
+/// The Python module for arroy.
 #[pyo3::pymodule]
 #[pyo3(name = "arroy")]
 pub fn pymodule(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<PyDatabase>()?;
     m.add_class::<PyWriter>()?;
+    m.add_class::<DistanceType>()?;
     Ok(())
 }
+
+define_stub_info_gatherer!(stub_info);

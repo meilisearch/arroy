@@ -26,3 +26,5 @@ test = ["pytest"]
 
 [tool.maturin]
 features = ["extension-module"]
+python-source = "python"
+
