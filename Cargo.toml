@@ -60,7 +60,7 @@ assert-reader-validity = []
 extension-module = ["pyo3", "pyo3/extension-module"]
 
 # This feature only exists independently from `extension-module` to write tests for Python features.
-pyo3 = ["dep:pyo3", "pyo3-stub-gen", "pyo3/multiple-pymethods", "numpy", "once_cell", "parking_lot"]
+pyo3 = ["dep:pyo3", "pyo3-stub-gen", "numpy", "once_cell", "parking_lot"]
 
 [lib]
 crate-type = ["cdylib", "rlib"]

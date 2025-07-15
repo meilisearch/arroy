@@ -7,9 +7,9 @@ use parking_lot::{MappedMutexGuard, Mutex, MutexGuard};
 // TODO: replace with std::sync::OnceLock once get_or_try_init is stable.
 use once_cell::sync::OnceCell as OnceLock;
 use pyo3::{
-    exceptions::{PyBaseException, PyIOError, PyRuntimeError},
+    exceptions::{PyIOError, PyRuntimeError},
     prelude::*,
-    types::{PyTraceback, PyType},
+    types::PyType,
 };
 use pyo3_stub_gen::define_stub_info_gatherer;
 use pyo3_stub_gen::derive::*;
@@ -147,8 +147,10 @@ impl PyWriter {
     }
 }
 
+#[gen_stub_pymethods]
 #[pymethods]
 impl PyWriter {
+    #[pyo3(signature = ())] // make pyo3_stub_gen ignore “slf”
     fn __enter__<'py>(slf: Bound<'py, Self>) -> Bound<'py, Self> {
         slf
     }
@@ -156,18 +158,14 @@ impl PyWriter {
     fn __exit__<'py>(
         &self,
         _exc_type: Option<Bound<'py, PyType>>,
-        _exc_value: Option<Bound<'py, PyBaseException>>,
-        _traceback: Option<Bound<'py, PyTraceback>>,
+        _exc_value: Option<Bound<'py, PyAny /*PyBaseException*/>>,
+        _traceback: Option<Bound<'py, PyAny /*PyTraceback*/>>,
     ) -> PyResult<()> {
         self.build()?;
         PyDatabase::commit_rw_txn()?;
         Ok(())
     }
-}
 
-#[gen_stub_pymethods]
-#[pymethods]
-impl PyWriter {
     /// Store a vector associated with an item ID in the database.
     fn add_item(&mut self, item: ItemId, vector: PyReadonlyArray1<f32>) -> PyResult<()> {
         let mut wtxn = get_rw_txn()?;
