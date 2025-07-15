@@ -1,8 +1,8 @@
 Cargo.lock
 /target
-/python/arroy.pyi
 /.venv/
 /assets/test.tree
+/arroy.pyi
 __pycache__/
 *.out
 *.tree
