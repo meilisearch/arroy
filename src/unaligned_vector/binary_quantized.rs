@@ -190,7 +190,11 @@ unsafe fn to_vec_neon(vec: &UnalignedVector<BinaryQuantized>) -> Vec<f32> {
 
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 unsafe fn to_vec_sse(vec: &UnalignedVector<BinaryQuantized>) -> Vec<f32> {
+    #[cfg(target_arch = "x86_64")]
     use core::arch::x86_64::*;
+
+    #[cfg(target_arch = "x86")]
+    use core::arch::x86::*;
 
     let mut output: Vec<f32> = vec![0.0; vec.len()];
     let output_ptr = output.as_mut_ptr();
