@@ -286,9 +286,14 @@ impl<'t, D: Distance> Reader<'t, D> {
         if self.items.is_empty() {
             return Ok(Vec::new());
         }
+        let candidates = opt.candidates.map(|candidates| candidates & &self.items);
 
-        let nns = match opt.candidates {
-            Some(candidates) if candidates.len() < 1000 => candidates.iter().collect(),
+        let nns = match candidates {
+            // When we're filtering on 5% or less of the database we don't use the trees and
+            // just sort every candidates by hand
+            Some(candidates) if (candidates.len() as f32 / self.items.len() as f32) < 0.5 => {
+                candidates.iter().collect()
+            }
             _ => {
                 // Since the datastructure describes a kind of btree, the capacity is something in the order of:
                 // The number of root nodes + log2 of the total number of vectors.
