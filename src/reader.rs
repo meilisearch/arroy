@@ -286,53 +286,68 @@ impl<'t, D: Distance> Reader<'t, D> {
         if self.items.is_empty() {
             return Ok(Vec::new());
         }
-        // Since the datastructure describes a kind of btree, the capacity is something in the order of:
-        // The number of root nodes + log2 of the total number of vectors.
-        let mut queue =
-            BinaryHeap::with_capacity(self.roots.len() + self.items.len().ilog2() as usize);
-        let search_k = opt.search_k.map_or(opt.count * self.roots.len(), NonZeroUsize::get);
-        let search_k = opt
-            .oversampling
-            .map_or(search_k.saturating_mul(D::DEFAULT_OVERSAMPLING), |oversampling| {
-                search_k.saturating_mul(oversampling.get())
-            });
 
-        // Insert all the root nodes and associate them to the highest distance.
-        queue.extend(repeat(OrderedFloat(f32::INFINITY)).zip(self.roots.iter().map(NodeId::tree)));
+        let nns = match opt.candidates {
+            Some(candidates) if candidates.len() < 1000 => candidates.iter().collect(),
+            _ => {
+                // Since the datastructure describes a kind of btree, the capacity is something in the order of:
+                // The number of root nodes + log2 of the total number of vectors.
+                let mut queue =
+                    BinaryHeap::with_capacity(self.roots.len() + self.items.len().ilog2() as usize);
+                let search_k = opt.search_k.map_or(opt.count * self.roots.len(), NonZeroUsize::get);
+                let search_k = opt
+                    .oversampling
+                    .map_or(search_k.saturating_mul(D::DEFAULT_OVERSAMPLING), |oversampling| {
+                        search_k.saturating_mul(oversampling.get())
+                    });
 
-        let mut nns = Vec::new();
-        while nns.len() < search_k {
-            let (OrderedFloat(dist), item) = match queue.pop() {
-                Some(out) => out,
-                None => break,
-            };
+                // Insert all the root nodes and associate them to the highest distance.
+                queue.extend(
+                    repeat(OrderedFloat(f32::INFINITY)).zip(self.roots.iter().map(NodeId::tree)),
+                );
 
-            let key = Key::new(self.index, item);
-            match self.database.get(rtxn, &key)?.ok_or(Error::missing_key(key))? {
-                Node::Leaf(_) => {
-                    if opt.candidates.map_or(true, |c| c.contains(item.item)) {
-                        nns.push(item.unwrap_item());
+                let mut nns = Vec::new();
+                while nns.len() < search_k {
+                    let (OrderedFloat(dist), item) = match queue.pop() {
+                        Some(out) => out,
+                        None => break,
+                    };
+
+                    let key = Key::new(self.index, item);
+                    match self.database.get(rtxn, &key)?.ok_or(Error::missing_key(key))? {
+                        Node::Leaf(_) => {
+                            if opt.candidates.map_or(true, |c| c.contains(item.item)) {
+                                nns.push(item.unwrap_item());
+                            }
+                        }
+                        Node::Descendants(Descendants { descendants }) => {
+                            if let Some(candidates) = opt.candidates {
+                                nns.extend((descendants.into_owned() & candidates).iter());
+                            } else {
+                                nns.extend(descendants.iter());
+                            }
+                        }
+                        Node::SplitPlaneNormal(SplitPlaneNormal { normal, left, right }) => {
+                            let margin = D::margin_no_header(&normal, &query_leaf.vector);
+                            queue.push((
+                                OrderedFloat(D::pq_distance(dist, margin, Side::Left)),
+                                left,
+                            ));
+                            queue.push((
+                                OrderedFloat(D::pq_distance(dist, margin, Side::Right)),
+                                right,
+                            ));
+                        }
                     }
                 }
-                Node::Descendants(Descendants { descendants }) => {
-                    if let Some(candidates) = opt.candidates {
-                        nns.extend((descendants.into_owned() & candidates).iter());
-                    } else {
-                        nns.extend(descendants.iter());
-                    }
-                }
-                Node::SplitPlaneNormal(SplitPlaneNormal { normal, left, right }) => {
-                    let margin = D::margin_no_header(&normal, &query_leaf.vector);
-                    queue.push((OrderedFloat(D::pq_distance(dist, margin, Side::Left)), left));
-                    queue.push((OrderedFloat(D::pq_distance(dist, margin, Side::Right)), right));
-                }
+
+                // Get distances for all items
+                // To avoid calculating distance multiple times for any items, sort by id and dedup by id.
+                nns.sort_unstable();
+                nns.dedup();
+                nns
             }
-        }
-
-        // Get distances for all items
-        // To avoid calculating distance multiple times for any items, sort by id and dedup by id.
-        nns.sort_unstable();
-        nns.dedup();
+        };
 
         let mut nns_distances = Vec::with_capacity(nns.len());
         for nn in nns {
