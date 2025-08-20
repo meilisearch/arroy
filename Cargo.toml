@@ -34,6 +34,7 @@ anyhow = "1.0.95"
 arbitrary = { version = "1.4.1", features = ["derive"] }
 clap = { version = "4.5.24", features = ["derive"] }
 env_logger = "0.11.6"
+hannoy = "0.0.4"
 insta = "1.42.0"
 instant-distance = "0.6.1"
 proptest = "1.6.0"

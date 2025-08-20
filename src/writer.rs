@@ -264,6 +264,57 @@ impl<D: Distance> Writer<D> {
         Writer { database, index, dimensions, tmpdir: None }
     }
 
+    /// After opening an hannoy database this function will prepare it for conversion,
+    /// cleanup the hannoy database and only keep the items/vectors entries.
+    pub fn prepare_hannoy_conversion(&self, wtxn: &mut RwTxn) -> Result<()> {
+        let mut iter = self
+            .database
+            .remap_key_type::<PrefixCodec>()
+            .prefix_iter_mut(wtxn, &Prefix::all(self.index))?
+            .remap_key_type::<KeyCodec>();
+
+        let mut new_items = RoaringBitmap::new();
+        while let Some(result) = iter.next() {
+            match result {
+                Ok((
+                    Key { index: _, node: NodeId { mode: NodeMode::Item, item, .. }, .. },
+                    Node::Leaf(Leaf { header: _, vector }),
+                )) => {
+                    // We only take care of the entries that can be decoded as Node Items (vectors) and
+                    // mark them as newly inserted so the Writer::build method can compute the links for them.
+                    new_items.insert(item);
+                    if vector.len() != self.dimensions {
+                        return Err(Error::InvalidVecDimension {
+                            expected: self.dimensions,
+                            received: vector.len(),
+                        });
+                    }
+                }
+                Ok((Key { .. }, _)) | Err(heed::Error::Decoding(_)) => unsafe {
+                    // Every other entry that fails to decode can be considered as something
+                    // else than an item, is useless for the conversion and is deleted.
+                    iter.del_current()?;
+                },
+                // If there is another error (lmdb...), it is returned.
+                Err(e) => return Err(e.into()),
+            }
+        }
+
+        drop(iter);
+
+        // We mark all the items as updated so
+        // the Writer::build method can handle them.
+        for item in new_items {
+            self.database.remap_data_type::<Unit>().put(
+                wtxn,
+                &Key::updated(self.index, item),
+                &(),
+            )?;
+        }
+
+        Ok(())
+    }
+
     /// Returns a writer after having deleted the tree nodes and rewrote all the items
     /// for the new [`Distance`] format to be able to modify items safely.
     pub fn prepare_changing_distance<ND: Distance>(self, wtxn: &mut RwTxn) -> Result<Writer<ND>> {
