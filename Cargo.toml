@@ -31,6 +31,7 @@ enum-iterator = "2.1.0"
 
 [dev-dependencies]
 anyhow = "1.0.95"
+approx = "0.5.1"
 arbitrary = { version = "1.4.1", features = ["derive"] }
 clap = { version = "4.5.24", features = ["derive"] }
 env_logger = "0.11.6"

@@ -40,6 +40,67 @@ fn clear_small_database() {
 }
 
 #[test]
+fn convert_from_arroy_to_hannoy() {
+    // let handle = create_database::<Euclidean>();
+    let _ = rayon::ThreadPoolBuilder::new().num_threads(1).build_global();
+    let dir = tempfile::tempdir().unwrap();
+    let env = unsafe { heed::EnvOpenOptions::new().map_size(200 * 1024 * 1024).open(dir.path()) }
+        .unwrap();
+    let mut wtxn = env.write_txn().unwrap();
+    let database: hannoy::Database<hannoy::distances::Cosine> =
+        env.create_database(&mut wtxn, None).unwrap();
+    wtxn.commit().unwrap();
+
+    let mut rng = rng();
+    let mut wtxn = env.write_txn().unwrap();
+
+    let mut db_indexes: Vec<u16> = (0..10).collect();
+    db_indexes.shuffle(&mut rng);
+
+    for index in db_indexes.iter().copied() {
+        let writer = hannoy::Writer::new(database, index, 1024);
+
+        // We're going to write 100 vectors per index
+        for i in 0..100 {
+            let vector: [f32; 1024] = std::array::from_fn(|_| rng.gen());
+            writer.add_item(&mut wtxn, i, &vector).unwrap();
+        }
+        writer.builder(&mut rng).build::<16, 32>(&mut wtxn).unwrap();
+    }
+    wtxn.commit().unwrap();
+
+    // Now it's time to convert the indexes
+
+    let mut wtxn = env.write_txn().unwrap();
+    let rtxn = env.read_txn().unwrap();
+    let database: crate::Database<Cosine> = env.open_database(&mut wtxn, None).unwrap().unwrap();
+
+    db_indexes.shuffle(&mut rng);
+
+    for index in db_indexes {
+        let pre_commit_hannoy_reader =
+            hannoy::Reader::<hannoy::distances::Cosine>::open(&rtxn, index, database.remap_types())
+                .unwrap();
+
+        let writer = Writer::new(database, index, pre_commit_hannoy_reader.dimensions());
+        let mut builder = writer.builder(&mut rng);
+        builder.prepare_hannoy_conversion(&mut wtxn).unwrap();
+        assert!(writer.need_build(&mut wtxn).unwrap());
+        builder.build(&mut wtxn).unwrap();
+
+        for result in pre_commit_hannoy_reader.iter(&rtxn).unwrap() {
+            let (item_id, vector) = result.unwrap();
+            let reader = Reader::open(&wtxn, index, database).unwrap();
+            assert_eq!(reader.item_vector(&wtxn, item_id).unwrap().as_deref(), Some(&vector[..]));
+            let mut found = reader.nns(1).by_vector(&wtxn, &vector).unwrap();
+            let (found_item_id, found_distance) = found.pop().unwrap();
+            assert_eq!(found_item_id, item_id);
+            approx::assert_abs_diff_eq!(found_distance, 0.0);
+        }
+    }
+}
+
+#[test]
 fn use_u32_max_minus_one_for_a_vec() {
     let handle = create_database::<Euclidean>();
     let mut wtxn = handle.env.write_txn().unwrap();
