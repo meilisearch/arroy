@@ -81,6 +81,7 @@ pub enum MainStep {
     WritingNodesToDatabase,
     DeleteExtraneousTrees,
     WriteTheMetadata,
+    ConvertingHannoyToArroy,
 }
 
 /// The options available when building the arroy database.
@@ -243,6 +244,10 @@ impl<'a, D: Distance, R: Rng + SeedableRng> ArroyBuilder<'a, D, R> {
     pub fn build(&mut self, wtxn: &mut RwTxn) -> Result<()> {
         self.writer.build(wtxn, self.rng, &self.inner)
     }
+
+    pub fn prepare_hannoy_conversion(&self, wtxn: &mut RwTxn) -> Result<()> {
+        self.writer.prepare_hannoy_conversion(wtxn, &self.inner)
+    }
 }
 
 /// A writer to store new items, remove existing ones,
@@ -266,7 +271,10 @@ impl<D: Distance> Writer<D> {
 
     /// After opening an hannoy database this function will prepare it for conversion,
     /// cleanup the hannoy database and only keep the items/vectors entries.
-    pub fn prepare_hannoy_conversion(&self, wtxn: &mut RwTxn) -> Result<()> {
+    fn prepare_hannoy_conversion(&self, wtxn: &mut RwTxn, options: &BuildOption) -> Result<()> {
+        tracing::debug!("Preparing dumpless upgrade from hannoy to arroy");
+        (options.progress)(WriterProgress { main: MainStep::PreProcessingTheItems, sub: None });
+
         let mut iter = self
             .database
             .remap_key_type::<PrefixCodec>()
