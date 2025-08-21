@@ -245,6 +245,7 @@ impl<'a, D: Distance, R: Rng + SeedableRng> ArroyBuilder<'a, D, R> {
         self.writer.build(wtxn, self.rng, &self.inner)
     }
 
+    /// Prepares the conversion from an hannoy database into an arroy one.
     pub fn prepare_hannoy_conversion(&self, wtxn: &mut RwTxn) -> Result<()> {
         self.writer.prepare_hannoy_conversion(wtxn, &self.inner)
     }
