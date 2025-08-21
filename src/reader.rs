@@ -321,7 +321,7 @@ impl<'t, D: Distance> Reader<'t, D> {
                     let key = Key::new(self.index, item);
                     match self.database.get(rtxn, &key)?.ok_or(Error::missing_key(key))? {
                         Node::Leaf(_) => {
-                            if opt.candidates.map_or(true, |c| c.contains(item.item)) {
+                            if opt.candidates.is_none_or(|c| c.contains(item.item)) {
                                 nns.push(item.unwrap_item());
                             }
                         }
