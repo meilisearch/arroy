@@ -2,9 +2,9 @@ name: Rust CI
 
 on:
   push:
-    branches: ["main"]
+    branches: ["main", "release-v0.6"]
   pull_request:
-    branches: ["main"]
+    branches: ["main", "release-v0.6"]
 
 env:
   CARGO_TERM_COLOR: always
@@ -24,7 +24,7 @@ jobs:
 
     steps:
       - uses: actions/checkout@v1
-      - uses: dtolnay/rust-toolchain@1.81
+      - uses: dtolnay/rust-toolchain@1.85
       - uses: actions-rs/cargo@v1
         with:
           command: build
@@ -41,7 +41,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v1
-      - uses: dtolnay/rust-toolchain@1.81
+      - uses: dtolnay/rust-toolchain@1.85
         with:
           profile: minimal
           components: clippy, rustfmt

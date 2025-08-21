@@ -8,7 +8,7 @@ use std::sync::Arc;
 use heed::types::{Bytes, DecodeIgnore, Unit};
 use heed::{MdbError, PutFlags, RoTxn, RwTxn};
 use rand::{Rng, SeedableRng};
-use rayon::iter::repeatn;
+use rayon::iter::repeat_n;
 use rayon::prelude::*;
 use roaring::RoaringBitmap;
 
@@ -81,6 +81,7 @@ pub enum MainStep {
     WritingNodesToDatabase,
     DeleteExtraneousTrees,
     WriteTheMetadata,
+    ConvertingHannoyToArroy,
 }
 
 /// The options available when building the arroy database.
@@ -243,6 +244,11 @@ impl<'a, D: Distance, R: Rng + SeedableRng> ArroyBuilder<'a, D, R> {
     pub fn build(&mut self, wtxn: &mut RwTxn) -> Result<()> {
         self.writer.build(wtxn, self.rng, &self.inner)
     }
+
+    /// Prepares the conversion from an hannoy database into an arroy one.
+    pub fn prepare_hannoy_conversion(&self, wtxn: &mut RwTxn) -> Result<()> {
+        self.writer.prepare_hannoy_conversion(wtxn, &self.inner)
+    }
 }
 
 /// A writer to store new items, remove existing ones,
@@ -262,6 +268,60 @@ impl<D: Distance> Writer<D> {
     pub fn new(database: Database<D>, index: u16, dimensions: usize) -> Writer<D> {
         let database: Database<D> = database.remap_data_type();
         Writer { database, index, dimensions, tmpdir: None }
+    }
+
+    /// After opening an hannoy database this function will prepare it for conversion,
+    /// cleanup the hannoy database and only keep the items/vectors entries.
+    fn prepare_hannoy_conversion(&self, wtxn: &mut RwTxn, options: &BuildOption) -> Result<()> {
+        tracing::debug!("Preparing dumpless upgrade from hannoy to arroy");
+        (options.progress)(WriterProgress { main: MainStep::PreProcessingTheItems, sub: None });
+
+        let mut iter = self
+            .database
+            .remap_key_type::<PrefixCodec>()
+            .prefix_iter_mut(wtxn, &Prefix::all(self.index))?
+            .remap_key_type::<KeyCodec>();
+
+        let mut new_items = RoaringBitmap::new();
+        while let Some(result) = iter.next() {
+            match result {
+                Ok((
+                    Key { index: _, node: NodeId { mode: NodeMode::Item, item, .. }, .. },
+                    Node::Leaf(Leaf { header: _, vector }),
+                )) => {
+                    // We only take care of the entries that can be decoded as Node Items (vectors) and
+                    // mark them as newly inserted so the Writer::build method can compute the links for them.
+                    new_items.insert(item);
+                    if vector.len() != self.dimensions {
+                        return Err(Error::InvalidVecDimension {
+                            expected: self.dimensions,
+                            received: vector.len(),
+                        });
+                    }
+                }
+                Ok((Key { .. }, _)) | Err(heed::Error::Decoding(_)) => unsafe {
+                    // Every other entry that fails to decode can be considered as something
+                    // else than an item, is useless for the conversion and is deleted.
+                    iter.del_current()?;
+                },
+                // If there is another error (lmdb...), it is returned.
+                Err(e) => return Err(e.into()),
+            }
+        }
+
+        drop(iter);
+
+        // We mark all the items as updated so
+        // the Writer::build method can handle them.
+        for item in new_items {
+            self.database.remap_data_type::<Unit>().put(
+                wtxn,
+                &Key::updated(self.index, item),
+                &(),
+            )?;
+        }
+
+        Ok(())
     }
 
     /// Returns a writer after having deleted the tree nodes and rewrote all the items
@@ -756,7 +816,7 @@ impl<D: Distance> Writer<D> {
     ) -> Result<(Vec<ItemId>, Vec<TmpNodesReader>)> {
         let roots: Vec<_> = metadata.roots.iter().collect();
 
-        repeatn(rng.next_u64(), metadata.roots.len())
+        repeat_n(rng.next_u64(), metadata.roots.len())
             .zip(roots)
             .map(|(seed, root)| {
                 tracing::debug!("started updating tree {root:X}...");
@@ -982,7 +1042,7 @@ impl<D: Distance> Writer<D> {
         let n_items = item_indices.len();
         let concurrent_node_ids = frozen_reader.concurrent_node_ids;
 
-        repeatn(rng.next_u64(), n_trees.unwrap_or(usize::MAX))
+        repeat_n(rng.next_u64(), n_trees.unwrap_or(usize::MAX))
             .enumerate()
             // Stop generating trees once the specified number of tree nodes are generated
             // but continue to generate trees if the number of trees is unspecified

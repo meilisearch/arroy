@@ -188,7 +188,24 @@ impl<'a, D: Distance> BytesDecode<'a> for NodeCodec<D> {
             [DESCENDANTS_TAG, bytes @ ..] => Ok(Node::Descendants(Descendants {
                 descendants: Cow::Owned(RoaringBitmap::deserialize_from(bytes)?),
             })),
-            unknown => panic!("What the fuck is an {unknown:?}"),
+            [unknown_tag, ..] => {
+                Err(Box::new(InvalidNodeDecoding { unknown_tag: Some(*unknown_tag) }))
+            }
+            [] => Err(Box::new(InvalidNodeDecoding { unknown_tag: None })),
+        }
+    }
+}
+
+#[derive(Debug, thiserror::Error)]
+pub struct InvalidNodeDecoding {
+    unknown_tag: Option<u8>,
+}
+
+impl fmt::Display for InvalidNodeDecoding {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self.unknown_tag {
+            Some(unknown_tag) => write!(f, "Invalid node decoding: unknown tag {unknown_tag}"),
+            None => write!(f, "Invalid node decoding: empty array of bytes"),
         }
     }
 }
