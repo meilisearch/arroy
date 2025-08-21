@@ -8,7 +8,7 @@ use std::sync::Arc;
 use heed::types::{Bytes, DecodeIgnore, Unit};
 use heed::{MdbError, PutFlags, RoTxn, RwTxn};
 use rand::{Rng, SeedableRng};
-use rayon::iter::repeatn;
+use rayon::iter::repeat_n;
 use rayon::prelude::*;
 use roaring::RoaringBitmap;
 
@@ -816,7 +816,7 @@ impl<D: Distance> Writer<D> {
     ) -> Result<(Vec<ItemId>, Vec<TmpNodesReader>)> {
         let roots: Vec<_> = metadata.roots.iter().collect();
 
-        repeatn(rng.next_u64(), metadata.roots.len())
+        repeat_n(rng.next_u64(), metadata.roots.len())
             .zip(roots)
             .map(|(seed, root)| {
                 tracing::debug!("started updating tree {root:X}...");
@@ -1042,7 +1042,7 @@ impl<D: Distance> Writer<D> {
         let n_items = item_indices.len();
         let concurrent_node_ids = frozen_reader.concurrent_node_ids;
 
-        repeatn(rng.next_u64(), n_trees.unwrap_or(usize::MAX))
+        repeat_n(rng.next_u64(), n_trees.unwrap_or(usize::MAX))
             .enumerate()
             // Stop generating trees once the specified number of tree nodes are generated
             // but continue to generate trees if the number of trees is unspecified
