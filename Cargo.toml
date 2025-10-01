@@ -1,7 +1,7 @@
 [package]
 name = "arroy"
 description = "Annoy-inspired Approximate Nearest Neighbors in Rust, based on LMDB and optimized for memory usage"
-version = "0.6.3"
+version = "0.6.4-nested-rtxns"
 documentation = "https://docs.rs/arroy"
 repository = "https://github.com/meilisearch/arroy"
 keywords = ["ANN-search", "Graph-algorithms", "Vector-Search", "Store"]
@@ -16,7 +16,7 @@ edition = "2021"
 [dependencies]
 bytemuck = { version = "1.21.0", features = ["derive", "extern_crate_alloc"] }
 byteorder = "1.5.0"
-heed = { version = "0.22.0", default-features = false }
+heed = { version = "0.22.1-nested-rtxns", default-features = false }
 tracing = "0.1.41"
 memmap2 = "0.9.5"
 ordered-float = "4.6.0"
@@ -35,7 +35,7 @@ approx = "0.5.1"
 arbitrary = { version = "1.4.1", features = ["derive"] }
 clap = { version = "4.5.24", features = ["derive"] }
 env_logger = "0.11.6"
-hannoy = "0.0.4"
+hannoy = { version = "0.0.9-nested-rtxns", git = "https://github.com/nnethercott/hannoy", "tag" = "v0.0.9-nested-rtxns", default-features = false }
 insta = "1.42.0"
 instant-distance = "0.6.1"
 proptest = "1.6.0"
