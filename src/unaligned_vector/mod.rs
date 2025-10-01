@@ -1,12 +1,9 @@
-use std::{
-    borrow::{Borrow, Cow},
-    fmt,
-    marker::PhantomData,
-    mem::transmute,
-};
+use std::borrow::{Borrow, Cow};
+use std::fmt;
+use std::marker::PhantomData;
+use std::mem::transmute;
 
 pub use binary_quantized::BinaryQuantized;
-
 use bytemuck::pod_collect_to_vec;
 
 mod binary_quantized;
@@ -19,11 +16,11 @@ mod binary_quantized_test;
 pub trait UnalignedVectorCodec: std::borrow::ToOwned + Sized {
     /// Creates an unaligned vector from a slice of bytes.
     /// Don't allocate.
-    fn from_bytes(bytes: &[u8]) -> Result<Cow<UnalignedVector<Self>>, SizeMismatch>;
+    fn from_bytes(bytes: &[u8]) -> Result<Cow<'_, UnalignedVector<Self>>, SizeMismatch>;
 
     /// Creates an unaligned vector from a slice of f32.
     /// May allocate depending on the codec.
-    fn from_slice(slice: &[f32]) -> Cow<UnalignedVector<Self>>;
+    fn from_slice(slice: &[f32]) -> Cow<'_, UnalignedVector<Self>>;
 
     /// Creates an unaligned slice of f32 wrapper from a slice of f32.
     /// The slice is already known to be of the right length.
@@ -64,13 +61,13 @@ impl<Codec: UnalignedVectorCodec> UnalignedVector<Codec> {
 
     /// Creates an unaligned vector from a slice of bytes.
     /// Don't allocate.
-    pub fn from_bytes(bytes: &[u8]) -> Result<Cow<UnalignedVector<Codec>>, SizeMismatch> {
+    pub fn from_bytes(bytes: &[u8]) -> Result<Cow<'_, UnalignedVector<Codec>>, SizeMismatch> {
         Codec::from_bytes(bytes)
     }
 
     /// Creates an unaligned vector from a slice of f32.
     /// May allocate depending on the codec.
-    pub fn from_slice(slice: &[f32]) -> Cow<UnalignedVector<Codec>> {
+    pub fn from_slice(slice: &[f32]) -> Cow<'_, UnalignedVector<Codec>> {
         Codec::from_slice(slice)
     }
 

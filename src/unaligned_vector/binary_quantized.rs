@@ -15,7 +15,7 @@ const QUANTIZED_WORD_BYTES: usize = std::mem::size_of::<QuantizedWord>();
 pub enum BinaryQuantized {}
 
 impl UnalignedVectorCodec for BinaryQuantized {
-    fn from_bytes(bytes: &[u8]) -> Result<Cow<UnalignedVector<Self>>, SizeMismatch> {
+    fn from_bytes(bytes: &[u8]) -> Result<Cow<'_, UnalignedVector<Self>>, SizeMismatch> {
         let rem = bytes.len() % QUANTIZED_WORD_BYTES;
         if rem == 0 {
             // safety: `UnalignedVector` is transparent
