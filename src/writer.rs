@@ -12,8 +12,9 @@ use heed::{MdbError, PutFlags, RoTxn, RwTxn};
 use nohash::{BuildNoHashHasher, IntMap};
 use rand::rngs::StdRng;
 use rand::{Rng, SeedableRng};
-use rayon::iter::repeatn;
-use rayon::{current_num_threads, prelude::*, Scope};
+use rayon::iter::repeat_n;
+use rayon::prelude::*;
+use rayon::{current_num_threads, Scope};
 use roaring::RoaringBitmap;
 use thread_local::ThreadLocal;
 
@@ -1124,7 +1125,7 @@ impl<D: Distance> Writer<D> {
         to_insert: &RoaringBitmap,
         frozen_reader: &FrozzenReader<D>,
     ) -> Result<IntMap<ItemId, RoaringBitmap>> {
-        repeatn(rng.next_u64(), roots.len())
+        repeat_n(rng.next_u64(), roots.len())
             .zip(roots)
             .map(|(seed, root)| {
                 opt.cancelled()?;
