@@ -30,6 +30,11 @@ page_size = "0.6.0"
 enum-iterator = "2.1.0"
 thread_local = "1.1.8"
 crossbeam = "0.8.4"
+pyo3 = { version = "0.25.0", optional = true }
+numpy = { version = "0.25.0", optional = true }
+once_cell = { version = "1.21.3", optional = true }
+parking_lot = { version = "0.12.4", optional = true }
+pyo3-stub-gen = { version =  "0.10.0", optional = true }
 
 [dev-dependencies]
 anyhow = "1.0.95"
@@ -50,6 +55,19 @@ plot = []
 
 # Enabling this feature provide a method on the reader that assert its own validity.
 assert-reader-validity = []
+
+# Enabling this feature allows using the crate from Python.
+extension-module = ["pyo3", "pyo3/extension-module"]
+
+# This feature only exists independently from `extension-module` to write tests for Python features.
+pyo3 = ["dep:pyo3", "pyo3-stub-gen", "numpy", "once_cell", "parking_lot"]
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[[bin]]
+name = "stub_gen"
+required-features = ["pyo3"]
 
 [[example]]
 name = "graph"
