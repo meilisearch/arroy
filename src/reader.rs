@@ -373,12 +373,15 @@ impl<'t, D: Distance> Reader<'t, D> {
             }
         }
 
-        // Get distances for all items
         // To avoid calculating distance multiple times for any items, sort by id and dedup by id.
         nns.sort_unstable();
         nns.dedup();
 
-        let mut nns_distances = Vec::with_capacity(nns.len());
+        // Use a bounded max-heap to keep only the top K items during iteration
+        // This reduces complexity from O(N log N) to O(N log K) and limits allocations to count
+        let k = opt.count;
+        let mut heap = BinaryHeap::new();
+
         for nn in nns {
             let key = Key::item(self.index, nn);
             let GenericReadNode::Leaf(leaf) =
@@ -387,14 +390,25 @@ impl<'t, D: Distance> Reader<'t, D> {
                 unreachable!()
             };
             let distance = D::built_distance(query_leaf, &leaf);
-            nns_distances.push((OrderedFloat(distance), nn));
+            let dist_ord = OrderedFloat(distance);
+
+            if heap.len() < k {
+                heap.push((dist_ord, nn));
+            } else if let Some(&(OrderedFloat(worst_dist), _)) = heap.peek() {
+                // Only add if this distance is better (smaller) than the worst in the heap
+                if distance < worst_dist {
+                    heap.pop();
+                    heap.push((dist_ord, nn));
+                }
+            }
         }
 
-        // Get k nearest neighbors
-        let k = opt.count.min(nns_distances.len());
-        let top_k = median_based_top_k(nns_distances, k);
-        let mut output = Vec::with_capacity(top_k.len());
-        for (OrderedFloat(dist), item) in top_k {
+        // Extract results from heap and sort for final output
+        let mut results: Vec<_> = heap.into_vec();
+        results.sort_unstable_by(|a, b| a.0.partial_cmp(&b.0).unwrap());
+        
+        let mut output = Vec::with_capacity(results.len());
+        for (OrderedFloat(dist), item) in results {
             output.push((item, D::normalized_distance(dist, self.dimensions)));
         }
         Ok(output)
