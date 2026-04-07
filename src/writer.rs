@@ -899,7 +899,7 @@ impl<D: Distance> Writer<D> {
                         tmp_nodes,
                     )?;
 
-                    return Ok((new_id, new_items));
+                    Ok((new_id, new_items))
                 }
             }
             NodeMode::Tree => {

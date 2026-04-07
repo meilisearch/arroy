@@ -1,7 +1,5 @@
-use std::{
-    borrow::Cow,
-    mem::{size_of, transmute},
-};
+use std::borrow::Cow;
+use std::mem::{size_of, transmute};
 
 use bytemuck::cast_slice;
 use byteorder::{ByteOrder, NativeEndian};
@@ -10,7 +8,7 @@ use super::{SizeMismatch, UnalignedVector, UnalignedVectorCodec};
 
 impl UnalignedVectorCodec for f32 {
     /// Creates an unaligned slice of f32 wrapper from a slice of bytes.
-    fn from_bytes(bytes: &[u8]) -> Result<Cow<UnalignedVector<Self>>, SizeMismatch> {
+    fn from_bytes(bytes: &[u8]) -> Result<Cow<'_, UnalignedVector<Self>>, SizeMismatch> {
         let rem = bytes.len() % size_of::<f32>();
         if rem == 0 {
             // safety: `UnalignedF32Slice` is transparent
@@ -22,7 +20,7 @@ impl UnalignedVectorCodec for f32 {
 
     /// Creates an unaligned slice of f32 wrapper from a slice of f32.
     /// The slice is already known to be of the right length.
-    fn from_slice(slice: &[f32]) -> Cow<UnalignedVector<Self>> {
+    fn from_slice(slice: &[f32]) -> Cow<'_, UnalignedVector<Self>> {
         Self::from_bytes(cast_slice(slice)).unwrap()
     }
 
