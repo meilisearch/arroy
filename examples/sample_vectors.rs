@@ -1,7 +1,7 @@
 use std::io::{BufRead, BufReader};
 
 use rand::rngs::StdRng;
-use rand::seq::SliceRandom;
+use rand::seq::IndexedRandom as _;
 use rand::SeedableRng;
 
 const DEFAULT_COUNT: usize = 1_000_000;
@@ -35,7 +35,7 @@ fn main() {
     let mut rng = StdRng::seed_from_u64(42);
     let mut id = 0;
     for _ in 0..(count.checked_div(2).unwrap()) {
-        let mut iter = vectors.choose_multiple(&mut rng, 2);
+        let mut iter = vectors.sample(&mut rng, 2);
         let a = iter.next().unwrap();
         let b = iter.next().unwrap();
 

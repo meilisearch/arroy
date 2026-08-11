@@ -19,10 +19,10 @@ byteorder = "1.5.0"
 heed = { version = "0.22.1", default-features = false }
 tracing = "0.1.44"
 memmap2 = "0.9.11"
-ordered-float = "4.6.0"
-rand = { version = "0.8.7", features = ["alloc"] }
+ordered-float = "5.3.0"
+rand = { version = "0.10.2", features = ["alloc"] }
 rayon = "1.12.0"
-roaring = "0.10.12"
+roaring = "0.11.4"
 tempfile = "3.27.0"
 thiserror = "2.0.20"
 nohash = "0.2.0"
@@ -35,11 +35,11 @@ approx = "0.5.1"
 arbitrary = { version = "1.4.2", features = ["derive"] }
 clap = { version = "4.6.6", features = ["derive"] }
 env_logger = "0.11.11"
-hannoy = "0.0.4"
+hannoy = "0.1.3"
 insta = "1.48.0"
 instant-distance = "0.6.1"
 proptest = "1.11.0"
-rand = { version = "0.8.7", features = ["std_rng"] }
+rand = { version = "0.10.2", features = ["std_rng"] }
 tempfile = "3.27.0"
 
 [features]

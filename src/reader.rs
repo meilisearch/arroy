@@ -484,7 +484,7 @@ impl<'t, D: Distance> Reader<'t, D> {
             .remap_key_type::<KeyCodec>()
         {
             let (i, _) = result?;
-            item_ids.push(i.node.unwrap_item());
+            item_ids.try_push(i.node.unwrap_item()).expect("Item IDs must be ordered");
         }
         // Second, get all the tree nodes
         let mut tree_ids = RoaringBitmap::new();
@@ -495,7 +495,7 @@ impl<'t, D: Distance> Reader<'t, D> {
             .remap_key_type::<KeyCodec>()
         {
             let (i, _) = result?;
-            tree_ids.push(i.node.unwrap_tree());
+            tree_ids.try_push(i.node.unwrap_tree()).expect("Tree IDs must be ordered");
         }
 
         // The get all the items AND tree nodes PER trees

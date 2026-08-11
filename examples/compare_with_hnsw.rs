@@ -7,7 +7,7 @@ use arroy::{Database, Distance, ItemId, Reader, Result, Writer};
 use heed::{EnvOpenOptions, RwTxn};
 use instant_distance::{Builder, HnswMap, MapItem};
 use rand::rngs::StdRng;
-use rand::{Rng, SeedableRng};
+use rand::{Rng, RngExt as _, SeedableRng};
 
 const TWENTY_HUNDRED_MIB: usize = 2 * 1024 * 1024 * 1024;
 const NUMBER_VECTORS: usize = 4000;
@@ -19,7 +19,7 @@ fn main() -> Result<()> {
     let env = unsafe { EnvOpenOptions::new().map_size(TWENTY_HUNDRED_MIB).open(dir.path()) }?;
 
     let rng_points = StdRng::seed_from_u64(42);
-    let mut rng_arroy = rng_points.clone();
+    let mut rng_arroy = StdRng::seed_from_u64(42);
 
     let before = Instant::now();
     let (points, items_ids) = generate_points(rng_points, NUMBER_VECTORS, VECTOR_DIMENSIONS);
@@ -112,8 +112,7 @@ fn generate_points<R: Rng>(
     let mut points = Vec::with_capacity(count);
     let mut item_ids = Vec::with_capacity(count);
     for item_id in 0..count {
-        let mut vector = vec![0.0; dimensions];
-        rng.try_fill(&mut vector[..]).unwrap();
+        let vector = std::iter::repeat_with(|| rng.random()).take(dimensions).collect();
         points.push(Point(vector));
         item_ids.push(item_id.try_into().unwrap());
     }

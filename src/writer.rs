@@ -623,8 +623,7 @@ impl<D: Distance> Writer<D> {
             .prefix_iter_mut(wtxn, &Prefix::updated(self.index))?
             .remap_key_type::<KeyCodec>();
         while let Some((key, _)) = updated_iter.next().transpose()? {
-            let inserted = updated_items.push(key.node.item);
-            debug_assert!(inserted, "The keys should be sorted by LMDB");
+            updated_items.try_push(key.node.item).expect("The keys should be sorted by LMDB");
             // Safe because we don't hold any reference to the database currently
             unsafe {
                 updated_iter.del_current()?;
@@ -1247,7 +1246,7 @@ impl<D: Distance> Writer<D> {
             .remap_key_type::<KeyCodec>()
         {
             let (i, _) = result?;
-            indices.push(i.node.unwrap_item());
+            indices.try_push(i.node.unwrap_item()).expect("Item IDs must always be sorted");
         }
 
         Ok(indices)
@@ -1276,9 +1275,10 @@ fn randomly_split_children<R: Rng>(
     // Split it in half and put the right half into the right children's vector
     for item_id in item_indices {
         match Side::random(rng) {
-            Side::Left => children_left.push(item_id),
-            Side::Right => children_right.push(item_id),
-        };
+            Side::Left => children_left.try_push(item_id),
+            Side::Right => children_right.try_push(item_id),
+        }
+        .unwrap();
     }
 }
 

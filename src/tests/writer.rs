@@ -3,7 +3,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use heed::EnvOpenOptions;
 use insta::assert_snapshot;
 use rand::seq::SliceRandom;
-use rand::Rng;
+use rand::RngExt as _;
 
 use super::{create_database, rng};
 use crate::distance::{BinaryQuantizedCosine, Cosine, DotProduct, Euclidean};
@@ -62,7 +62,7 @@ fn convert_from_arroy_to_hannoy() {
 
         // We're going to write 100 vectors per index
         for i in 0..100 {
-            let vector: [f32; 1024] = std::array::from_fn(|_| rng.gen());
+            let vector: [f32; 1024] = std::array::from_fn(|_| rng.random());
             writer.add_item(&mut wtxn, i, &vector).unwrap();
         }
         writer.builder(&mut rng).build::<16, 32>(&mut wtxn).unwrap();
@@ -260,7 +260,7 @@ fn write_and_update_lot_of_random_points() {
     let writer = Writer::new(handle.database, 0, 30);
     let mut rng = rng();
     for id in 0..100 {
-        let vector: [f32; 30] = std::array::from_fn(|_| rng.gen());
+        let vector: [f32; 30] = std::array::from_fn(|_| rng.random());
         writer.add_item(&mut wtxn, id, &vector).unwrap();
     }
 
@@ -271,7 +271,7 @@ fn write_and_update_lot_of_random_points() {
     let mut wtxn = handle.env.write_txn().unwrap();
     let writer = Writer::new(handle.database, 0, 30);
     for id in (0..100).step_by(2) {
-        let vector: [f32; 30] = std::array::from_fn(|_| rng.gen());
+        let vector: [f32; 30] = std::array::from_fn(|_| rng.random());
         writer.add_item(&mut wtxn, id, &vector).unwrap();
     }
     writer.builder(&mut rng).n_trees(10).build(&mut wtxn).unwrap();
@@ -340,7 +340,7 @@ fn write_random_vectors_to_random_indexes() {
 
         // We're going to write 10 vectors per index
         for i in 0..10 {
-            let vector: [f32; 10] = std::array::from_fn(|_| rng.gen());
+            let vector: [f32; 10] = std::array::from_fn(|_| rng.random());
             writer.add_item(&mut wtxn, i, &vector).unwrap();
         }
         writer.builder(&mut rng).build(&mut wtxn).unwrap();
