@@ -273,7 +273,7 @@ impl<'t, D: Distance> Reader<'t, D> {
     /// Return a [`QueryBuilder`] that lets you configure and execute a search request.
     ///
     /// You must provide the number of items you want to receive.
-    pub fn nns(&self, count: usize) -> QueryBuilder<D> {
+    pub fn nns(&self, count: usize) -> QueryBuilder<'_, D> {
         QueryBuilder { reader: self, count, search_k: None, oversampling: None, candidates: None }
     }
 
