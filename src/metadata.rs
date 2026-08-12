@@ -23,7 +23,7 @@ impl<'a> heed::BytesEncode<'a> for MetadataCodec {
 
     fn bytes_encode(item: &'a Self::EItem) -> Result<Cow<'a, [u8]>, BoxedError> {
         let Metadata { dimensions, items, roots, distance } = item;
-        debug_assert!(!distance.as_bytes().iter().any(|&b| b == 0));
+        debug_assert!(!distance.as_bytes().contains(&0));
 
         let mut output = Vec::with_capacity(
             size_of::<u32>()

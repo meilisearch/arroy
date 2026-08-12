@@ -1,7 +1,7 @@
 [package]
 name = "arroy"
 description = "Annoy-inspired Approximate Nearest Neighbors in Rust, based on LMDB and optimized for memory usage"
-version = "0.6.3"
+version = "0.8.0"
 documentation = "https://docs.rs/arroy"
 repository = "https://github.com/meilisearch/arroy"
 keywords = ["ANN-search", "Graph-algorithms", "Vector-Search", "Store"]
@@ -14,33 +14,33 @@ license = "MIT"
 edition = "2021"
 
 [dependencies]
-bytemuck = { version = "1.21.0", features = ["derive", "extern_crate_alloc"] }
+bytemuck = { version = "1.25.2", features = ["derive", "extern_crate_alloc"] }
 byteorder = "1.5.0"
-heed = { version = "0.22.0", default-features = false }
-tracing = "0.1.41"
-memmap2 = "0.9.5"
-ordered-float = "4.6.0"
-rand = { version = "0.8.5", features = ["alloc"] }
-rayon = "1.10.0"
-roaring = "0.10.9"
-tempfile = "3.15.0"
-thiserror = "2.0.9"
+heed = { version = "0.22.1", default-features = false }
+tracing = "0.1.44"
+memmap2 = "0.9.11"
+ordered-float = "5.3.0"
+rand = { version = "0.10.2", features = ["alloc"] }
+rayon = "1.12.0"
+roaring = "0.11.4"
+tempfile = "3.27.0"
+thiserror = "2.0.20"
 nohash = "0.2.0"
 page_size = "0.6.0"
-enum-iterator = "2.1.0"
+enum-iterator = "2.3.0"
 
 [dev-dependencies]
-anyhow = "1.0.95"
+anyhow = "1.0.104"
 approx = "0.5.1"
-arbitrary = { version = "1.4.1", features = ["derive"] }
-clap = { version = "4.5.24", features = ["derive"] }
-env_logger = "0.11.6"
-hannoy = "0.0.4"
-insta = "1.42.0"
+arbitrary = { version = "1.4.2", features = ["derive"] }
+clap = { version = "4.6.6", features = ["derive"] }
+env_logger = "0.11.11"
+hannoy = { git = "https://github.com/nnethercott/hannoy", branch = "bump-dependencies" }
+insta = "1.48.0"
 instant-distance = "0.6.1"
-proptest = "1.6.0"
-rand = { version = "0.8.5", features = ["std_rng"] }
-tempfile = "3.15.0"
+proptest = "1.11.0"
+rand = { version = "0.10.2", features = ["std_rng"] }
+tempfile = "3.27.0"
 
 [features]
 default = []

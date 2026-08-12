@@ -15,15 +15,15 @@ fn test_from_slice() {
 
     let internal = vector.as_bytes().iter().map(|b| format!("{b:08b}\n")).collect::<String>();
     assert_snapshot!(internal, @r###"
-        10101011
-        00000000
-        00000000
-        00000000
-        00000000
-        00000000
-        00000000
-        00000000
-        "###);
+    10101011
+    00000000
+    00000000
+    00000000
+    00000000
+    00000000
+    00000000
+    00000000
+    "###);
 }
 
 #[test]
@@ -32,33 +32,33 @@ fn test_to_vec_iter() {
     let vector = BinaryQuantized::from_slice(&original);
     let iter_vec: Vec<_> = BinaryQuantized::iter(&vector).take(original.len()).collect();
     assert_debug_snapshot!(iter_vec, @r###"
-        [
-            1.0,
-            1.0,
-            -1.0,
-            1.0,
-            -1.0,
-            1.0,
-            -1.0,
-            1.0,
-            -1.0,
-        ]
-        "###);
+    [
+        1.0,
+        1.0,
+        -1.0,
+        1.0,
+        -1.0,
+        1.0,
+        -1.0,
+        1.0,
+        -1.0,
+    ]
+    "###);
     let mut vec_vec: Vec<_> = BinaryQuantized::to_vec(&vector);
     vec_vec.truncate(original.len());
     assert_debug_snapshot!(vec_vec, @r###"
-        [
-            1.0,
-            1.0,
-            -1.0,
-            1.0,
-            -1.0,
-            1.0,
-            -1.0,
-            1.0,
-            -1.0,
-        ]
-        "###);
+    [
+        1.0,
+        1.0,
+        -1.0,
+        1.0,
+        -1.0,
+        1.0,
+        -1.0,
+        1.0,
+        -1.0,
+    ]
+    "###);
 
     assert_eq!(vec_vec, iter_vec);
 }

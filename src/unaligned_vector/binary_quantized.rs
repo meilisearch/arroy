@@ -15,7 +15,7 @@ const QUANTIZED_WORD_BYTES: usize = std::mem::size_of::<QuantizedWord>();
 pub enum BinaryQuantized {}
 
 impl UnalignedVectorCodec for BinaryQuantized {
-    fn from_bytes(bytes: &[u8]) -> Result<Cow<UnalignedVector<Self>>, SizeMismatch> {
+    fn from_bytes(bytes: &[u8]) -> Result<Cow<'_, UnalignedVector<Self>>, SizeMismatch> {
         let rem = bytes.len() % QUANTIZED_WORD_BYTES;
         if rem == 0 {
             // safety: `UnalignedVector` is transparent
@@ -94,7 +94,7 @@ unsafe fn from_slice_neon(slice: &[f32]) -> Vec<u8> {
     // The size of the returned vector must be a multiple of a word
     let remaining = slice.len() % QUANTIZED_WORD_BYTES;
     let mut len = iterations;
-    if len % QUANTIZED_WORD_BYTES != 0 {
+    if !len.is_multiple_of(QUANTIZED_WORD_BYTES) {
         len += QUANTIZED_WORD_BYTES - len % QUANTIZED_WORD_BYTES;
     } else if remaining != 0 {
         // if we generated a valid number of Word but we're missing a few bits

@@ -98,7 +98,6 @@ mod unaligned_vector;
 
 pub use distance::Distance;
 pub use error::Error;
-
 use key::{Key, Prefix, PrefixCodec};
 use metadata::{Metadata, MetadataCodec};
 use node::{Node, NodeCodec};
@@ -109,7 +108,7 @@ pub use writer::{ArroyBuilder, MainStep, SubStep, Writer, WriterProgress};
 
 /// The set of types used by the [`Distance`] trait.
 pub mod internals {
-    use rand::Rng;
+    use rand::{Rng, RngExt as _};
 
     pub use crate::distance::{
         NodeHeaderBinaryQuantizedCosine, NodeHeaderBinaryQuantizedEuclidean,
@@ -132,7 +131,7 @@ pub mod internals {
 
     impl Side {
         pub(crate) fn random<R: Rng>(rng: &mut R) -> Side {
-            if rng.gen() {
+            if rng.random() {
                 Side::Left
             } else {
                 Side::Right

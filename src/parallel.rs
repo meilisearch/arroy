@@ -10,7 +10,7 @@ use heed::{BytesDecode, BytesEncode, RoTxn};
 use memmap2::Mmap;
 use nohash::{BuildNoHashHasher, IntMap};
 use rand::seq::index;
-use rand::Rng;
+use rand::{Rng, RngExt as _};
 use roaring::{RoaringBitmap, RoaringTreemap};
 
 use crate::internals::{KeyCodec, Leaf, NodeCodec};
@@ -291,7 +291,7 @@ impl<'t, D: Distance> ImmutableLeafs<'t, D> {
         let mut pages_selected = RoaringTreemap::new();
 
         while !candidates.is_empty() {
-            let rank = rng.gen_range(0..candidates.len() as u32);
+            let rank = rng.random_range(0..candidates.len() as u32);
             let item_id = candidates.select(rank).unwrap();
             let pages = items_to_pages.get(&item_id).unwrap();
 
@@ -382,7 +382,7 @@ impl<'t, D: Distance> ImmutableSubsetLeafs<'t, D> {
             Ok(None)
         } else {
             let ubound = (self.subset.len() - 1) as u32;
-            let index = rng.gen_range(0..=ubound);
+            let index = rng.random_range(0..=ubound);
             match self.subset.select(index) {
                 Some(item_id) => self.leafs.get(item_id),
                 None => Ok(None),

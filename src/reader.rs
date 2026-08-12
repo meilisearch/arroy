@@ -273,7 +273,7 @@ impl<'t, D: Distance> Reader<'t, D> {
     /// Return a [`QueryBuilder`] that lets you configure and execute a search request.
     ///
     /// You must provide the number of items you want to receive.
-    pub fn nns(&self, count: usize) -> QueryBuilder<D> {
+    pub fn nns(&self, count: usize) -> QueryBuilder<'_, D> {
         QueryBuilder { reader: self, count, search_k: None, oversampling: None, candidates: None }
     }
 
@@ -484,7 +484,7 @@ impl<'t, D: Distance> Reader<'t, D> {
             .remap_key_type::<KeyCodec>()
         {
             let (i, _) = result?;
-            item_ids.push(i.node.unwrap_item());
+            item_ids.try_push(i.node.unwrap_item()).expect("Item IDs must be ordered");
         }
         // Second, get all the tree nodes
         let mut tree_ids = RoaringBitmap::new();
@@ -495,7 +495,7 @@ impl<'t, D: Distance> Reader<'t, D> {
             .remap_key_type::<KeyCodec>()
         {
             let (i, _) = result?;
-            tree_ids.push(i.node.unwrap_tree());
+            tree_ids.try_push(i.node.unwrap_tree()).expect("Tree IDs must be ordered");
         }
 
         // The get all the items AND tree nodes PER trees
