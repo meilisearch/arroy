@@ -6,7 +6,7 @@ use arroy::distances::Euclidean;
 use arroy::{Database, Reader, Result, Writer};
 use heed::EnvOpenOptions;
 use rand::rngs::StdRng;
-use rand::{Fill, SeedableRng};
+use rand::{RngExt, SeedableRng};
 
 const TWENTY_GIB: usize = 20 * 1024 * 1024 * 1024;
 
@@ -51,7 +51,7 @@ fn main() -> Result<()> {
     wtxn.commit()?;
 
     let mut rng_points = StdRng::seed_from_u64(42);
-    let rng_arroy = rng_points.clone();
+    let mut rng_arroy = StdRng::seed_from_u64(42);
 
     let total_duration = Instant::now();
     let mut instant = Instant::now();
@@ -74,7 +74,7 @@ fn main() -> Result<()> {
         }
 
         let mut v = [0_u8; 10_000];
-        v.try_fill(&mut rng_points).unwrap();
+        rng_points.fill(&mut v);
 
         let mut data = Unstructured::new(&v);
         let batches =
@@ -82,8 +82,9 @@ fn main() -> Result<()> {
 
         for operations in batches {
             let ops = operations.clone();
+            let seed = rng_arroy.random();
             let ret = panic::catch_unwind(|| -> arroy::Result<()> {
-                let mut rng_arroy = rng_arroy.clone();
+                let mut rng_arroy = StdRng::seed_from_u64(seed);
                 let mut wtxn = env.write_txn()?;
                 let writer = Writer::<Euclidean>::new(database, 0, 2);
 
