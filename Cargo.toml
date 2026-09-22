@@ -16,7 +16,7 @@ edition = "2021"
 [dependencies]
 bytemuck = { version = "1.21.0", features = ["derive", "extern_crate_alloc"] }
 byteorder = "1.5.0"
-heed = { version = "0.22.1", default-features = false }
+heed = { git = "https://github.com/meilisearch/heed", branch = "mutexify-open-dbi", version = "0.22.1", default-features = false }
 tracing = "0.1.41"
 memmap2 = "0.9.5"
 ordered-float = "4.6.0"

@@ -91,7 +91,7 @@ fn create_database<D: Distance>() -> DatabaseHandle<D> {
     let dir = tempfile::tempdir().unwrap();
     let env =
         unsafe { EnvOpenOptions::new().map_size(200 * 1024 * 1024).open(dir.path()) }.unwrap();
-    let mut wtxn = env.write_txn().unwrap();
+    let mut wtxn = env.unique_write_txn().unwrap();
     let database: Database<D> = env.create_database(&mut wtxn, None).unwrap();
     wtxn.commit().unwrap();
     DatabaseHandle { env, database, tempdir: dir }

@@ -17,7 +17,7 @@ fn clear_small_database() {
     let env =
         unsafe { EnvOpenOptions::new().map_size(200 * 1024 * 1024).open(dir.path()) }.unwrap();
 
-    let mut wtxn = env.write_txn().unwrap();
+    let mut wtxn = env.unique_write_txn().unwrap();
     let database: Database<DotProduct> = env.create_database(&mut wtxn, None).unwrap();
 
     let zero_writer = Writer::new(database, 0, 3);
