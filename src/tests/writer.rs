@@ -1,6 +1,6 @@
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-use heed::EnvOpenOptions;
+use heed::{CommitOrAbort, EnvOpenOptions};
 use insta::assert_snapshot;
 use rand::seq::SliceRandom;
 use rand::RngExt as _;
@@ -17,9 +17,15 @@ fn clear_small_database() {
     let env =
         unsafe { EnvOpenOptions::new().map_size(200 * 1024 * 1024).open(dir.path()) }.unwrap();
 
-    let mut wtxn = env.write_txn().unwrap();
-    let database: Database<DotProduct> = env.create_database(&mut wtxn, None).unwrap();
+    let wtxn = env.write_txn().unwrap();
+    let database: Database<DotProduct> = env
+        .create_databases_and_commit(wtxn, |dbo, wtxn| -> heed::Result<_> {
+            dbo.create_database(wtxn, None).map(CommitOrAbort::<_, ()>::Commit)
+        })
+        .unwrap()
+        .unwrap_commit();
 
+    let mut wtxn = env.write_txn().unwrap();
     let zero_writer = Writer::new(database, 0, 3);
     zero_writer.add_item(&mut wtxn, 0, &[0.0, 1.0, 2.0]).unwrap();
     zero_writer.clear(&mut wtxn).unwrap();
@@ -46,10 +52,13 @@ fn convert_from_arroy_to_hannoy() {
     let dir = tempfile::tempdir().unwrap();
     let env = unsafe { heed::EnvOpenOptions::new().map_size(200 * 1024 * 1024).open(dir.path()) }
         .unwrap();
-    let mut wtxn = env.write_txn().unwrap();
-    let database: hannoy::Database<hannoy::distances::Cosine> =
-        env.create_database(&mut wtxn, None).unwrap();
-    wtxn.commit().unwrap();
+    let wtxn = env.write_txn().unwrap();
+    let database: hannoy::Database<hannoy::distances::Cosine> = env
+        .create_databases_and_commit(wtxn, |dbo, wtxn| -> heed::Result<_> {
+            dbo.create_database(wtxn, None).map(CommitOrAbort::<_, ()>::Commit)
+        })
+        .unwrap()
+        .unwrap_commit();
 
     let mut rng = rng();
     let mut wtxn = env.write_txn().unwrap();

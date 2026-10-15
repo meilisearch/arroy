@@ -256,7 +256,7 @@ impl<'a, D: Distance, R: Rng + SeedableRng> ArroyBuilder<'a, D, R> {
 /// neighbors to items or vectors.
 #[derive(Debug)]
 pub struct Writer<D: Distance> {
-    database: Database<D>,
+    database: Database<'static, D>,
     index: u16,
     dimensions: usize,
     /// The folder in which tempfile will write its temporary files.
@@ -265,7 +265,7 @@ pub struct Writer<D: Distance> {
 
 impl<D: Distance> Writer<D> {
     /// Creates a new writer from a database, index and dimensions.
-    pub fn new(database: Database<D>, index: u16, dimensions: usize) -> Writer<D> {
+    pub fn new(database: Database<'static, D>, index: u16, dimensions: usize) -> Writer<D> {
         let database: Database<D> = database.remap_data_type();
         Writer { database, index, dimensions, tmpdir: None }
     }

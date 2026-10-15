@@ -4,7 +4,7 @@ use std::time::Instant;
 use arroy::distances::Euclidean;
 use arroy::internals::{Leaf, UnalignedVector};
 use arroy::{Database, Distance, ItemId, Reader, Result, Writer};
-use heed::{EnvOpenOptions, RwTxn};
+use heed::{CommitOrAbort, EnvOpenOptions, RwTxn};
 use instant_distance::{Builder, HnswMap, MapItem};
 use rand::rngs::StdRng;
 use rand::{Rng, RngExt as _, SeedableRng};
@@ -25,8 +25,14 @@ fn main() -> Result<()> {
     let (points, items_ids) = generate_points(rng_points, NUMBER_VECTORS, VECTOR_DIMENSIONS);
     eprintln!("took {:.02?} to generate the {NUMBER_VECTORS} random points", before.elapsed());
 
-    let mut wtxn = env.write_txn()?;
-    let database: Database<Euclidean> = env.create_database(&mut wtxn, None)?;
+    let wtxn = env.write_txn()?;
+    let database: Database<Euclidean> = env
+        .create_databases_and_commit(wtxn, |dbo, wtxn| {
+            dbo.create_database(wtxn, None).map(CommitOrAbort::<_, ()>::Commit)
+        })?
+        .unwrap_commit();
+
+    let wtxn = env.write_txn()?;
     let before = Instant::now();
     load_into_arroy(&mut rng_arroy, wtxn, database, VECTOR_DIMENSIONS, &points)?;
     eprintln!("took {:.02?} to load into arroy", before.elapsed());
@@ -73,7 +79,7 @@ fn main() -> Result<()> {
 fn load_into_arroy(
     rng: &mut StdRng,
     mut wtxn: RwTxn,
-    database: Database<Euclidean>,
+    database: Database<'static, Euclidean>,
     dimensions: usize,
     points: &[Point],
 ) -> Result<()> {

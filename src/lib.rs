@@ -152,7 +152,7 @@ pub mod distances {
 pub type Result<T, E = Error> = std::result::Result<T, E>;
 
 /// The database required by arroy for reading or writing operations.
-pub type Database<D> = heed::Database<internals::KeyCodec, NodeCodec<D>>;
+pub type Database<'t, D> = heed::Database<'t, internals::KeyCodec, NodeCodec<D>>;
 
 /// An identifier for the items stored in the database.
 pub type ItemId = u32;

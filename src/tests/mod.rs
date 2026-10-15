@@ -1,7 +1,7 @@
 use std::fmt;
 
 use heed::types::LazyDecode;
-use heed::{Env, EnvOpenOptions, WithTls};
+use heed::{CommitOrAbort, Env, EnvOpenOptions, WithTls};
 use rand::rngs::StdRng;
 use rand::SeedableRng;
 use tempfile::TempDir;
@@ -15,7 +15,7 @@ mod writer;
 
 pub struct DatabaseHandle<D> {
     pub env: Env<WithTls>,
-    pub database: Database<D>,
+    pub database: Database<'static, D>,
     #[allow(unused)]
     pub tempdir: TempDir,
 }
@@ -91,9 +91,13 @@ fn create_database<D: Distance>() -> DatabaseHandle<D> {
     let dir = tempfile::tempdir().unwrap();
     let env =
         unsafe { EnvOpenOptions::new().map_size(200 * 1024 * 1024).open(dir.path()) }.unwrap();
-    let mut wtxn = env.write_txn().unwrap();
-    let database: Database<D> = env.create_database(&mut wtxn, None).unwrap();
-    wtxn.commit().unwrap();
+    let wtxn = env.write_txn().unwrap();
+    let database: Database<D> = env
+        .create_databases_and_commit(wtxn, |dbo, wtxn| -> heed::Result<_> {
+            dbo.create_database(wtxn, None).map(CommitOrAbort::<_, ()>::Commit)
+        })
+        .unwrap()
+        .unwrap_commit();
     DatabaseHandle { env, database, tempdir: dir }
 }
 
