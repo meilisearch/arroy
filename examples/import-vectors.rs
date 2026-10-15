@@ -8,7 +8,7 @@ use std::time::{Duration, Instant};
 use arroy::distances::DotProduct;
 use arroy::{Database, Writer};
 use clap::Parser;
-use heed::{EnvFlags, EnvOpenOptions};
+use heed::{CommitOrAbort, EnvFlags, EnvOpenOptions};
 use rand::rngs::StdRng;
 use rand::SeedableRng;
 
@@ -64,8 +64,12 @@ fn main() -> Result<(), heed::BoxedError> {
     unsafe { env_builder.flags(flags) };
     let env = unsafe { env_builder.open(&database) }.unwrap();
 
-    let mut wtxn = env.write_txn().unwrap();
-    let database: Database<DotProduct> = env.create_database(&mut wtxn, None)?;
+    let wtxn = env.write_txn().unwrap();
+    let database: Database<DotProduct> = env
+        .create_databases_and_commit(wtxn, |dbo, wtxn| {
+            dbo.create_database(wtxn, None).map(CommitOrAbort::<_, ()>::Commit)
+        })?
+        .unwrap_commit();
     let writer = Writer::<DotProduct>::new(database, 0, dimensions);
 
     // The file look like that
@@ -73,6 +77,7 @@ fn main() -> Result<(), heed::BoxedError> {
     // 0, [0.010056925, -0.0045358953, 0.009904552, 0.0046241777, ..., -0.050245073]
     // === END vectors ===
 
+    let mut wtxn = env.write_txn().unwrap();
     let now = Instant::now();
     let mut insertion_time = Duration::default();
     let mut count = 0;

@@ -2,7 +2,7 @@ use std::time::{Duration, Instant};
 
 use arroy::distances::DotProduct;
 use arroy::{Database, Reader};
-use heed::EnvOpenOptions;
+use heed::{CommitOrAbort, EnvOpenOptions};
 
 fn main() {
     let mut args = std::env::args();
@@ -16,9 +16,15 @@ fn main() {
     .unwrap();
 
     let rtxn = env.read_txn().unwrap();
-    let database: Database<DotProduct> =
-        env.database_options().types().open(&rtxn).unwrap().unwrap();
+    let database: Database<DotProduct> = env
+        .open_databases_and_commit(rtxn, |dbo, rtxn| -> heed::Result<_> {
+            let db = dbo.database_options().types().open(&rtxn)?.unwrap();
+            Ok(CommitOrAbort::<_, ()>::Commit(db))
+        })
+        .unwrap()
+        .unwrap_commit();
 
+    let rtxn = env.read_txn().unwrap();
     let reader = Reader::<DotProduct>::open(&rtxn, 0, database).unwrap();
 
     let vectors = reader.iter(&rtxn).unwrap().collect::<Result<Vec<_>, _>>().unwrap();

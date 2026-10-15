@@ -9,7 +9,7 @@ use std::time::Instant;
 use arroy::distances::DotProduct;
 use arroy::{Database, Reader, Stats, TreeStats, Writer};
 use clap::Parser;
-use heed::{EnvFlags, EnvOpenOptions};
+use heed::{CommitOrAbort, EnvFlags, EnvOpenOptions};
 use rand::rngs::StdRng;
 use rand::SeedableRng;
 
@@ -57,10 +57,15 @@ fn main() -> Result<(), heed::BoxedError> {
     unsafe { env_builder.flags(flags) };
     let env = unsafe { env_builder.open(&database) }.unwrap();
 
-    let mut wtxn = env.write_txn().unwrap();
-    let database: Database<DotProduct> = env.create_database(&mut wtxn, None)?;
+    let wtxn = env.write_txn().unwrap();
+    let database: Database<DotProduct> = env
+        .create_databases_and_commit(wtxn, |dbo, wtxn| {
+            dbo.create_database(wtxn, None).map(CommitOrAbort::<_, ()>::Commit)
+        })?
+        .unwrap_commit();
     let writer = Writer::<DotProduct>::new(database, 0, dimensions);
 
+    let mut wtxn = env.write_txn().unwrap();
     let now = Instant::now();
     println!("Building the arroy internal trees...");
     let mut rng = StdRng::seed_from_u64(seed);

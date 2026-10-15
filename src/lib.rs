@@ -18,6 +18,7 @@
 //! use arroy::{Database as ArroyDatabase, Writer, Reader};
 //! use rand::rngs::StdRng;
 //! use rand::{Rng, SeedableRng};
+//! use heed::CommitOrAbort;
 //!
 //! /// That's the 200MiB size limit we allow LMDB to grow.
 //! const TWENTY_HUNDRED_MIB: usize = 2 * 1024 * 1024 * 1024;
@@ -27,9 +28,12 @@
 //! let env = unsafe { heed::EnvOpenOptions::new().map_size(TWENTY_HUNDRED_MIB).open(dir.path()) }?;
 //!
 //! // we will open the default LMDB unnamed database
-//! let mut wtxn = env.write_txn()?;
-//! let db: ArroyDatabase<Euclidean> = env.create_database(&mut wtxn, None)?;
+//! let wtxn = env.write_txn()?;
+//! let db: ArroyDatabase<Euclidean> = env.create_databases_and_commit(wtxn, |dbo, wtxn| -> heed::Result<_> {
+//!     dbo.create_database(wtxn, None).map(CommitOrAbort::<_, ()>::Commit)
+//! })?.unwrap_commit();
 //!
+//! let mut wtxn = env.write_txn()?;
 //! // Now we can give it to our arroy writer
 //! let index = 0;
 //! let dimensions = 5;
@@ -152,7 +156,7 @@ pub mod distances {
 pub type Result<T, E = Error> = std::result::Result<T, E>;
 
 /// The database required by arroy for reading or writing operations.
-pub type Database<D> = heed::Database<internals::KeyCodec, NodeCodec<D>>;
+pub type Database<'t, D> = heed::Database<'t, internals::KeyCodec, NodeCodec<D>>;
 
 /// An identifier for the items stored in the database.
 pub type ItemId = u32;
