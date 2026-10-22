@@ -16,7 +16,7 @@ edition = "2021"
 [dependencies]
 bytemuck = { version = "1.25.2", features = ["derive", "extern_crate_alloc"] }
 byteorder = "1.5.0"
-heed = { git = "https://github.com/meilisearch/heed", branch = "better-db-opening", version = "0.23.0", default-features = false }
+heed = { version = "0.23.0", default-features = false }
 tracing = "0.1.44"
 memmap2 = "0.9.11"
 ordered-float = "5.3.0"
