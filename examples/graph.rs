@@ -9,7 +9,7 @@ use std::path::PathBuf;
 use arroy::distances::DotProduct;
 use arroy::{Database, Reader};
 use clap::Parser;
-use heed::EnvOpenOptions;
+use heed::{CommitOrAbort, EnvOpenOptions};
 
 #[derive(Parser)]
 #[command(author, version, about, long_about = None)]
@@ -37,11 +37,16 @@ fn main() {
     .unwrap();
 
     let rtxn = env.read_txn().unwrap();
-    let database: Database<DotProduct> =
-        env.database_options().types().open(&rtxn).unwrap().unwrap();
+    let database: Database<DotProduct> = env
+        .open_databases_and_commit(rtxn, |dbo, rtxn| {
+            dbo.database_options().types().open(rtxn).map(CommitOrAbort::<_, ()>::Commit)
+        })
+        .unwrap()
+        .unwrap_commit()
+        .unwrap();
 
+    let rtxn = env.read_txn().unwrap();
     let reader = Reader::<DotProduct>::open(&rtxn, 0, database).unwrap();
-
     reader.plot_internals_tree_nodes(&rtxn, writer).unwrap();
 
     eprintln!("To convert the graph to a png, run: `dot {output_path:?} -T png > graph.png`");

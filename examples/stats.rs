@@ -4,7 +4,7 @@ use std::path::PathBuf;
 use arroy::distances::DotProduct;
 use arroy::{Database, Reader, Stats, TreeStats};
 use clap::Parser;
-use heed::EnvOpenOptions;
+use heed::{CommitOrAbort, EnvOpenOptions};
 
 #[derive(Parser)]
 #[command(author, version, about, long_about = None)]
@@ -21,7 +21,14 @@ fn main() -> anyhow::Result<()> {
     let env = unsafe { EnvOpenOptions::new().open(&database) }?;
 
     let rtxn = env.read_txn()?;
-    let database: Database<DotProduct> = env.open_database(&rtxn, None)?.unwrap();
+    let database: Database<DotProduct> = env
+        .open_databases_and_commit(rtxn, |dbo, rtxn| -> heed::Result<_> {
+            let db = dbo.open_database(rtxn, None)?.unwrap();
+            Ok(CommitOrAbort::<_, ()>::Commit(db))
+        })?
+        .unwrap_commit();
+
+    let rtxn = env.read_txn()?;
     let reader = Reader::open(&rtxn, 0, database)?;
 
     let mut dummy_sum = 0;
