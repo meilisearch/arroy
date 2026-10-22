@@ -4,7 +4,7 @@ use std::{fmt, panic};
 use arbitrary::{Arbitrary, Unstructured};
 use arroy::distances::Euclidean;
 use arroy::{Database, Reader, Result, Writer};
-use heed::EnvOpenOptions;
+use heed::{CommitOrAbort, EnvOpenOptions};
 use rand::rngs::StdRng;
 use rand::{RngExt, SeedableRng};
 
@@ -46,9 +46,13 @@ fn main() -> Result<()> {
 
     let dir = tempfile::tempdir().unwrap();
     let env = unsafe { EnvOpenOptions::new().map_size(TWENTY_GIB).open(dir.path()) }?;
-    let mut wtxn = env.write_txn()?;
-    let database: Database<Euclidean> = env.create_database(&mut wtxn, None)?;
-    wtxn.commit()?;
+    let rtxn = env.read_txn()?;
+    let database: Database<Euclidean> = env
+        .open_databases_and_commit(rtxn, |dbo, rtxn| {
+            dbo.open_database(rtxn, None).map(CommitOrAbort::<_, ()>::Commit)
+        })?
+        .unwrap_commit()
+        .unwrap();
 
     let mut rng_points = StdRng::seed_from_u64(42);
     let mut rng_arroy = StdRng::seed_from_u64(42);
