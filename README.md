@@ -80,6 +80,9 @@ The code should support Windows, thanks to LMDB and the Rust programming languag
 - Thanks to [Qdrant](https://qdrant.tech/) for their SIMD distances functions
 - Thanks to Spotify for the original idea of [Annoy](https://github.com/spotify/annoy/)
 
+## License
+
+Arroy is licensed under MIT. By default, arroy statically links with LMDB, which is licensed under [the OpenLDAP license](./LICENSE-OPENLDAP). By using arroy, you need to make sure you comply with the terms of both the MIT and the OpenLDAP license.
 
 [1]: https://en.wikipedia.org/wiki/Nearest_neighbor_search#Approximate_nearest_neighbor
 [2]: https://github.com/spotify/annoy/#full-python-api
