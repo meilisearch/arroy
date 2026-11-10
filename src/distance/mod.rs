@@ -11,6 +11,7 @@ use bytemuck::{Pod, Zeroable};
 pub use cosine::{Cosine, NodeHeaderCosine};
 pub use dot_product::{DotProduct, NodeHeaderDotProduct};
 pub use euclidean::{Euclidean, NodeHeaderEuclidean};
+pub use hamming::{Hamming, NodeHeaderHamming};
 use heed::{RwPrefix, RwTxn};
 pub use manhattan::{Manhattan, NodeHeaderManhattan};
 use rand::Rng;
@@ -27,6 +28,7 @@ mod binary_quantized_manhattan;
 mod cosine;
 mod dot_product;
 mod euclidean;
+mod hamming;
 mod manhattan;
 
 fn new_leaf<D: Distance>(vec: Vec<f32>) -> Leaf<'static, D> {
