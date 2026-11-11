@@ -3,6 +3,9 @@ use crate::internals::KeyCodec;
 use crate::node::Leaf;
 use crate::{ItemId, Node, NodeCodec, Result};
 
+/// An iterator over the items (vectors) stored in an arroy index.
+///
+/// Returned by [`Reader::iter`](crate::Reader::iter).
 pub struct ItemIter<'t, D: Distance> {
     pub(crate) inner: heed::RoPrefix<'t, KeyCodec, NodeCodec<D>>,
 }
